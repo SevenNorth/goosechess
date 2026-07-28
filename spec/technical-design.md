@@ -22,8 +22,10 @@
 | 状态机 | XState v5 | 明确表达回合、动画等待、事件选择和结算阶段 |
 | 动画 | PixiJS ticker + tween.js | 保持场景动画与渲染循环同步 |
 | 游戏服务端 | 独立 Node.js + TypeScript 服务 | 常驻承载房间、WebSocket、在线 AI 和权威结算 |
+| 协议校验 | Zod | 从运行时 schema 推导 TypeScript 类型并校验网络/快照数据 |
 | 音频 | 自定义 `AudioPort` | 第一阶段只建立接口与无声音实现，不引入播放库 |
-| 测试 | Vitest | 复用现有测试环境，支持规则模拟 |
+| 单元测试 | Vitest | 复用现有测试环境，支持规则模拟 |
+| 端到端测试 | Playwright | 验证 Next.js、Canvas、交互流程和桌面分辨率截图 |
 
 首阶段不接入 WebSocket 库或部署游戏服务器，但协议数据结构和权威端接口属于技术基线，不得留到联机阶段再反推规则层。
 
