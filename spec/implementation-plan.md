@@ -114,29 +114,31 @@ npm run build
 
 目标：先固定依赖方向和可序列化边界，再编写完整规则。
 
+当前状态：`[x]` 已完成。四个共享包均可独立执行类型检查、测试和构建；协议 JSON 往返与结构化错误测试通过，静态边界检查确认不存在共享包指向应用层的依赖。现有 Web 原型已从 `game-content` 读取事件和道具，完整规则迁移仍按阶段 3 执行。
+
 ### 包结构
 
-- [ ] 创建 `packages/game-core`：纯类型、随机数、规则函数和 authority reducer。
-- [ ] 创建 `packages/game-content`：地图、事件、道具、皮肤与规则集配置。
-- [ ] 创建 `packages/game-ai`：电脑决策策略，只依赖允许公开的规则视图。
-- [ ] 创建 `packages/game-protocol`：命令、快照、领域事件、表现提示和运行时校验。
-- [ ] 每个包拥有独立入口、类型检查和测试脚本，不从 `apps/web` 反向导入。
+- [x] 创建 `packages/game-core`：纯类型、随机数、规则函数和 authority reducer。
+- [x] 创建 `packages/game-content`：地图、事件、道具、皮肤与规则集配置。
+- [x] 创建 `packages/game-ai`：电脑决策策略，只依赖允许公开的规则视图。
+- [x] 创建 `packages/game-protocol`：命令、快照、领域事件、表现提示和运行时校验。
+- [x] 每个包拥有独立入口、类型检查和测试脚本，不从 `apps/web` 反向导入。
 
 ### 依赖约束
 
-- [ ] `game-core` 不依赖 React、Vite、PixiJS、XState、DOM、Node.js API 或数据库。
-- [ ] `game-ai` 只依赖 `game-core` 的公开规则视图和命令类型。
-- [ ] `game-content` 只提供结构化定义，不包含 UI 组件或任意可执行脚本。
-- [ ] `game-protocol` 使用 Zod 校验 JSON 输入；协议类型从 schema 推导，避免手写两套结构。
-- [ ] `apps/web` 负责组合共享包，不能在 UI 中复制规则实现。
+- [x] `game-core` 不依赖 React、Vite、PixiJS、XState、DOM、Node.js API 或数据库。
+- [x] `game-ai` 只依赖 `game-core` 的公开规则视图和命令类型。
+- [x] `game-content` 只提供结构化定义，不包含 UI 组件或任意可执行脚本。
+- [x] `game-protocol` 使用 Zod 校验 JSON 输入；协议类型从 schema 推导，避免手写两套结构。
+- [x] `apps/web` 负责组合共享包，不能在 UI 中复制规则实现。当前 DOM 原型的旧规则流程仅作为迁移输入保留，不作为共享规则实现。
 
 ### 最小协议
 
-- [ ] 定义 `GameCommand`、`CommandEnvelope`、`GameSnapshot`、`DomainEvent` 和 `PresentationCue`。
-- [ ] 定义 `GameAuthorityPort.submit(command)` 与订阅快照/事件的接口。
-- [ ] 定义稳定的 `gameId`、`playerId`、`commandId`、`revision` 和版本字段。
-- [ ] 建立 JSON 往返测试，禁止函数、类实例、Map、Set、DOM 或 PixiJS 对象进入快照。
-- [ ] 对未知命令、未知内容 ID、重复命令和过期 revision 给出结构化错误。
+- [x] 定义 `GameCommand`、`CommandEnvelope`、`GameSnapshot`、`DomainEvent` 和 `PresentationCue`。
+- [x] 定义 `GameAuthorityPort.submit(command)` 与订阅快照/事件的接口。
+- [x] 定义稳定的 `gameId`、`playerId`、`commandId`、`revision` 和版本字段。
+- [x] 建立 JSON 往返测试，禁止函数、类实例、Map、Set、DOM 或 PixiJS 对象进入快照。
+- [x] 对未知命令、未知内容 ID、重复命令和过期 revision 给出结构化错误。
 
 ### 验收
 

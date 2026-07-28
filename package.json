@@ -13,10 +13,21 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace @goose-chess/web",
-    "build": "npm run build --workspace @goose-chess/web",
+    "build": "npm run build --workspace @goose-chess/game-core && npm run build --workspace @goose-chess/game-protocol && npm run build --workspace @goose-chess/game-content && npm run build --workspace @goose-chess/game-ai && npm run build --workspace @goose-chess/web",
     "preview": "npm run preview --workspace @goose-chess/web",
-    "test": "npm run test --workspace @goose-chess/web",
-    "typecheck": "npm run typecheck --workspace @goose-chess/web",
-    "lint": "npm run lint --workspace @goose-chess/web"
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint . && npm run check:boundaries",
+    "check:boundaries": "node scripts/check-package-boundaries.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.8.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.3",
+    "globals": "17.8.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10"
   }
 }
