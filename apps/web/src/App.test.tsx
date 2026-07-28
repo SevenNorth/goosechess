@@ -1,62 +1,51 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import App from './App'
 
-describe('鹅了个棋', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-  })
+describe('PixiJS 核心体验样片', () => {
+  afterEach(cleanup)
 
-  afterEach(() => {
-    cleanup()
-    vi.restoreAllMocks()
-    vi.useRealTimers()
-  })
-
-  function startGame() {
-    render(<App />)
-    fireEvent.click(screen.getAllByRole('button', { name: /选择/ })[0])
+  async function startGame(options: { mode?: '1v1' | '1v2' | '1v3'; seed?: number } = {}) {
+    render(<App mode={options.mode} seed={options.seed} />)
+    fireEvent.click(screen.getByRole('radio', { name: '黄鹅' }))
+    fireEvent.click(screen.getByRole('button', { name: /四叶草/ }))
+    fireEvent.click(screen.getByRole('button', { name: '开始试航' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '投掷双骰' }).hasAttribute('disabled')).toBe(false))
   }
 
-  async function advanceGame(milliseconds: number) {
-    for (let elapsed = 0; elapsed < milliseconds; elapsed += 200) {
-      await vi.advanceTimersByTimeAsync(Math.min(200, milliseconds - elapsed))
-    }
-  }
+  it('按模式创建动态座位并完成正式 setup 命令', async () => {
+    await startGame({ mode: '1v3', seed: 1 })
 
-  it('选择道具后可以掷双骰并移动', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.2)
-    startGame()
-
-    fireEvent.click(screen.getByRole('button', { name: /掷骰子/ }))
-    await advanceGame(550)
-
-    expect(screen.getByText('4 / 65')).toBeTruthy()
-    expect(screen.getByText(/你掷出 4 点/)).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: '参赛棋手' })).getAllByRole('article')).toHaveLength(4)
+    expect(screen.queryByRole('heading', { name: '选择棋子与起始道具' })).toBeNull()
+    expect(screen.getByRole('button', { name: /四叶草/ })).toBeTruthy()
   })
 
-  it('落在事件格后出现三张事件牌', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.34)
-    startGame()
+  it('通过 authority 投掷双骰并更新本地棋手位置', async () => {
+    await startGame({ seed: 1 })
+    const playerRegion = screen.getByRole('region', { name: '参赛棋手' })
 
-    fireEvent.click(screen.getByRole('button', { name: /掷骰子/ }))
-    await advanceGame(2000)
+    fireEvent.click(screen.getByRole('button', { name: '投掷双骰' }))
 
-    expect(screen.getByText('从三张牌中选择')).toBeTruthy()
-    expect(screen.getAllByRole('button', { name: /选择事件/ })).toHaveLength(3)
+    await waitFor(() => expect(within(playerRegion).queryByText('0 / 15')).toBeNull())
+    expect(screen.getByText('合计').nextElementSibling?.textContent).not.toBe('--')
   })
 
-  it('电脑使用道具后只执行一次掷骰行动', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.2)
-    startGame()
+  it('固定种子落到事件格后显示三张事件牌', async () => {
+    await startGame({ seed: 3 })
 
-    fireEvent.click(screen.getByRole('button', { name: /掷骰子/ }))
-    await advanceGame(5000)
+    fireEvent.click(screen.getByRole('button', { name: '投掷双骰' }))
 
-    expect(screen.getAllByText(/\/ 65/).map((node) => node.textContent)).toEqual(['4 / 65', '7 / 65'])
-    expect(screen.getByText('你的回合')).toBeTruthy()
-    await advanceGame(3000)
-    expect(screen.getAllByText(/\/ 65/).map((node) => node.textContent)).toEqual(['4 / 65', '7 / 65'])
+    await waitFor(() => expect(screen.getByRole('heading', { name: '从三张牌中选择' })).toBeTruthy())
+    expect(within(screen.getByRole('region', { name: '从三张牌中选择' })).getAllByRole('button')).toHaveLength(3)
+  })
+
+  it('重新开始会重新进入 setup 并保持模式人数', async () => {
+    await startGame({ mode: '1v2', seed: 8 })
+    fireEvent.click(screen.getByRole('button', { name: '重新开始' }))
+
+    expect(screen.getByRole('heading', { name: '选择棋子与起始道具' })).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: '参赛棋手' })).getAllByRole('article')).toHaveLength(3)
   })
 })

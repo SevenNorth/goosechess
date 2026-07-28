@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Bot, Construction, Dices, Play, UsersRound } from 'lucide-react'
-import { Link, Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { Link, Navigate, Route, Routes, useParams, useSearchParams } from 'react-router-dom'
 import { OFFLINE_MATCH_MODES, type OfflineMatchMode } from '@goose-chess/game-protocol'
 import App from './App'
 
@@ -79,11 +79,21 @@ function RoomUnavailablePage() {
   )
 }
 
+function PlayPage() {
+  const [parameters] = useSearchParams()
+  const requestedMode = parameters.get('mode')
+  const mode: OfflineMatchMode = OFFLINE_MATCH_MODES.includes(requestedMode as OfflineMatchMode)
+    ? requestedMode as OfflineMatchMode
+    : '1v1'
+  const requestedSeed = Number(parameters.get('seed'))
+  return <App mode={mode} seed={Number.isInteger(requestedSeed) && requestedSeed >= 0 ? requestedSeed : undefined} />
+}
+
 export default function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<PreparationPage />} />
-      <Route path="/play" element={<App />} />
+      <Route path="/play" element={<PlayPage />} />
       <Route path="/room/:roomCode" element={<RoomUnavailablePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
