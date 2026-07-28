@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   ArrowDownToLine,
@@ -270,11 +271,10 @@ function App() {
     setPhase('ai-thinking')
     setSelectedEvent(event)
     let passed = true
-    let resultDice: [number, number] | null = null
     let usedClover = false
     if (event.threshold) {
       const limit = worldRule?.maxDie ?? 6
-      resultDice = [randomDie(limit), randomDie(limit)]
+      const resultDice: [number, number] = [randomDie(limit), randomDie(limit)]
       const item = getItem(players[active].item)
       usedClover = item?.effect === 'check-pass'
       passed = usedClover || resultDice[0] + resultDice[1] >= event.threshold
@@ -312,7 +312,7 @@ function App() {
     setPhase('event-result')
   }
 
-  const useItem = (id: PlayerId) => {
+  const activateItem = (id: PlayerId) => {
     const item = getItem(players[id].item)
     if (!item || item.mode !== '主动' || phase !== 'ready') return null
     if (item.effect === 'teleport-beach' && players[id].position >= 18) return null
@@ -364,7 +364,7 @@ function App() {
         const usable = item?.mode === '主动' && !(item.effect === 'teleport-beach' && players.ai.position >= 18)
         let preparedPlayers = players
         if (usable && (item.priority >= 6 || players.ai.position < players.human.position)) {
-          preparedPlayers = useItem('ai') ?? players
+          preparedPlayers = activateItem('ai') ?? players
         }
         later(() => rollFor('ai', preparedPlayers, true), 320)
       }, 850)
@@ -483,7 +483,7 @@ function App() {
             {humanItem ? <>
               <div className="item-heading"><span>{humanItem.mode}</span><strong>{humanItem.title}</strong></div>
               <p>{humanItem.description}</p>
-              {humanItem.mode === '主动' && <button className="secondary-button" disabled={!canUseHumanItem} onClick={() => useItem('human')}><Sparkles />使用道具</button>}
+              {humanItem.mode === '主动' && <button className="secondary-button" disabled={!canUseHumanItem} onClick={() => activateItem('human')}><Sparkles />使用道具</button>}
             </> : <div className="empty-item"><ArrowDownToLine /><span>道具槽为空</span></div>}
           </div>
           <div className="latest-log"><span>最新动态</span><p>{logs[0]?.text}</p></div>

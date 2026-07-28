@@ -45,13 +45,13 @@
 
 目标：确保工程迁移前有可比较、可回退的行为基线。
 
-当前状态：`[!]` 环境、测试、构建、内容清单和 Git 基线已完成；三个桌面尺寸截图因浏览器运行时没有可用实例而阻塞。证据见 [baseline-2026-07-28.md](./baseline-2026-07-28.md)。
+当前状态：`[x]` 已完成。三个桌面尺寸截图因浏览器运行时没有可用实例，经用户确认跳过；其余基线证据见 [baseline-2026-07-28.md](./baseline-2026-07-28.md)。
 
 ### 任务
 
 - [x] 记录当前 Node.js 和 npm 版本，并在根目录声明项目支持的 Node.js LTS 范围。
 - [x] 运行现有 `npm run test` 和 `npm run build`，记录已存在的失败，不能把旧失败归因于迁移。
-- [!] 为当前原型保存桌面截图：`1280 x 720`、`1600 x 900`、`1920 x 1080`。阻塞原因：浏览器运行时返回 `No browser is available`，浏览器列表为空。
+- [x] 为当前原型保存桌面截图：`1280 x 720`、`1600 x 900`、`1920 x 1080`。经确认跳过（2026-07-28 用户确认）；原阻塞原因为浏览器运行时返回 `No browser is available` 且浏览器列表为空。
 - [x] 记录当前可复用的数据：事件、道具、格子坐标、地标名称和 CSS 色值。
 - [x] 确认 `example_screenshots/`、临时抽帧和本地解码工具继续保持未跟踪状态。
 - [x] 给迁移前状态建立 Git 提交；不创建长期维护的 legacy 分支。
@@ -70,31 +70,33 @@ git status --short
 
 目标：不更换 Web 框架，把现有 Vite 应用迁入正式 monorepo 目录并保持行为基线。
 
+当前状态：`[x]` 已完成。Vite 应用已迁入 `apps/web`，根脚本、客户端路由、静态检查、测试与构建均通过。浏览器运行时仍无可用实例，因此本阶段以三条路由的 HTTP 200 响应和 jsdom 路由测试完成非视觉验收；视觉回归仍按阶段 5 的 Playwright 任务执行。
+
 ### 目录与脚本
 
-- [ ] 根 `package.json` 改为 npm workspaces，范围为 `apps/*` 和 `packages/*`。
-- [ ] 创建 `apps/web` package，将现有 `index.html`、Vite 配置、`src/` 和 Web 测试迁入其中。
-- [ ] 将依赖固定为锁文件中的明确版本，不继续使用 `latest` 作为正式依赖范围。
-- [ ] 根目录提供统一脚本：`dev`、`build`、`test`、`typecheck`、`lint`。
-- [ ] 配置 ESLint 的 React、Hooks 与 TypeScript 规则，使根 `npm run lint` 可以在 CI 中无交互执行。
-- [ ] 首阶段的 `npm run dev` 只需启动 `apps/web`；游戏服务器尚不存在也不能报错。
-- [ ] 将共享 TypeScript 基础配置放入根目录或专用 config package。
-- [ ] 初期直接使用 npm workspaces 脚本，不为少量包额外引入任务编排框架。
+- [x] 根 `package.json` 改为 npm workspaces，范围为 `apps/*` 和 `packages/*`。
+- [x] 创建 `apps/web` package，将现有 `index.html`、Vite 配置、`src/` 和 Web 测试迁入其中。
+- [x] 将依赖固定为锁文件中的明确版本，不继续使用 `latest` 作为正式依赖范围。
+- [x] 根目录提供统一脚本：`dev`、`build`、`test`、`typecheck`、`lint`。
+- [x] 配置 ESLint 的 React、Hooks 与 TypeScript 规则，使根 `npm run lint` 可以在 CI 中无交互执行。
+- [x] 首阶段的 `npm run dev` 只需启动 `apps/web`；游戏服务器尚不存在也不能报错。
+- [x] 将共享 TypeScript 基础配置放入根目录或专用 config package。
+- [x] 初期直接使用 npm workspaces 脚本，不为少量包额外引入任务编排框架。
 
 ### Web 外壳
 
-- [ ] 安装 React Router，创建 `/`、`/play` 和 `/room/:roomCode` 三个客户端路由。
-- [ ] `/` 第一屏直接显示模式准备，不制作营销落地页。
-- [ ] `/play` 暂时承载现有 DOM 原型，阶段 5 再替换为 PixiJS `GameShell`。
-- [ ] `/room/:roomCode` 首阶段只显示未开放状态，不连接服务器。
-- [ ] 路由切换后页面状态和测试稳定，直接刷新深层路由时由开发服务器返回 SPA 入口。
-- [ ] 保留现有全局字体、颜色和页面尺寸基线，暂不重做旧棋盘视觉。
+- [x] 安装 React Router，创建 `/`、`/play` 和 `/room/:roomCode` 三个客户端路由。
+- [x] `/` 第一屏直接显示模式准备，不制作营销落地页。
+- [x] `/play` 暂时承载现有 DOM 原型，阶段 5 再替换为 PixiJS `GameShell`。
+- [x] `/room/:roomCode` 首阶段只显示未开放状态，不连接服务器。
+- [x] 路由切换后页面状态和测试稳定，直接刷新深层路由时由开发服务器返回 SPA 入口。
+- [x] 保留现有全局字体、颜色和页面尺寸基线，暂不重做旧棋盘视觉。
 
 ### 旧应用处理
 
-- [ ] 移动后确认 `src/game/data.ts`、类型和现有三项测试仍工作，不在此阶段改写规则。
-- [ ] 删除根目录中已经迁入 `apps/web` 的重复入口和配置。
-- [ ] 不创建 `/legacy` 页面；Git 历史负责保存迁移前结构。
+- [x] 移动后确认 `src/game/data.ts`、类型和现有三项测试仍工作，不在此阶段改写规则。
+- [x] 删除根目录中已经迁入 `apps/web` 的重复入口和配置。
+- [x] 不创建 `/legacy` 页面；Git 历史负责保存迁移前结构。
 
 ### 验收
 
