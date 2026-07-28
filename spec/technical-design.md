@@ -3,7 +3,7 @@
 ## 1. 架构目标
 
 - 规则逻辑可以脱离画面进行单元测试和模拟对局。
-- Next.js 中的 React UI 与 PixiJS 场景读取同一份客户端游戏状态。
+- React UI 与 PixiJS 场景读取同一份客户端游戏状态。
 - 动画只负责表现，不直接决定规则结果。
 - 所有随机结果可以通过种子重放。
 - 事件和道具通过配置扩展，不在渲染代码中写分支。
@@ -17,7 +17,8 @@
 
 | 领域 | 方案 | 原因 |
 |---|---|---|
-| Web 应用 | Next.js App Router + React + TypeScript | 提供页面路由、应用外壳和未来账号/房间页面能力 |
+| Web 应用 | React + Vite + TypeScript | 适合客户端游戏、开发反馈快，并可部署为静态资源 |
+| 客户端路由 | React Router | 管理模式准备、离线游戏和未来房间页面 |
 | 场景渲染 | PixiJS v8 | 适合 2D 棋盘、精灵、镜头、滤镜和粒子 |
 | 状态机 | XState v5 | 明确表达回合、动画等待、事件选择和结算阶段 |
 | 动画 | PixiJS ticker + tween.js | 保持场景动画与渲染循环同步 |
@@ -25,33 +26,27 @@
 | 协议校验 | Zod | 从运行时 schema 推导 TypeScript 类型并校验网络/快照数据 |
 | 音频 | 自定义 `AudioPort` | 第一阶段只建立接口与无声音实现，不引入播放库 |
 | 单元测试 | Vitest | 复用现有测试环境，支持规则模拟 |
-| 端到端测试 | Playwright | 验证 Next.js、Canvas、交互流程和桌面分辨率截图 |
+| 端到端测试 | Playwright | 验证 Vite SPA、Canvas、交互流程和桌面分辨率截图 |
 
 首阶段不接入 WebSocket 库或部署游戏服务器，但协议数据结构和权威端接口属于技术基线，不得留到联机阶段再反推规则层。
 
-不建议直接使用 `@pixi/react` 作为首选集成层。棋盘入口使用 Client Component，并通过禁用 SSR 的动态导入加载；在该组件中创建和销毁 PixiJS `Application`，由场景控制器命令式管理显示对象。模块顶层不得读取 `window`、`document` 或 WebGL API，避免 Next.js 服务端构建阶段执行浏览器代码。
+不建议直接使用 `@pixi/react` 作为首选集成层。棋盘入口是普通 React 组件，在组件生命周期中创建和销毁 PixiJS `Application`，由场景控制器命令式管理显示对象。这样可以减少 React 生命周期和高频场景更新之间的耦合。
 
-### 2.1 Next.js 后端能力边界
+### 2.1 Vite 与后端边界
 
-Next.js 可以直接实现后端功能。Route Handlers、Server Actions 和服务端组件适合：
+Vite 负责开发服务器和浏览器静态资源构建，不作为生产后端。正式职责如下：
 
-- 页面服务端渲染和静态资源入口。
-- 登录回调、Cookie/session 处理和普通请求响应 API。
-- 读取房间摘要、生成分享元数据或作为轻量 BFF。
+- React/Vite 客户端负责路由、UI、PixiJS 场景、离线 `LocalAuthority` 和离线 AI。
+- 独立 Node.js 服务负责账号/身份（启用后）、房间 HTTP API、WebSocket、在线 AI 和 `RoomAuthority`。
+- 离线人机模式不依赖 Node.js 服务，可以作为纯静态站点运行。
+- 在线模式由浏览器直接通过 HTTPS/WSS 连接游戏服务，不能在客户端保存第二份权威状态。
 
-但本项目不使用 Next.js 进程承载在线对局的权威房间，原因是：
-
-- 房间需要跨多个请求持续存在，并顺序处理整局命令。
-- WebSocket、在线 AI、超时和断线恢复需要可控的常驻进程生命周期。
-- 前端页面和游戏房间需要独立发布、扩缩容、重启和故障隔离。
-- Next.js 部署到无状态或函数平台时，实例回收和多实例路由不能保证房间内存持续存在。
-
-自托管 Next.js 并附加自定义 WebSocket 服务在技术上可行，但会耦合两种生命周期，因此不作为正式方案。浏览器通过 HTTPS/WSS 直接连接独立游戏服务器；Next.js 只传递必要的登录凭证或房间入口信息。
+静态前端与游戏服务可以分别部署、缓存、扩缩容和回滚。React Router 的生产部署必须配置 SPA fallback，使 `/play` 和 `/room/:roomCode` 刷新时返回 `index.html`。
 
 ## 3. 模块边界
 
 ```text
-Next.js Web Client
+React + Vite Web Client
   Controller (local / AI / remote)
        │ 提交可序列化 GameCommand
        ▼
@@ -106,7 +101,7 @@ Next.js Web Client
 
 Pixi Scene 不得自行修改参与者位置。它只根据已提交的状态快照和表现提示播放动画。
 
-### 3.3 Next.js / React UI
+### 3.3 React UI
 
 负责：
 
@@ -119,10 +114,10 @@ Pixi Scene 不得自行修改参与者位置。它只根据已提交的状态快
 
 ### 3.4 运行位置
 
-- 离线 `1v1`、`1v2`、`1v3`：`LocalAuthority`、AI 控制器和规则内核都在浏览器 Client Component 边界内运行，不调用 Next.js 后端。
+- 离线 `1v1`、`1v2`、`1v3`：`LocalAuthority`、AI 控制器和规则内核都在浏览器中运行，不调用 Node.js 后端。
 - 在线真人座位：浏览器只提交命令，独立游戏服务器的 `RoomAuthority` 执行规则。
 - 在线 AI 座位：共享 `game-ai` 代码在独立游戏服务器运行，由服务器提交 AI 命令。
-- Next.js 服务端不运行离线 AI，也不保存在线房间的权威快照。
+- Vite 没有生产服务端；在线房间的权威快照只保存在独立游戏服务及其持久化层。
 
 ## 4. 规则阶段与客户端表现状态机
 
@@ -347,10 +342,11 @@ interface GameSnapshot {
 apps/
   web/
     src/
-      app/
-        page.tsx
-        play/page.tsx
-        room/[roomCode]/page.tsx
+      main.tsx
+      routes/
+        HomeRoute.tsx
+        PlayRoute.tsx
+        RoomRoute.tsx
       game-client/
         GameShell.tsx
         authority/
@@ -421,5 +417,5 @@ interface AudioPort {
 - 协议测试：命令与快照可 JSON 往返、重复命令幂等、过期 revision 被拒绝。
 - 控制器一致性测试：本地、AI 和模拟远程控制器提交相同命令时产生完全相同的规则结果。
 - 恢复测试：从任意回合快照恢复后，后续固定命令与随机结果和不中断的对局一致。
-- Next.js 边界测试：服务端渲染游戏路由时不会执行 PixiJS/WebGL，客户端挂载后棋盘正常创建和销毁。
-- 服务边界测试：在线阶段验证 Next.js 重启不影响现有权威房间，游戏服务器重连由快照协议恢复。
+- Vite/React 边界测试：路由切换和组件卸载后 PixiJS Application、ticker 与监听器正常销毁。
+- 服务边界测试：在线阶段验证静态前端重新部署不影响现有权威房间，游戏服务器重连由快照协议恢复。

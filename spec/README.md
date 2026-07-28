@@ -13,7 +13,7 @@
 - 第一阶段先实现人机对抗，开局可选择 `1v1`、`1v2` 或 `1v3`，即一名本地玩家对一至三名电脑玩家。
 - 不建立角色属性、角色技能或养成系统。所有检定只由骰子、道具和临时规则修正决定。
 - 玩家在开局时可以选择棋子皮肤；皮肤只改变外观和动画资源，不影响规则与数值。
-- Web 客户端采用 Next.js + React，React 负责界面，PixiJS 负责棋盘场景；在线阶段使用独立 Node.js + TypeScript 游戏服务器。
+- Web 客户端采用 React + Vite，React 负责界面，PixiJS 负责棋盘场景；在线阶段使用独立 Node.js + TypeScript 游戏服务器。
 - 游戏规则由独立状态机管理，不依赖 React 组件或 PixiJS 显示对象。
 - 规则命令、状态快照、随机结果和内容 ID 必须可序列化，为后续在线房间、状态同步和断线恢复保留稳定边界。
 - 地图共有 65 格；喧声屋是覆盖第 63、64、65 格的终点建筑区域。
@@ -28,7 +28,7 @@
 
 以下方案作为重写的正式技术基线：
 
-- Next.js App Router 负责 Web 应用外壳、页面路由和服务端页面能力，React 负责玩家面板、卡牌、弹窗、设置和结算。
+- React + Vite 负责 Web 应用外壳，React Router 负责客户端页面路由，React 负责玩家面板、卡牌、弹窗、设置和结算。
 - PixiJS v8 负责棋盘、棋子、骰子、镜头和视觉效果。
 - XState v5 负责回合与事件状态机。
 - tween.js 配合 PixiJS ticker 负责场景补间动画。
@@ -44,7 +44,7 @@
 - [implementation-plan.md](./implementation-plan.md)：重写顺序、里程碑和验收标准。
 - [reference-playthrough.md](./reference-playthrough.md)：完整对局录像中的流程观察与网页版取舍。
 - [online-multiplayer-plan.md](./online-multiplayer-plan.md)：后续在线房间、权威服务、同步与断线恢复规划。
-- [baseline-2026-07-28.md](./baseline-2026-07-28.md)：Next.js 迁移前的 Vite 原型环境、构建、内容和技术债基线。
+- [baseline-2026-07-28.md](./baseline-2026-07-28.md)：workspace 重构前的 Vite 原型环境、构建、内容和技术债基线。
 
 ## 第一阶段不包含
 

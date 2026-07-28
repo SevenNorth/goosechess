@@ -18,8 +18,8 @@
 
 ```text
 Browser Client
-  ├─ HTTPS ─► Next.js: pages / auth callback / optional BFF
-  ├─ HTTPS ─► Game Server: create / join / room metadata
+  ├─ Static HTTPS: React + Vite assets
+  ├─ HTTPS ─► Game Server: auth / create / join / room metadata
   └─ WSS   ─► Game Server: commands / snapshots / events / presence
                          │
                          ▼
@@ -32,7 +32,7 @@ Browser Client
            Shared Game Core   Snapshot Store
 ```
 
-- Web 客户端使用 Next.js App Router + React + TypeScript。
+- Web 客户端使用 React + Vite + TypeScript，构建为静态资源。
 - 游戏服务端是独立 Node.js + TypeScript 常驻服务，与浏览器共享规则和协议类型。
 - 游戏服务端的 HTTP 接口只处理建房、入房和恢复凭证；进入房间后使用 WebSocket 双向通信。
 - 协议第一版使用经过运行时校验的 JSON，暂不引入二进制协议。
@@ -41,13 +41,11 @@ Browser Client
 
 具体 HTTP/WebSocket 库和部署平台在技术验证阶段确定，不写进规则内核。
 
-### 2.1 为什么不直接使用 Next.js 游戏后端
+### 2.1 Web 与服务端边界
 
-Next.js 的 Route Handlers、Server Actions 和服务端组件本身就是后端能力，可以用于登录、Cookie、普通 CRUD API 和页面数据加载。它不是“只能做前端”。
+Vite 只构建浏览器静态资源，不提供生产后端运行时。账号、登录、房间 HTTP API、WebSocket、在线 AI 和权威状态都属于独立 Node.js 游戏服务。
 
-权威游戏会话需要长期 WebSocket、持续房间内存、顺序命令队列、在线 AI 和精确的重连生命周期。即使自托管 Next.js 可以挂载这些功能，也会让页面服务与游戏房间只能一起扩缩容和重启；部署到无状态函数平台时风险更明显。
-
-因此正式边界是：Next.js 负责 Web 产品层，独立 Node.js 服务负责实时游戏层。两者可以共享认证信息和 TypeScript 包，但不能同时成为对局状态源。
+离线人机模式不请求后端；在线模式通过配置的 HTTPS/WSS 地址连接服务。前端静态资源和游戏服务可以独立部署、缓存、扩缩容和回滚，但同一个房间只能有一个权威状态源。
 
 ## 3. 代码与包边界
 
@@ -55,10 +53,11 @@ Next.js 的 Route Handlers、Server Actions 和服务端组件本身就是后端
 
 ```text
 apps/
-  web/                 Next.js + React + PixiJS 客户端
+  web/                 React + Vite + PixiJS 客户端
   game-server/         独立 Node.js 房间、连接与权威会话
 packages/
   game-core/           纯规则、随机数、地图与内容定义
+  game-ai/             浏览器与服务端共享的 AI 决策
   game-protocol/       命令、快照、事件与运行时校验
   game-content/        版本化事件、道具、地图和规则集
 ```

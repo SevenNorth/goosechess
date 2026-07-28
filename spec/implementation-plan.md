@@ -19,17 +19,17 @@
 - 入口为 `src/main.tsx` 和 `src/App.tsx`，棋盘原型使用 DOM/CSS 绘制。
 - 当前脚本为 `npm run dev`、`npm run build`、`npm run test` 和 `npm run preview`。
 - 当前只有 Vitest/Testing Library 测试，没有端到端测试。
-- 尚未安装 Next.js、PixiJS、XState 或 tween.js。
+- 尚未安装 PixiJS、XState、tween.js 或 React Router。
 - 尚未建立 `apps/`、`packages/` 或独立游戏服务器。
 - `example_screenshots/` 已被 Git 忽略，仅作为本地视觉和玩法参考。
 
-迁移原则：先让 Next.js 外壳独立通过构建，再迁移原型中的数据与规则。旧 Vite 入口在 Next.js 基础路由通过验收之前保留；迁移完成后通过 Git 历史追溯旧实现，不在仓库中长期维护两套 Web 应用。
+重构原则：保留 Vite 构建方式，把现有单包应用原样迁入 `apps/web`，先保证行为、测试和构建不变，再提取共享规则包。旧 DOM 棋盘暂时作为 `/play` 的实现，直到 PixiJS 核心样片接管；不维护第二套 Web 框架或重复应用。
 
 ## 3. 依赖关系与关键路径
 
 ```text
 阶段 0 基线保护
-  └─ 阶段 1 Next.js + workspace
+  └─ 阶段 1 Vite + workspace
        └─ 阶段 2 共享包与协议
             └─ 阶段 3 规则内核
                  └─ 阶段 4 离线人机
@@ -66,36 +66,35 @@ git status --short
 
 退出条件：现有应用的测试、构建和视觉基线都有记录，工作区没有混入参考录像或临时文件。
 
-## 5. 阶段 1：Next.js 与 workspace 迁移
+## 5. 阶段 1：Vite workspace 重构
 
-目标：建立正式工程外壳，同时保持离线页面可启动。
+目标：不更换 Web 框架，把现有 Vite 应用迁入正式 monorepo 目录并保持行为基线。
 
 ### 目录与脚本
 
 - [ ] 根 `package.json` 改为 npm workspaces，范围为 `apps/*` 和 `packages/*`。
-- [ ] 创建 `apps/web`，使用 Next.js App Router、React 和 TypeScript。
+- [ ] 创建 `apps/web` package，将现有 `index.html`、Vite 配置、`src/` 和 Web 测试迁入其中。
 - [ ] 将依赖固定为锁文件中的明确版本，不继续使用 `latest` 作为正式依赖范围。
 - [ ] 根目录提供统一脚本：`dev`、`build`、`test`、`typecheck`、`lint`。
-- [ ] 配置 ESLint 的 Next.js 与 TypeScript 规则，使根 `npm run lint` 可以在 CI 中无交互执行。
+- [ ] 配置 ESLint 的 React、Hooks 与 TypeScript 规则，使根 `npm run lint` 可以在 CI 中无交互执行。
 - [ ] 首阶段的 `npm run dev` 只需启动 `apps/web`；游戏服务器尚不存在也不能报错。
 - [ ] 将共享 TypeScript 基础配置放入根目录或专用 config package。
 - [ ] 初期直接使用 npm workspaces 脚本，不为少量包额外引入任务编排框架。
 
 ### Web 外壳
 
-- [ ] 创建 `src/app/page.tsx`，第一屏直接进入可玩的模式准备界面，不制作营销落地页。
-- [ ] 创建 `src/app/play/page.tsx`，作为离线棋局路由。
-- [ ] 预留 `src/app/room/[roomCode]/page.tsx`，首阶段只显示未开放状态，不连接服务器。
-- [ ] 创建 `GameShell` Client Component；所有浏览器状态从该边界向下存在。
-- [ ] 创建禁用 SSR 的 `PixiBoard` 动态入口，暂时只渲染可检测的空场景底色。
-- [ ] 确保任何服务端模块导入都不会读取 `window`、`document`、Canvas 或 WebGL。
-- [ ] 迁移全局字体、颜色和页面尺寸约束，但暂不迁移旧绝对定位棋盘。
+- [ ] 安装 React Router，创建 `/`、`/play` 和 `/room/:roomCode` 三个客户端路由。
+- [ ] `/` 第一屏直接显示模式准备，不制作营销落地页。
+- [ ] `/play` 暂时承载现有 DOM 原型，阶段 5 再替换为 PixiJS `GameShell`。
+- [ ] `/room/:roomCode` 首阶段只显示未开放状态，不连接服务器。
+- [ ] 路由切换后页面状态和测试稳定，直接刷新深层路由时由开发服务器返回 SPA 入口。
+- [ ] 保留现有全局字体、颜色和页面尺寸基线，暂不重做旧棋盘视觉。
 
 ### 旧应用处理
 
-- [ ] Next.js 首页、游戏页和测试通过后，迁移仍有价值的 `src/game/data.ts` 与类型。
-- [ ] 删除旧 Vite 入口、`index.html`、Vite 配置及仅供旧入口使用的依赖。
-- [ ] 不把旧 `App.tsx` 复制为长期存在的 `/legacy` 页面。
+- [ ] 移动后确认 `src/game/data.ts`、类型和现有三项测试仍工作，不在此阶段改写规则。
+- [ ] 删除根目录中已经迁入 `apps/web` 的重复入口和配置。
+- [ ] 不创建 `/legacy` 页面；Git 历史负责保存迁移前结构。
 
 ### 验收
 
@@ -107,7 +106,7 @@ npm run test
 npm run build
 ```
 
-退出条件：根命令可以启动并构建 Next.js；`/`、`/play`、`/room/test` 可访问；服务端构建不会执行 PixiJS；旧 Vite 入口已经移除。
+退出条件：根命令可以启动并构建 `apps/web` Vite SPA；`/`、`/play`、`/room/test` 可访问；现有三个测试继续通过；根目录不再保留重复 Web 入口。
 
 ## 6. 阶段 2：共享包与协议骨架
 
@@ -123,7 +122,7 @@ npm run build
 
 ### 依赖约束
 
-- [ ] `game-core` 不依赖 React、Next.js、PixiJS、XState、DOM、Node.js API 或数据库。
+- [ ] `game-core` 不依赖 React、Vite、PixiJS、XState、DOM、Node.js API 或数据库。
 - [ ] `game-ai` 只依赖 `game-core` 的公开规则视图和命令类型。
 - [ ] `game-content` 只提供结构化定义，不包含 UI 组件或任意可执行脚本。
 - [ ] `game-protocol` 使用 Zod 校验 JSON 输入；协议类型从 schema 推导，避免手写两套结构。
@@ -395,7 +394,7 @@ npm run e2e
 
 ### 验收
 
-- [ ] Next.js 重启不影响游戏服务器中的现有房间。
+- [ ] 静态 Web 客户端重新部署不影响游戏服务器中的现有房间。
 - [ ] 任一客户端动画失败或掉线不阻塞其他客户端的权威回合。
 - [ ] 本地和服务端 authority 对相同种子与命令序列产生相同结果。
 - [ ] 非当前行动者、伪造骰子结果和版本不兼容命令会被拒绝。
