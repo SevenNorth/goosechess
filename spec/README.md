@@ -10,7 +10,7 @@
 
 - 第一阶段只支持桌面浏览器，设计基准为 `1600 x 900`，最低支持 `1280 x 720`。
 - 第一阶段只设计横向界面，不考虑竖屏布局。
-- 默认对局按四名参与者设计，首个离线版本为一名本地玩家与三名电脑玩家；参与人数和控制方式不得硬编码。
+- 第一阶段先实现人机对抗，开局可选择 `1v1`、`1v2` 或 `1v3`，即一名本地玩家对一至三名电脑玩家。
 - 不建立角色属性、角色技能或养成系统。所有检定只由骰子、道具和临时规则修正决定。
 - 玩家在开局时可以选择棋子皮肤；皮肤只改变外观和动画资源，不影响规则与数值。
 - 采用 React 与 PixiJS 的混合架构：React 负责界面，PixiJS 负责棋盘场景。
@@ -42,6 +42,7 @@
 - [visual-design.md](./visual-design.md)：桌面布局、棋盘表现、动画与交互反馈。
 - [implementation-plan.md](./implementation-plan.md)：重写顺序、里程碑和验收标准。
 - [reference-playthrough.md](./reference-playthrough.md)：完整对局录像中的流程观察与网页版取舍。
+- [online-multiplayer-plan.md](./online-multiplayer-plan.md)：后续在线房间、权威服务、同步与断线恢复规划。
 
 ## 第一阶段不包含
 

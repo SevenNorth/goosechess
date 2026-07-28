@@ -85,7 +85,7 @@ Pixi Scene 不得自行修改参与者位置。它只根据已提交的状态快
 
 负责：
 
-- 四名参与者状态栏。
+- 根据对抗规模显示 2 至 4 名参与者状态栏。
 - 开局道具和棋子皮肤选择。
 - 当前回合提示。
 - 道具槽与道具选择。
@@ -98,24 +98,25 @@ Pixi Scene 不得自行修改参与者位置。它只根据已提交的状态快
 
 ```text
 setup.seats
-  └─ setup.itemSelect
-       └─ setup.skinSelect
-            └─ turn.start
-            ├─ turn.skipped
-            └─ turn.itemWindow
-                 └─ turn.rolling
-                      └─ turn.routePreview
-                           └─ turn.targetEmphasis
-                                └─ turn.moving
-                                     └─ landing.winCheck
-                                          ├─ gameOver
-                                          └─ turn.collision
-                                               └─ landing.inspect
-                                                    ├─ event.select
-                                                    │    ├─ event.checkRolling
-                                                    │    └─ event.resolving
-                                                    └─ turn.finish
-                                                         └─ turn.start
+  └─ setup.modeSelect
+    └─ setup.itemSelect
+      └─ setup.skinSelect
+        └─ turn.start
+          ├─ turn.skipped
+          └─ turn.itemWindow
+            └─ turn.rolling
+              └─ turn.routePreview
+                └─ turn.targetEmphasis
+                  └─ turn.moving
+                    └─ landing.winCheck
+                      ├─ gameOver
+                      └─ turn.collision
+                        └─ landing.inspect
+                          ├─ event.select
+                          │  ├─ event.checkRolling
+                          │  └─ event.resolving
+                          └─ turn.finish
+                            └─ turn.start
 ```
 
 规则计算和动画需要分开：
@@ -260,13 +261,21 @@ interface ParticipantState {
 interface RulesetDefinition {
   id: string
   version: number
-  playerCount: { min: number; max: number; default: number }
+  playerCount: { min: number; max: number }
   mapIds: string[]
   eventPoolIds: string[]
   itemPoolIds: string[]
   victoryRule: VictoryRule
 }
+
+interface OfflineMatchConfig {
+  mode: '1v1' | '1v2' | '1v3'
+  localPlayerCount: 1
+  aiPlayerCount: 1 | 2 | 3
+}
 ```
+
+离线模式选择只负责生成参与者清单，不产生另一套规则分支。三个模式共享同一个 `RulesetDefinition`、地图、事件池、道具池和回合推进逻辑。
 
 ### 7.1 联机协议边界
 
@@ -377,7 +386,7 @@ interface AudioPort {
 - 地图测试：使用一张不同格数的测试地图验证移动、折返、胜利判断和场景创建均未硬编码默认地图。
 - 皮肤测试：所有皮肤动画键和资源存在，并验证更换 `skinId` 不改变任何规则结果。
 - 表现顺序测试：路线完成、目标圈完成、路线消失后才能开始棋子跳跃，不能跳过或重复移动状态。
-- 四人流程测试：四个座位按序行动、跳过暂停者、轮次只在整轮完成后增加。
+- 人数组合测试：`1v1`、`1v2`、`1v3` 都能按实际座位数推进，跳过暂停者，且轮次只在整轮完成后增加。
 - 协议测试：命令与快照可 JSON 往返、重复命令幂等、过期 revision 被拒绝。
 - 控制器一致性测试：本地、AI 和模拟远程控制器提交相同命令时产生完全相同的规则结果。
 - 恢复测试：从任意回合快照恢复后，后续固定命令与随机结果和不中断的对局一致。
