@@ -44,6 +44,7 @@
 - [implementation-plan.md](./implementation-plan.md)：重写顺序、里程碑和验收标准。
 - [reference-playthrough.md](./reference-playthrough.md)：完整对局录像中的流程观察与网页版取舍。
 - [online-multiplayer-plan.md](./online-multiplayer-plan.md)：后续在线房间、权威服务、同步与断线恢复规划。
+- [baseline-2026-07-28.md](./baseline-2026-07-28.md)：Next.js 迁移前的 Vite 原型环境、构建、内容和技术债基线。
 
 ## 第一阶段不包含
 
