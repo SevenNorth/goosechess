@@ -103,6 +103,11 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .round-float small { color: #aeb4aa; font-size: 9px; font-weight: 900; }
 .round-float strong { font-size: 34px; line-height: 1.05; }
 .round-float span { margin-top: 5px; color: var(--gold); font-size: 9px; font-weight: 800; }
+.world-rule-float { position: absolute; z-index: 15; top: 202px; right: 24px; width: 190px; min-height: 66px; display: flex; align-items: center; gap: 11px; padding: 11px 13px; color: #f4f2e9; background: rgba(32,35,29,.9); border-left: 4px solid var(--coral); }
+.world-rule-float > svg { width: 23px; color: var(--coral); }
+.world-rule-float div { display: flex; flex-direction: column; }
+.world-rule-float small, .world-rule-float span { color: #aeb4aa; font-size: 8px; }
+.world-rule-float strong { font-size: 11px; }
 .turn-banner { position: absolute; z-index: 14; top: 86px; left: 50%; min-width: 184px; transform: translateX(-50%); display: flex; align-items: center; gap: 11px; padding: 9px 14px; color: #f4f2e9; background: rgba(35,38,32,.9); box-shadow: 5px 5px 0 rgba(0,0,0,.18); }
 .turn-banner > span { width: 7px; height: 35px; }
 .turn-banner div { display: flex; flex-direction: column; }
@@ -156,7 +161,12 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .event-choice p { color: #5c5f56; font-size: 11px; line-height: 1.7; }
 .event-choice small { margin-top: auto; padding-top: 12px; border-top: 1px solid rgba(52,54,49,.16); font-size: 10px; font-weight: 800; }
 
-.outcome-panel, .win-panel { width: 480px; padding: 32px; background: #252822; border: 1px solid #5e6358; box-shadow: 0 28px 70px rgba(0,0,0,.45); }
+.outcome-panel { width: 480px; padding: 32px; background: #252822; border: 1px solid #5e6358; box-shadow: 0 28px 70px rgba(0,0,0,.45); }
+.win-panel { width: 760px; display: grid; grid-template-columns: 270px 1fr; align-items: stretch; overflow: hidden; background: #252822; border: 1px solid #5e6358; box-shadow: 0 28px 70px rgba(0,0,0,.45); text-align: left; }
+.win-landmark { position: relative; min-height: 410px; display: grid; place-items: center; background: #d8d2bf url('/assets/maps/aup-port/paper-board.png') center / cover; }
+.win-landmark img { width: 220px; height: 220px; object-fit: contain; }
+.win-landmark svg { position: absolute; top: 30px; right: 25px; width: 54px; height: 54px; padding: 10px; color: #2b2d27; background: var(--gold); transform: rotate(7deg); }
+.win-summary { padding: 32px; }
 .outcome-mark { width: 70px; height: 70px; display: grid; place-items: center; margin: 0 auto 18px; color: #fff; background: var(--teal); transform: rotate(-4deg); }
 .outcome-mark.is-failure { background: var(--coral); }
 .outcome-mark svg { width: 34px; }
@@ -168,7 +178,10 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .item-compare-grid span { align-self: flex-end; padding: 3px 7px; color: white; background: #55584f; font-size: 8px; }
 .item-compare-grid strong { margin-top: 38px; font-size: 21px; }
 .item-compare-grid small { margin-top: 10px; line-height: 1.7; }
-.win-panel > svg { width: 62px; height: 62px; color: var(--gold); }
+.final-ranking { display: grid; gap: 5px; margin: 0 0 22px; padding: 0; list-style: none; text-align: left; }
+.final-ranking li { min-height: 38px; display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(255,255,255,.055); }
+.final-ranking li > span { width: 24px; height: 24px; display: grid; place-items: center; color: #24261f; background: var(--gold); font-size: 11px; font-weight: 900; }
+.final-ranking strong { font-size: 12px; }.final-ranking small { color: #aeb4aa; font-size: 10px; }
 
 .item-drawer-backdrop, .log-drawer-backdrop { position: fixed; z-index: 60; inset: 0; display: flex; align-items: flex-end; justify-content: flex-end; background: rgba(0,0,0,.5); }
 .item-drawer { position: relative; width: 100%; min-height: 250px; padding: 30px max(8vw, 80px); color: #eceee7; background: #22251f; border-top: 1px solid #5a6054; }

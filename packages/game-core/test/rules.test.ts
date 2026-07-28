@@ -85,6 +85,10 @@ describe('deterministic rule kernel', () => {
     const collisions = result.events.filter((event) => event.type === 'collision-resolved')
 
     expect(collisions.map((event) => event.displacedPlayerId)).toEqual(['p1', 'p2'])
+    expect(result.cues.filter((cue) => cue.type === 'token-relocate')).toEqual([
+      { type: 'token-relocate', playerId: 'p1', fromSpaceId: 6, toSpaceId: 4, reason: 'collision', blocked: false },
+      { type: 'token-relocate', playerId: 'p2', fromSpaceId: 6, toSpaceId: 6, reason: 'collision', blocked: true },
+    ])
     expect(result.state.players.map((player) => player.spaceId)).toEqual([6, 4, 6, 0])
     expect(result.state.players[2].itemId).toBeNull()
   })
@@ -191,7 +195,13 @@ describe('deterministic rule kernel', () => {
     const state = { ...initial, phase: 'awaiting-event-choice' as const, pendingEventIds: ['swap'], eventContinuation: 'end-turn' as const }
     const result = reduceGameCommand(state, definition, 'p0', { type: 'choose-event', eventId: 'swap' })
     expect(result.ok).toBe(true)
-    if (result.ok) expect(result.state.players.map((player) => player.spaceId)).toEqual([18, 7])
+    if (result.ok) {
+      expect(result.state.players.map((player) => player.spaceId)).toEqual([18, 7])
+      expect(result.cues.filter((cue) => cue.type === 'token-relocate')).toEqual([
+        { type: 'token-relocate', playerId: 'p0', fromSpaceId: 7, toSpaceId: 18, reason: 'swap' },
+        { type: 'token-relocate', playerId: 'p1', fromSpaceId: 18, toSpaceId: 7, reason: 'swap' },
+      ])
+    }
   })
 
   it('does not let skin choice alter dice, events, or movement', () => {

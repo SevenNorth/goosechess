@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { AiTurnController, createGooseAiStrategy } from '@goose-chess/game-ai'
 import { DeterministicRandom, type CoreGameCommand, type EventDefinition } from '@goose-chess/game-core'
+import { DEFAULT_GAME_DEFINITION } from '@goose-chess/game-content'
 import {
   createOfflineMatch,
   type AuthorityUpdate,
@@ -26,7 +27,9 @@ import {
 import { PixiBoard } from './scene/PixiBoard'
 import type { BoardSceneController } from './scene/BoardScene'
 import type { PresentationStage } from './game-client/machine/presentation-machine'
-import { SAMPLE_GAME_DEFINITION, STARTING_ITEM_IDS } from './game-client/sample-content'
+
+const GAME_DEFINITION = DEFAULT_GAME_DEFINITION
+const STARTING_ITEM_IDS = ['boots', 'clover', 'cat'] as const
 
 const STAGE_LABELS: Readonly<Record<PresentationStage, string>> = {
   ready: '等待行动',
@@ -54,6 +57,10 @@ const ITEM_COPY: Readonly<Record<string, { icon: typeof Footprints; description:
   compass: { icon: Dices, description: '本回合移动点数固定为 8。' },
   tea: { icon: PackageOpen, description: '下一位对手每颗骰子最多为 3。' },
   umbrella: { icon: Shield, description: '自动抵消下一次暂停回合效果。' },
+  'lucky-coin': { icon: Sparkles, description: '下一次骰子检定必定成功。' },
+  'spring-shoes': { icon: Footprints, description: '使用后，本次移动额外前进 3 格。' },
+  'driftwood-shield': { icon: Shield, description: '自动抵消下一次被撞回效果。' },
+  'warm-soup': { icon: Shield, description: '自动抵消下一次暂停回合效果。' },
 }
 
 interface LogEntry {
@@ -70,6 +77,7 @@ interface GameSessionProps {
   readonly mode: OfflineMatchMode
   readonly seed: number
   readonly onRestart: () => void
+  readonly animationSpeed: number
 }
 
 function hashPlayerId(playerId: string) {
@@ -89,11 +97,11 @@ function decisionRandom(seed: number, revision: number, playerId: string) {
 }
 
 function eventById(eventId: string) {
-  return SAMPLE_GAME_DEFINITION.events.find((event) => event.id === eventId)
+  return GAME_DEFINITION.events.find((event) => event.id === eventId)
 }
 
 function itemById(itemId: string | null) {
-  return itemId ? SAMPLE_GAME_DEFINITION.items.find((item) => item.id === itemId) : undefined
+  return itemId ? GAME_DEFINITION.items.find((item) => item.id === itemId) : undefined
 }
 
 function gameLogLines(update: AuthorityUpdate) {
@@ -108,8 +116,8 @@ function gameLogLines(update: AuthorityUpdate) {
   return lines
 }
 
-function GameSession({ mode, seed, onRestart }: GameSessionProps) {
-  const [match] = useState(() => createOfflineMatch({ mode, seed, gameId: `stage5-${mode}-${seed}` }, SAMPLE_GAME_DEFINITION))
+function GameSession({ mode, seed, onRestart, animationSpeed }: GameSessionProps) {
+  const [match] = useState(() => createOfflineMatch({ mode, seed, gameId: `offline-${mode}-${seed}` }, GAME_DEFINITION))
   const [snapshot, setSnapshot] = useState(() => match.authority.getSnapshot())
   const [board, setBoard] = useState<BoardSceneController | null>(null)
   const [presentationStage, setPresentationStage] = useState<PresentationStage>('ready')
@@ -120,6 +128,7 @@ function GameSession({ mode, seed, onRestart }: GameSessionProps) {
   const [selectedStartingItem, setSelectedStartingItem] = useState<string>('boots')
   const [itemDetailsOpen, setItemDetailsOpen] = useState(false)
   const [eventOutcome, setEventOutcome] = useState<EventOutcome | null>(null)
+  const [showWin, setShowWin] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   const [logs, setLogs] = useState<LogEntry[]>([{ id: 1, text: '试航棋盘已经铺好。' }])
   const logId = useRef(2)
@@ -152,17 +161,20 @@ function GameSession({ mode, seed, onRestart }: GameSessionProps) {
     setSnapshot(result.update.snapshot)
     addLogs(gameLogLines(result.update))
     const resolved = result.update.events.find((event) => event.type === 'event-resolved')
+    const gameWon = result.update.events.some((event) => event.type === 'game-won')
     if (board) {
       await board.playUpdate(result.update, previousSnapshot, {
         onStageChange: (stage) => mountedRef.current && setPresentationStage(stage),
+        speed: animationSpeed,
       })
     }
     if (actorIsLocal && resolved?.type === 'event-resolved') {
       const event = eventById(resolved.eventCardId)
       if (event) setEventOutcome({ event, passed: resolved.passed })
     }
+    if (gameWon) setShowWin(true)
     return true
-  }, [addLogs, board])
+  }, [addLogs, animationSpeed, board])
 
   const submitLocal = useCallback(async (command: CoreGameCommand) => {
     if (lockedRef.current) return false
@@ -224,14 +236,14 @@ function GameSession({ mode, seed, onRestart }: GameSessionProps) {
           if (next.state.phase !== 'setup' && nextPlayer?.controller !== 'ai') break
         }
         lockedRef.current = false
-        if (!cancelled && mountedRef.current) setLocked(false)
+        if (mountedRef.current) setLocked(false)
       })()
-    }, import.meta.env.MODE === 'test' ? 0 : 520)
+    }, import.meta.env.MODE === 'test' ? 0 : Math.max(30, 520 / animationSpeed))
     return () => {
       cancelled = true
       window.clearTimeout(delay)
     }
-  }, [addLogs, aiController, locked, match, presentResult, shouldDriveAi, snapshot.revision])
+  }, [addLogs, aiController, animationSpeed, locked, match, presentResult, shouldDriveAi, snapshot.revision])
 
   const localPlayer = snapshot.state.players.find((player) => player.playerId === 'local-player')!
   const activePlayer = snapshot.state.players.find((player) => player.playerId === snapshot.state.activePlayerId)!
@@ -239,15 +251,19 @@ function GameSession({ mode, seed, onRestart }: GameSessionProps) {
   const localDecision = match.authority.getDecisionView('local-player')
   const canRoll = !locked && board && snapshot.state.phase === 'awaiting-action' && snapshot.state.activePlayerId === 'local-player'
   const canUseItem = localItem && localDecision.legalCommands.some((command) => command.type === 'use-item' && command.itemId === localItem.id)
-  const offeredEvents = snapshot.state.pendingEventIds.map(eventById).filter((event): event is EventDefinition => Boolean(event))
+  const offeredEvents = snapshot.state.pendingEventIds.map(eventById).filter((event) => event !== undefined)
   const pendingItem = itemById(snapshot.state.pendingItemId)
+  const activeSpace = GAME_DEFINITION.map.spaces.find((space) => space.index === activePlayer.spaceId)
+  const activeLandmark = GAME_DEFINITION.map.landmarks.find((landmark) => landmark.id === activeSpace?.landmarkId)
+  const finalSpaceId = GAME_DEFINITION.map.spaces.at(-1)?.index ?? 65
+  const standings = [...snapshot.state.players].sort((left, right) => right.spaceId - left.spaceId || left.seatIndex - right.seatIndex)
 
   return (
     <main className="stage5-shell">
-      <PixiBoard snapshot={snapshot} onReady={(controller) => { controller.sync(snapshot); setBoard(controller) }} />
+      <PixiBoard map={GAME_DEFINITION.map} snapshot={snapshot} onReady={(controller) => { controller.sync(snapshot); setBoard(controller) }} />
 
       <header className="stage5-topbar">
-        <div className="stage5-brand"><span>鹅</span><div><strong>鹅了个棋</strong><small>核心体验样片 · {mode}</small></div></div>
+        <div className="stage5-brand"><span>鹅</span><div><strong>鹅了个棋</strong><small>奥普港 65 格竞速 · {mode}</small></div></div>
         <div className="topbar-actions">
           <button className="icon-command" type="button" title="对局日志" aria-label="对局日志" onClick={() => setShowLogs(true)}><History /></button>
           <button className="icon-command" type="button" title="声音尚未接入" aria-label="声音尚未接入" disabled><VolumeX /></button>
@@ -258,14 +274,14 @@ function GameSession({ mode, seed, onRestart }: GameSessionProps) {
       <section className="floating-players" aria-label="参赛棋手">
         {snapshot.state.players.map((player) => {
           const item = itemById(player.itemId)
-          const progress = Math.round(player.spaceId / 15 * 100)
+          const progress = Math.round(player.spaceId / finalSpaceId * 100)
           return (
             <article className={player.playerId === snapshot.state.activePlayerId ? 'hud-player is-active' : 'hud-player'} key={player.playerId} style={{ '--seat-color': COLOR_HEX[player.colorId] } as React.CSSProperties}>
               <span className="hud-avatar">{player.controller === 'local' ? <UserRound /> : <Bot />}</span>
               <div className="hud-player-copy">
-                <div><strong>{player.displayName}</strong><span>{player.spaceId} / 15</span></div>
+                <div><strong>{player.displayName}</strong><span>{player.spaceId} / {finalSpaceId}</span></div>
                 <div className="hud-progress"><i style={{ width: `${progress}%` }} /></div>
-                <small>{item?.title ?? '无道具'}</small>
+                <small>{item?.title ?? '无道具'}{player.skipTurns ? ` · 暂停 ${player.skipTurns}` : ''}</small>
               </div>
             </article>
           )
@@ -275,6 +291,8 @@ function GameSession({ mode, seed, onRestart }: GameSessionProps) {
       <aside className="round-float" aria-label="回合信息">
         <small>ROUND</small><strong>{snapshot.state.round}</strong><span>{STAGE_LABELS[presentationStage]}</span>
       </aside>
+
+      {snapshot.state.globalDieRule && <aside className="world-rule-float"><Dices /><div><small>全局骰子规则</small><strong>单骰最多 {snapshot.state.globalDieRule.maxFace} 点</strong><span>剩余 {snapshot.state.globalDieRule.remainingRounds} 轮</span></div></aside>}
 
       <section className="turn-banner" aria-live="polite">
         <span style={{ background: COLOR_HEX[activePlayer.colorId] }} />
@@ -324,7 +342,7 @@ function GameSession({ mode, seed, onRestart }: GameSessionProps) {
       {!locked && snapshot.state.phase === 'awaiting-event-choice' && snapshot.state.activePlayerId === 'local-player' && (
         <div className="overlay-stage event-overlay">
           <section className="event-panel" aria-labelledby="event-title">
-            <div className="panel-kicker">遭遇事件</div><h2 id="event-title">从三张牌中选择</h2>
+            <div className="panel-kicker">{activeLandmark ? `${activeLandmark.name} · 地标事件` : '遭遇事件'}</div><h2 id="event-title">从三张牌中选择</h2>
             <div className="event-card-grid">
               {offeredEvents.map((event, index) => <button className={`event-choice tone-${index}`} type="button" disabled={locked} onClick={() => void submitLocal({ type: 'choose-event', eventId: event.id })} key={event.id}>
                 <span>{event.kind}</span><div className="event-sketch">{['!', '?', '↗'][index]}</div><strong>{event.title}</strong><p>{event.flavor}</p><small>{event.threshold ? `双骰 ≥ ${event.threshold}` : '直接结算'}</small>
@@ -345,7 +363,7 @@ function GameSession({ mode, seed, onRestart }: GameSessionProps) {
         </div>
       )}
 
-      {!locked && snapshot.state.phase === 'awaiting-item-choice' && snapshot.state.activePlayerId === 'local-player' && pendingItem && (
+      {!locked && !eventOutcome && snapshot.state.phase === 'awaiting-item-choice' && snapshot.state.activePlayerId === 'local-player' && pendingItem && (
         <div className="overlay-stage item-compare-overlay">
           <section className="item-compare-panel"><div className="panel-kicker">发现新道具</div><h2>选择保留的道具</h2>
             <div className="item-compare-grid">
@@ -366,8 +384,8 @@ function GameSession({ mode, seed, onRestart }: GameSessionProps) {
         </div>
       )}
 
-      {snapshot.state.phase === 'game-over' && (
-        <div className="overlay-stage win-overlay"><section className="win-panel"><Crown /><div className="panel-kicker">试航完成</div><h2>{snapshot.state.players.find((player) => player.playerId === snapshot.state.winnerPlayerId)?.displayName} 获胜</h2><p>第 {snapshot.state.round} 轮 · 对局 {snapshot.gameId}</p><button className="primary-command" type="button" onClick={onRestart}><RotateCcw /> 再来一局</button></section></div>
+      {snapshot.state.phase === 'game-over' && showWin && (
+        <div className="overlay-stage win-overlay"><section className="win-panel"><div className="win-landmark"><img src="/assets/maps/aup-port/noise-house.png" alt="喧声屋" /><Crown /></div><div className="win-summary"><div className="panel-kicker">喧声屋终局</div><h2>{snapshot.state.players.find((player) => player.playerId === snapshot.state.winnerPlayerId)?.displayName} 获胜</h2><p>进入第 {snapshot.state.players.find((player) => player.playerId === snapshot.state.winnerPlayerId)?.spaceId} 格 · 第 {snapshot.state.round} 轮</p><ol className="final-ranking">{standings.map((player, index) => <li key={player.playerId}><span>{index + 1}</span><strong>{player.displayName}</strong><small>第 {player.spaceId} 格</small></li>)}</ol><button className="primary-command" type="button" onClick={onRestart}><RotateCcw /> 再来一局</button></div></section></div>
       )}
 
       {showLogs && <div className="log-drawer-backdrop" onClick={() => setShowLogs(false)}><aside className="log-drawer" onClick={(event) => event.stopPropagation()}><header><h2>对局日志</h2><button className="drawer-close" type="button" aria-label="关闭日志" onClick={() => setShowLogs(false)}><X /></button></header>{logs.map((entry) => <p key={entry.id}>{entry.text}</p>)}</aside></div>}
@@ -378,11 +396,12 @@ function GameSession({ mode, seed, onRestart }: GameSessionProps) {
 export interface AppProps {
   readonly mode?: OfflineMatchMode
   readonly seed?: number
+  readonly animationSpeed?: number
 }
 
-function App({ mode = '1v1', seed = 20260728 }: AppProps) {
+function App({ mode = '1v1', seed = 20260728, animationSpeed = 1 }: AppProps) {
   const [restart, setRestart] = useState(0)
-  return <GameSession key={`${mode}-${seed}-${restart}`} mode={mode} seed={seed + restart} onRestart={() => setRestart((value) => value + 1)} />
+  return <GameSession key={`${mode}-${seed}-${restart}`} mode={mode} seed={seed + restart} animationSpeed={animationSpeed} onRestart={() => setRestart((value) => value + 1)} />
 }
 
 export default App

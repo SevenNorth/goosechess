@@ -145,6 +145,7 @@ function decorateCue(cue: RuleCue, revision: number, index: number): Presentatio
     case 'route-preview': return { ...common, ...cue, path: [...cue.path] }
     case 'target-highlight': return { ...common, ...cue }
     case 'token-hop': return { ...common, ...cue, path: [...cue.path] }
+    case 'token-relocate': return { ...common, ...cue }
     case 'event-cards': return { ...common, ...cue, eventIds: [...cue.eventIds] as [string, string, string] }
     case 'game-over': return { ...common, ...cue }
   }

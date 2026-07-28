@@ -86,7 +86,12 @@ function PlayPage() {
     ? requestedMode as OfflineMatchMode
     : '1v1'
   const requestedSeed = Number(parameters.get('seed'))
-  return <App mode={mode} seed={Number.isInteger(requestedSeed) && requestedSeed >= 0 ? requestedSeed : undefined} />
+  const requestedSpeed = Number(parameters.get('speed'))
+  return <App
+    mode={mode}
+    seed={Number.isInteger(requestedSeed) && requestedSeed >= 0 ? requestedSeed : undefined}
+    animationSpeed={Number.isFinite(requestedSpeed) && requestedSpeed >= 1 && requestedSpeed <= 20 ? requestedSpeed : undefined}
+  />
 }
 
 export default function AppRoutes() {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CommandEnvelopeSchema,
   GameSnapshotSchema,
+  PresentationCueSchema,
   parseCommandEnvelope,
   parseGameSnapshot,
   validateCommandContext,
@@ -105,5 +106,12 @@ describe('game protocol', () => {
       seenCommandIds: new Set(),
       content,
     })).toMatchObject({ code: 'stale_revision', retryable: true })
+  })
+
+  it('serializes collision and swap relocation cues', () => {
+    expect(PresentationCueSchema.parse({
+      type: 'token-relocate', cueId: 'r4-c2', sequence: 402, playerId: 'player-1',
+      fromSpaceId: 18, toSpaceId: 6, reason: 'collision', blocked: false,
+    })).toMatchObject({ type: 'token-relocate', reason: 'collision', toSpaceId: 6 })
   })
 })

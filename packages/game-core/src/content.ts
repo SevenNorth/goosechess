@@ -57,6 +57,10 @@ export function validateMapDefinition(map: MapDefinition): string[] {
         issues.push(`Landmark ${landmark.id} and space ${spaceId} are inconsistent.`)
       }
     }
+    if (landmark.x !== undefined && (!Number.isFinite(landmark.x) || !Number.isFinite(landmark.y) || !Number.isFinite(landmark.size) || (landmark.size ?? 0) <= 0)) {
+      issues.push(`Landmark ${landmark.id} has invalid presentation coordinates.`)
+    }
+    if (map.assets.landmarks && !map.assets.landmarks[landmark.id]) issues.push(`Landmark ${landmark.id} has no asset path.`)
   }
   if (!map.assets.background || !map.assets.landmarkAtlas) issues.push(`Map ${map.id} has an invalid asset manifest.`)
   return issues

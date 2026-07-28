@@ -22,6 +22,7 @@
     "lint": "eslint . && npm run check:boundaries",
     "check:boundaries": "node scripts/check-package-boundaries.mjs",
     "simulate": "npm run build:rules && node scripts/simulate.mjs",
+    "validate:content": "npm run build:rules && node scripts/validate-content.mjs",
     "e2e": "playwright test"
   },
   "devDependencies": {

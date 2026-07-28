@@ -18,11 +18,11 @@ describe('客户端路由', () => {
     expect(screen.getByRole('link', { name: '开始对局' }).getAttribute('href')).toBe('/play?mode=1v3')
   })
 
-  it('play 路由承载 PixiJS 核心体验样片', () => {
+  it('play 路由承载 PixiJS 65 格完整对局', () => {
     render(<MemoryRouter initialEntries={['/play']}><AppRoutes /></MemoryRouter>)
 
     expect(screen.getByRole('heading', { name: '选择棋子与起始道具' })).toBeTruthy()
-    expect(screen.getByLabelText('16 格 PixiJS 核心体验棋盘')).toBeTruthy()
+    expect(screen.getByLabelText('65 格 PixiJS 竞速棋盘')).toBeTruthy()
   })
 
   it('在线房间路由显示未开放状态', () => {

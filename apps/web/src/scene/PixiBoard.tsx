@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react'
+import type { MapDefinition } from '@goose-chess/game-core'
 import type { AuthorityUpdate, GameSnapshot } from '@goose-chess/game-protocol'
 import type { BoardSceneController, BoardPlaybackOptions } from './BoardScene'
 
 interface PixiBoardProps {
   readonly snapshot: GameSnapshot
+  readonly map: MapDefinition
   readonly onReady: (controller: BoardSceneController) => void
   readonly onDispose?: () => void
 }
@@ -26,7 +28,7 @@ function createTestController(): BoardSceneController {
   }
 }
 
-export function PixiBoard({ snapshot, onReady, onDispose }: PixiBoardProps) {
+export function PixiBoard({ snapshot, map, onReady, onDispose }: PixiBoardProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const controllerRef = useRef<BoardSceneController | null>(null)
   const snapshotRef = useRef(snapshot)
@@ -53,7 +55,7 @@ export function PixiBoard({ snapshot, onReady, onDispose }: PixiBoardProps) {
     let cancelled = false
     const host = hostRef.current
     if (!host) return
-    void Promise.all([import('./BoardScene'), import('../audio/audio-port')]).then(([{ BoardScene }, { NullAudioPort }]) => BoardScene.create(host, new NullAudioPort(), () => cancelled)).then((controller) => {
+    void Promise.all([import('./BoardScene'), import('../audio/audio-port')]).then(([{ BoardScene }, { NullAudioPort }]) => BoardScene.create(host, new NullAudioPort(), map, () => cancelled)).then((controller) => {
       if (cancelled) {
         controller.destroy()
         return
@@ -68,11 +70,11 @@ export function PixiBoard({ snapshot, onReady, onDispose }: PixiBoardProps) {
       controllerRef.current = null
       onDisposeRef.current?.()
     }
-  }, [])
+  }, [map])
 
   useEffect(() => {
     controllerRef.current?.setActivePlayer(snapshot.state.activePlayerId)
   }, [snapshot.state.activePlayerId])
 
-  return <div className="pixi-board-host" ref={hostRef} role="img" aria-label="16 格 PixiJS 核心体验棋盘" />
+  return <div className="pixi-board-host" ref={hostRef} role="img" aria-label={`${map.spaces.length - 1} 格 PixiJS 竞速棋盘`} />
 }

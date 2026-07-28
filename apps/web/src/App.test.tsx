@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it } from 'vitest'
 import App from './App'
 
-describe('PixiJS 核心体验样片', () => {
+describe('PixiJS 65 格完整对局', () => {
   afterEach(cleanup)
 
   async function startGame(options: { mode?: '1v1' | '1v2' | '1v3'; seed?: number } = {}) {
@@ -28,7 +28,7 @@ describe('PixiJS 核心体验样片', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '投掷双骰' }))
 
-    await waitFor(() => expect(within(playerRegion).queryByText('0 / 15')).toBeNull())
+    await waitFor(() => expect(within(playerRegion).queryByText('0 / 65')).toBeNull())
     expect(screen.getByText('合计').nextElementSibling?.textContent).not.toBe('--')
   })
 

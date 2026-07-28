@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "palette": [
+    "#e0ae3d",
+    "#3977c5"
+  ],
+  "animations": {
+    "idle": {
+      "frames": [
+        "idle-0",
+        "idle-1"
+      ],
+      "fps": 2
+    },
+    "active": {
+      "frames": [
+        "active-0",
+        "active-1"
+      ],
+      "fps": 4
+    },
+    "hop": {
+      "frames": [
+        "compress",
+        "air",
+        "land"
+      ],
+      "fps": 8
+    },
+    "hit": {
+      "frames": [
+        "hit-left",
+        "hit-right",
+        "idle-0"
+      ],
+      "fps": 8
+    }
+  }
+}

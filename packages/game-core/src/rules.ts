@@ -126,6 +126,14 @@ export function settleMovement(
         toSpaceId: blocked ? movement.toSpaceId : movement.fromSpaceId,
         blocked,
       })
+      cues.push({
+        type: 'token-relocate',
+        playerId: occupant.playerId,
+        fromSpaceId: movement.toSpaceId,
+        toSpaceId: blocked ? movement.toSpaceId : movement.fromSpaceId,
+        reason: 'collision',
+        blocked,
+      })
     }
   }
 
@@ -311,6 +319,10 @@ function applyEffects(
         events.push(
           { type: 'token-moved', playerId: actor.playerId, fromSpaceId: actorSpace, path: [actor.spaceId], toSpaceId: actor.spaceId },
           { type: 'token-moved', playerId: opponent.playerId, fromSpaceId: opponentSpace, path: [opponent.spaceId], toSpaceId: opponent.spaceId },
+        )
+        cues.push(
+          { type: 'token-relocate', playerId: actor.playerId, fromSpaceId: actorSpace, toSpaceId: actor.spaceId, reason: 'swap' },
+          { type: 'token-relocate', playerId: opponent.playerId, fromSpaceId: opponentSpace, toSpaceId: opponent.spaceId, reason: 'swap' },
         )
         const winner = [actor, opponent].sort((left, right) => left.seatIndex - right.seatIndex)
           .find((player) => isWinningSpace(definition.map, player.spaceId))

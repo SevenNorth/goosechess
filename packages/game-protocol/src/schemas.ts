@@ -104,6 +104,10 @@ export const PresentationCueSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('route-preview'), cueId: IdSchema, sequence: RevisionSchema, playerId: IdSchema, path: z.array(SpaceIdSchema).min(1), targetSpaceId: SpaceIdSchema }).strict(),
   z.object({ type: z.literal('target-highlight'), cueId: IdSchema, sequence: RevisionSchema, spaceId: SpaceIdSchema }).strict(),
   z.object({ type: z.literal('token-hop'), cueId: IdSchema, sequence: RevisionSchema, playerId: IdSchema, path: z.array(SpaceIdSchema).min(1) }).strict(),
+  z.object({
+    type: z.literal('token-relocate'), cueId: IdSchema, sequence: RevisionSchema, playerId: IdSchema,
+    fromSpaceId: SpaceIdSchema, toSpaceId: SpaceIdSchema, reason: z.enum(['collision', 'swap']), blocked: z.boolean().optional(),
+  }).strict(),
   z.object({ type: z.literal('event-cards'), cueId: IdSchema, sequence: RevisionSchema, eventIds: z.array(IdSchema).length(3) }).strict(),
   z.object({ type: z.literal('game-over'), cueId: IdSchema, sequence: RevisionSchema, winnerPlayerId: IdSchema }).strict(),
 ])

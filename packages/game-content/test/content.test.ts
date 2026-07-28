@@ -21,6 +21,8 @@ describe('default content manifest', () => {
     expect(hasUniqueIds(ITEMS)).toBe(true)
     expect(hasUniqueIds(LANDMARK_DEFINITIONS)).toBe(true)
     expect(JSON.parse(JSON.stringify(DEFAULT_CONTENT_MANIFEST))).toEqual(DEFAULT_CONTENT_MANIFEST)
+    expect(EVENTS).toHaveLength(24)
+    expect(ITEMS).toHaveLength(12)
   })
 
   it('records the three winning spaces separately from the noise house landmark', () => {
@@ -31,6 +33,8 @@ describe('default content manifest', () => {
   it('loads the ordered 0-65 map and validates every content reference', () => {
     expect(DEFAULT_MAP_DEFINITION.spaces.map((space) => space.index)).toEqual(Array.from({ length: 66 }, (_, index) => index))
     expect(DEFAULT_MAP_DEFINITION.spaces.slice(63).map((space) => space.landmarkId)).toEqual(['noise-house', 'noise-house', 'noise-house'])
+    expect(new Set(DEFAULT_MAP_DEFINITION.spaces.map((space) => `${space.x}:${space.y}`)).size).toBe(66)
+    expect(DEFAULT_MAP_DEFINITION.landmarks.every((landmark) => Number.isFinite(landmark.x) && Number.isFinite(landmark.y))).toBe(true)
     expect(validateGameDefinition(DEFAULT_GAME_DEFINITION)).toEqual([])
   })
 

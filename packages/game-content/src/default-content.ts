@@ -8,7 +8,7 @@ import type {
   SkinContentDefinition,
 } from './types.js'
 
-export const CONTENT_VERSION = '2026.07.28.1'
+export const CONTENT_VERSION = '2026.07.28.2'
 
 export const LANDMARK_DEFINITIONS = [
   { id: 'repair-room', title: '维修室', spaceIds: [0] },
@@ -62,15 +62,45 @@ const landmarkBySpaceId: ReadonlyMap<number, string> = new Map(
   LANDMARK_DEFINITIONS.flatMap((landmark) => landmark.spaceIds.map((spaceId) => [spaceId, landmark.id] as const)),
 )
 
+const DEFAULT_SPACE_POINTS = Array.from({ length: 66 }, (_, index) => {
+  const line = (start: number, end: number, from: number, to: number, fixed: number, horizontal = true) => {
+    const progress = (index - from) / Math.max(1, to - from)
+    return horizontal
+      ? { x: start + (end - start) * progress, y: fixed }
+      : { x: fixed, y: start + (end - start) * progress }
+  }
+  const percent = index === 0
+    ? { x: 5.5, y: 86 }
+    : index <= 15 ? line(11, 81, 1, 15, 86)
+      : index <= 20 ? line(78, 46, 16, 20, 85, false)
+        : index <= 34 ? line(80, 18, 21, 34, 17)
+          : index <= 40 ? line(23, 52, 35, 40, 14, false)
+            : index <= 52 ? line(19, 77, 41, 52, 57)
+              : index <= 56 ? line(52, 34, 53, 56, 82, false)
+                : line(76, 31, 57, 65, 35)
+  return { x: Math.round(percent.x * 12.8), y: Math.round(percent.y * 8.2) }
+})
+
+const LANDMARK_PLACEMENTS: Readonly<Record<string, { x: number; y: number; size: number }>> = {
+  'repair-room': { x: 105, y: 660, size: 112 },
+  'snack-stand': { x: 520, y: 650, size: 104 },
+  'scavenger-beach': { x: 1160, y: 500, size: 108 },
+  'sailors-home': { x: 360, y: 205, size: 108 },
+  'yellow-dog': { x: 315, y: 450, size: 108 },
+  madhouse: { x: 1050, y: 410, size: 108 },
+  'grand-boil': { x: 930, y: 270, size: 108 },
+  mixologist: { x: 715, y: 270, size: 104 },
+  'noise-house': { x: 525, y: 250, size: 142 },
+}
+
 export const DEFAULT_MAP_DEFINITION = {
   id: DEFAULT_MAP_CONTENT.id,
   name: DEFAULT_MAP_CONTENT.title,
-  logicalSize: { width: 1000, height: 600 },
+  logicalSize: { width: 1280, height: 820 },
   spaces: Array.from({ length: DEFAULT_MAP_CONTENT.spaceCount }, (_, index) => ({
     index,
-    x: index,
-    y: 0,
-    rotation: 0,
+    ...DEFAULT_SPACE_POINTS[index],
+    rotation: [-3, 1, -1, 2, 0][index % 5],
     kind: index === 0
       ? 'start' as const
       : DEFAULT_MAP_CONTENT.winningSpaceIds.includes(index as 63 | 64 | 65)
@@ -81,12 +111,18 @@ export const DEFAULT_MAP_DEFINITION = {
     ...(landmarkBySpaceId.has(index) ? { landmarkId: landmarkBySpaceId.get(index) } : {}),
   })),
   winningSpaceIds: DEFAULT_MAP_CONTENT.winningSpaceIds,
-  landmarks: LANDMARK_DEFINITIONS.map((landmark) => ({ id: landmark.id, name: landmark.title, spaceIds: landmark.spaceIds })) satisfies readonly LandmarkDefinition[],
+  landmarks: LANDMARK_DEFINITIONS.map((landmark) => ({
+    id: landmark.id,
+    name: landmark.title,
+    spaceIds: landmark.spaceIds,
+    ...LANDMARK_PLACEMENTS[landmark.id],
+  })) satisfies readonly LandmarkDefinition[],
   allowedEventIds: DEFAULT_RULESET.eventPoolIds,
   blockedItemIds: [],
   assets: {
-    background: 'assets/maps/aup-port/background.webp',
+    background: 'assets/maps/aup-port/paper-board.png',
     landmarkAtlas: 'assets/maps/aup-port/landmarks.json',
+    landmarks: Object.fromEntries(LANDMARK_DEFINITIONS.map((landmark) => [landmark.id, `assets/maps/aup-port/${landmark.id}.png`])),
   },
 } as const satisfies MapDefinition
 

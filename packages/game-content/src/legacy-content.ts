@@ -89,6 +89,22 @@ export const ITEMS: ItemCard[] = [
     effect: 'collision-shield',
     priority: 8,
   },
+  {
+    id: 'lucky-coin', title: '幸运硬币', description: '下一次骰子检定必定成功。', quote: '正面和反面都写着好运。',
+    mode: '被动', effect: 'check-pass', priority: 8,
+  },
+  {
+    id: 'spring-shoes', title: '弹簧鞋', description: '使用后，本次移动额外前进 3 格。', quote: '落地之前别往下看。',
+    mode: '主动', effect: 'move-plus-three', priority: 6,
+  },
+  {
+    id: 'driftwood-shield', title: '浮木盾牌', description: '自动抵消下一次被撞回效果。', quote: '至少比纸板结实。',
+    mode: '被动', effect: 'collision-shield', priority: 7,
+  },
+  {
+    id: 'warm-soup', title: '热汤保温壶', description: '自动抵消下一次暂停回合效果。', quote: '喝完再赶路。',
+    mode: '被动', effect: 'skip-shield', priority: 7,
+  },
 ]
 
 export const EVENTS: EventCard[] = [
@@ -158,5 +174,43 @@ export const EVENTS: EventCard[] = [
   {
     id: 'same-boat', title: '同舟共济', flavor: '这次谁也别想把谁落下。',
     kind: '奇遇事件', effect: [{ type: 'move', spaces: 3 }, { type: 'opponent-move', spaces: 3 }], successText: '双方都前进 3 格。', accent: 'teal', aiValue: 4,
+  },
+  {
+    id: 'harbor-bell', title: '港口钟声', flavor: '钟声响起，今天的航班似乎还赶得上。',
+    kind: '奇遇事件', effect: [{ type: 'extra-turn' }], successText: '立即再行动一次。', accent: 'gold', aiValue: 8,
+  },
+  {
+    id: 'slippery-deck', title: '湿滑甲板', flavor: '刚迈出一步，鞋底就在木板上打滑。',
+    kind: '常规事件', effect: [{ type: 'move', spaces: -2 }], successText: '滑回了 2 格。', accent: 'coral', aiValue: 2,
+  },
+  {
+    id: 'ferry-ticket', title: '末班船票', flavor: '口袋里竟然还有一张没有过期的船票。',
+    kind: '奇遇事件', effect: [{ type: 'move', spaces: 7 }], successText: '搭上渡船，前进 7 格。', accent: 'teal', aiValue: 9,
+  },
+  {
+    id: 'storm-lantern', title: '暴风灯', flavor: '风把灯吹得东倒西歪，先看看能不能护住火苗。',
+    kind: '骰子检定', threshold: 8, success: [{ type: 'move', spaces: 3 }], failure: [{ type: 'skip', turns: 1 }],
+    successText: '灯火未灭，前进 3 格。', failureText: '忙着重新点灯，暂停一回合。', accent: 'gold', aiValue: 5,
+  },
+  {
+    id: 'lost-map', title: '泡水的地图', flavor: '墨迹晕成一团，只能猜哪条线还通往前方。',
+    kind: '骰子检定', threshold: 6, success: [{ type: 'gain-item' }], failure: [{ type: 'move', spaces: -2 }],
+    successText: '在夹层里找到一件道具。', failureText: '看反了方向，后退 2 格。', accent: 'teal', aiValue: 5,
+  },
+  {
+    id: 'friendly-cook', title: '多盛的一碗', flavor: '掌勺的人说最后一碗不能浪费。',
+    kind: '常规事件', effect: [{ type: 'gain-item' }], successText: '碗底藏着一件道具。', accent: 'gold', aiValue: 6,
+  },
+  {
+    id: 'dock-crane', title: '失控吊机', flavor: '吊钩横扫码头，把前面的棋子拨了回去。',
+    kind: '奇遇事件', effect: [{ type: 'opponent-move', spaces: -2 }], successText: '下一位对手后退 2 格。', accent: 'coral', aiValue: 6,
+  },
+  {
+    id: 'turning-tide', title: '潮水换向', flavor: '退潮和涨潮交换了所有人的方向感。',
+    kind: '奇遇事件', effect: [{ type: 'swap' }], successText: '与下一位对手交换位置。', accent: 'teal', aiValue: 5,
+  },
+  {
+    id: 'heavy-fog', title: '浓雾封港', flavor: '所有人都只能摸着栏杆慢慢前进。',
+    kind: '常规事件', effect: [{ type: 'world-max-die', value: 3, rounds: 1 }], successText: '未来 1 轮，每颗骰子最多掷出 3 点。', accent: 'coral', aiValue: 3,
   },
 ]

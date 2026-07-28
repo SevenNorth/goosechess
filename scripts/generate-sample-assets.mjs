@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { deflateSync } from 'node:zlib'
 
-const outputDirectory = resolve(import.meta.dirname, '../apps/web/public/assets/sample')
+let outputDirectory = resolve(import.meta.dirname, '../apps/web/public/assets/sample')
 mkdirSync(outputDirectory, { recursive: true })
 
 const crcTable = Array.from({ length: 256 }, (_, value) => {
@@ -153,7 +153,7 @@ function makePaper() {
   writePng('paper-board.png', image)
 }
 
-function makeDog() {
+function makeDog(filename = 'yellow-dog.png') {
   const image = createImage(256, 256)
   const ink = [49, 48, 40, 255]
   const yellow = [219, 163, 56, 255]
@@ -176,10 +176,10 @@ function makeDog() {
     line(image, x, 172, x - 3, 217, 11, yellow)
   }
   line(image, 43, 231, 204, 231, 3, [45, 44, 38, 90])
-  writePng('yellow-dog.png', image)
+  writePng(filename, image)
 }
 
-function makeRepairRoom() {
+function makeRepairRoom(filename = 'repair-room.png') {
   const image = createImage(256, 256)
   const ink = [50, 51, 45, 255]
   polygon(image, [[42, 104], [128, 43], [220, 104]], ink)
@@ -194,10 +194,10 @@ function makeRepairRoom() {
   line(image, 153, 91, 121, 123, 9, ink)
   ellipse(image, 121, 91, 10, 10, ink)
   ellipse(image, 155, 91, 10, 10, ink)
-  writePng('repair-room.png', image)
+  writePng(filename, image)
 }
 
-function makeBeach() {
+function makeBeach(filename = 'scavenger-beach.png') {
   const image = createImage(256, 256)
   const ink = [50, 51, 45, 255]
   ellipse(image, 130, 211, 101, 20, [197, 164, 92, 210])
@@ -207,10 +207,10 @@ function makeBeach() {
   polygon(image, [[126, 49], [126, 100], [181, 100]], [235, 221, 191, 255])
   line(image, 58, 184, 94, 151, 7, ink)
   line(image, 94, 151, 120, 185, 7, ink)
-  writePng('scavenger-beach.png', image)
+  writePng(filename, image)
 }
 
-function makeFinish() {
+function makeFinish(filename = 'sample-finish.png') {
   const image = createImage(256, 256)
   const ink = [44, 46, 41, 255]
   polygon(image, [[32, 115], [126, 35], [226, 115]], ink)
@@ -221,7 +221,73 @@ function makeFinish() {
   ellipse(image, 180, 148, 13, 13, [216, 165, 57, 255])
   line(image, 74, 137, 91, 154, 5, [225, 218, 196, 255])
   line(image, 91, 137, 74, 154, 5, [225, 218, 196, 255])
-  writePng('sample-finish.png', image)
+  writePng(filename, image)
+}
+
+function makeStand(filename, accent = [207, 99, 76, 255]) {
+  const image = createImage(256, 256)
+  const ink = [49, 50, 44, 255]
+  fillRect(image, 50, 102, 156, 112, ink)
+  fillRect(image, 58, 110, 140, 96, [168, 157, 129, 255])
+  polygon(image, [[35, 105], [55, 55], [202, 55], [222, 105]], ink)
+  for (let index = 0; index < 4; index += 1) fillRect(image, 45 + index * 42, 63, 37, 34, index % 2 ? [232, 220, 188, 255] : accent)
+  fillRect(image, 72, 135, 112, 14, ink)
+  fillRect(image, 111, 150, 34, 56, [73, 76, 67, 255])
+  writePng(filename, image)
+}
+
+function makeHouse(filename, accent = [72, 124, 145, 255]) {
+  const image = createImage(256, 256)
+  const ink = [48, 49, 43, 255]
+  polygon(image, [[31, 112], [127, 37], [226, 112]], ink)
+  polygon(image, [[43, 106], [127, 49], [213, 106]], accent)
+  fillRect(image, 49, 105, 160, 112, ink)
+  fillRect(image, 57, 113, 144, 96, [177, 168, 143, 255])
+  fillRect(image, 104, 151, 48, 58, ink)
+  for (const x of [73, 165]) {
+    fillRect(image, x, 127, 25, 25, ink)
+    fillRect(image, x + 5, 132, 15, 15, [198, 220, 217, 255])
+  }
+  writePng(filename, image)
+}
+
+function makeMadhouse() {
+  const image = createImage(256, 256)
+  const ink = [48, 49, 43, 255]
+  polygon(image, [[34, 101], [116, 38], [225, 113]], ink)
+  polygon(image, [[46, 98], [117, 49], [213, 108]], [136, 94, 137, 255])
+  polygon(image, [[52, 101], [211, 115], [195, 221], [45, 210]], ink)
+  polygon(image, [[61, 112], [199, 123], [185, 210], [55, 201]], [170, 160, 137, 255])
+  fillRect(image, 109, 151, 43, 57, [59, 60, 53, 255])
+  line(image, 69, 128, 92, 151, 7, ink)
+  line(image, 91, 127, 68, 151, 7, ink)
+  writePng('madhouse.png', image)
+}
+
+function makePot() {
+  const image = createImage(256, 256)
+  const ink = [48, 49, 43, 255]
+  ellipse(image, 128, 175, 83, 50, ink)
+  ellipse(image, 128, 164, 75, 38, [184, 79, 60, 255])
+  fillRect(image, 47, 145, 162, 37, [184, 79, 60, 255])
+  ellipse(image, 128, 142, 78, 24, ink)
+  ellipse(image, 128, 139, 68, 16, [225, 183, 78, 255])
+  line(image, 85, 115, 76, 68, 7, ink)
+  line(image, 128, 111, 136, 57, 7, ink)
+  line(image, 169, 115, 188, 72, 7, ink)
+  writePng('grand-boil.png', image)
+}
+
+function makeBottle() {
+  const image = createImage(256, 256)
+  const ink = [48, 49, 43, 255]
+  fillRect(image, 105, 42, 47, 48, ink)
+  fillRect(image, 113, 49, 31, 42, [69, 143, 134, 255])
+  polygon(image, [[105, 85], [78, 119], [72, 213], [184, 213], [178, 119], [152, 85]], ink)
+  polygon(image, [[110, 93], [87, 123], [82, 204], [174, 204], [169, 123], [147, 93]], [75, 154, 143, 255])
+  ellipse(image, 127, 158, 36, 28, [224, 190, 88, 220])
+  line(image, 93, 135, 162, 183, 5, [231, 222, 196, 210])
+  writePng('mixologist.png', image)
 }
 
 makeTabletop()
@@ -230,3 +296,40 @@ makeDog()
 makeRepairRoom()
 makeBeach()
 makeFinish()
+
+outputDirectory = resolve(import.meta.dirname, '../apps/web/public/assets/maps/aup-port')
+mkdirSync(outputDirectory, { recursive: true })
+makePaper()
+makeRepairRoom()
+makeStand('snack-stand.png')
+makeBeach()
+makeHouse('sailors-home.png')
+makeDog()
+makeMadhouse()
+makePot()
+makeBottle()
+makeFinish('noise-house.png')
+writeFileSync(resolve(outputDirectory, 'landmarks.json'), `${JSON.stringify({
+  version: 1,
+  images: ['repair-room', 'snack-stand', 'scavenger-beach', 'sailors-home', 'yellow-dog', 'madhouse', 'grand-boil', 'mixologist', 'noise-house'],
+}, null, 2)}\n`)
+
+outputDirectory = resolve(import.meta.dirname, '../apps/web/public/assets/tokens')
+mkdirSync(outputDirectory, { recursive: true })
+for (const [id, palette] of Object.entries({
+  'goose-white': ['#f0eee4', '#e82f73'],
+  'goose-yellow': ['#e0ae3d', '#3977c5'],
+  'goose-blue': ['#80aed8', '#d4a43a'],
+  'goose-pink': ['#df829f', '#2baf9c'],
+})) {
+  writeFileSync(resolve(outputDirectory, `${id}.json`), `${JSON.stringify({
+    version: 1,
+    palette,
+    animations: {
+      idle: { frames: ['idle-0', 'idle-1'], fps: 2 },
+      active: { frames: ['active-0', 'active-1'], fps: 4 },
+      hop: { frames: ['compress', 'air', 'land'], fps: 8 },
+      hit: { frames: ['hit-left', 'hit-right', 'idle-0'], fps: 8 },
+    },
+  }, null, 2)}\n`)
+}

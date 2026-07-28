@@ -9,13 +9,10 @@ import {
   Texture,
 } from 'pixi.js'
 import { createActor, type ActorRefFrom } from 'xstate'
+import type { MapDefinition } from '@goose-chess/game-core'
 import type { GameSnapshot, AuthorityUpdate, PresentationCue } from '@goose-chess/game-protocol'
 import type { AudioPort } from '../audio/audio-port'
 import { presentationMachine, type PresentationStage } from '../game-client/machine/presentation-machine'
-import { SAMPLE_MAP_DEFINITION } from '../game-client/sample-content'
-
-const WORLD_WIDTH = SAMPLE_MAP_DEFINITION.logicalSize.width
-const WORLD_HEIGHT = SAMPLE_MAP_DEFINITION.logicalSize.height
 const SEAT_COLORS: Readonly<Record<string, number>> = {
   pink: 0xe82f73,
   blue: 0x3977c5,
@@ -33,6 +30,7 @@ interface TokenVisual {
   readonly root: Container
   readonly body: Container
   readonly shadow: Graphics
+  animating: boolean
 }
 
 export interface BoardPlaybackOptions {
@@ -47,9 +45,9 @@ export interface BoardSceneController {
   destroy(): void
 }
 
-function spacePoint(spaceId: number) {
-  const space = SAMPLE_MAP_DEFINITION.spaces.find((candidate) => candidate.index === spaceId)
-  if (!space) throw new Error(`Unknown sample board space: ${spaceId}.`)
+function spacePoint(map: MapDefinition, spaceId: number) {
+  const space = map.spaces.find((candidate) => candidate.index === spaceId)
+  if (!space) throw new Error(`Unknown board space: ${spaceId}.`)
   return { x: space.x, y: space.y }
 }
 
@@ -76,19 +74,22 @@ export class BoardScene implements BoardSceneController {
   private routeGraphic: Graphics | null = null
   private targetGraphic: Graphics | null = null
   private diceContainer: Container | null = null
+  private winGraphic: Graphics | null = null
   private playbackRevision = 0
+  private activePlayerId = ''
   private destroyed = false
 
   private constructor(
     private readonly host: HTMLElement,
     private readonly audio: AudioPort,
+    private readonly map: MapDefinition,
   ) {
     this.machine = createActor(presentationMachine).start()
     this.resizeObserver = new ResizeObserver(() => this.resizeWorld())
   }
 
-  static async create(host: HTMLElement, audio: AudioPort, isCancelled: () => boolean = () => false) {
-    const scene = new BoardScene(host, audio)
+  static async create(host: HTMLElement, audio: AudioPort, map: MapDefinition, isCancelled: () => boolean = () => false) {
+    const scene = new BoardScene(host, audio, map)
     await scene.initialize(isCancelled)
     return scene
   }
@@ -131,46 +132,59 @@ export class BoardScene implements BoardSceneController {
   }
 
   private readonly updateTweens = () => {
-    this.tweens.update(performance.now())
+    const now = performance.now()
+    this.tweens.update(now)
+    for (const [playerId, token] of this.tokens) {
+      if (token.animating) continue
+      const active = playerId === this.activePlayerId
+      const pulse = Math.sin(now / (active ? 180 : 420))
+      token.body.y = pulse * (active ? 2.5 : 1.2)
+      token.body.scale.set((active ? 1.07 : 1) + pulse * (active ? 0.025 : 0.01))
+    }
   }
 
   private resizeWorld() {
     if (this.destroyed) return
     const width = this.app.screen.width
     const height = this.app.screen.height
-    const scale = Math.min(width / WORLD_WIDTH, height / WORLD_HEIGHT)
+    const scale = Math.min(width / this.map.logicalSize.width, height / this.map.logicalSize.height)
     this.world.scale.set(scale)
-    this.world.position.set((width - WORLD_WIDTH * scale) / 2, (height - WORLD_HEIGHT * scale) / 2)
+    this.world.position.set((width - this.map.logicalSize.width * scale) / 2, (height - this.map.logicalSize.height * scale) / 2)
   }
 
   private async buildBoard() {
-    const [tableTexture, paperTexture, repairTexture, dogTexture, beachTexture, finishTexture] = await Promise.all([
+    const landmarkAssets = this.map.assets.landmarks ?? {}
+    const landmarkTextures = new Map<string, Texture>()
+    const [tableTexture, paperTexture, ...loadedLandmarks] = await Promise.all([
       Assets.load<Texture>('/assets/sample/tabletop.png'),
-      Assets.load<Texture>('/assets/sample/paper-board.png'),
-      Assets.load<Texture>('/assets/sample/repair-room.png'),
-      Assets.load<Texture>('/assets/sample/yellow-dog.png'),
-      Assets.load<Texture>('/assets/sample/scavenger-beach.png'),
-      Assets.load<Texture>('/assets/sample/sample-finish.png'),
+      Assets.load<Texture>(`/${this.map.assets.background}`),
+      ...this.map.landmarks.map((landmark) => landmarkAssets[landmark.id]
+        ? Assets.load<Texture>(`/${landmarkAssets[landmark.id]}`)
+        : Promise.resolve(Texture.WHITE)),
     ])
-    const table = new Sprite({ texture: tableTexture, width: WORLD_WIDTH, height: WORLD_HEIGHT })
-    const paper = new Sprite({ texture: paperTexture, width: WORLD_WIDTH - 70, height: WORLD_HEIGHT - 54, x: 35, y: 27 })
+    this.map.landmarks.forEach((landmark, index) => landmarkTextures.set(landmark.id, loadedLandmarks[index]))
+    const worldWidth = this.map.logicalSize.width
+    const worldHeight = this.map.logicalSize.height
+    const table = new Sprite({ texture: tableTexture, width: worldWidth, height: worldHeight })
+    const paper = new Sprite({ texture: paperTexture, width: worldWidth - 70, height: worldHeight - 54, x: 35, y: 27 })
     this.tableLayer.addChild(table)
     this.boardLayer.addChild(paper)
 
     const border = new Graphics()
-      .rect(35, 27, WORLD_WIDTH - 70, WORLD_HEIGHT - 54)
+      .rect(35, 27, worldWidth - 70, worldHeight - 54)
       .stroke({ color: 0x5c5a50, width: 7, alpha: 0.55 })
     const baseRoute = new Graphics()
-    const first = SAMPLE_MAP_DEFINITION.spaces[0]
+    const first = this.map.spaces[0]
     baseRoute.moveTo(first.x, first.y)
-    SAMPLE_MAP_DEFINITION.spaces.slice(1).forEach((space) => baseRoute.lineTo(space.x, space.y))
+    this.map.spaces.slice(1).forEach((space) => baseRoute.lineTo(space.x, space.y))
     baseRoute.stroke({ color: 0x77766c, width: 4, alpha: 0.28 })
     this.boardLayer.addChild(border, baseRoute)
 
-    for (const space of SAMPLE_MAP_DEFINITION.spaces) {
+    const compact = this.map.spaces.length > 24
+    for (const space of this.map.spaces) {
       const cellContainer = new Container()
       const cell = new Graphics()
-      const size = space.kind === 'start' || space.kind === 'finish' ? 58 : 48
+      const size = compact ? (space.kind === 'start' || space.kind === 'finish' ? 36 : 29) : (space.kind === 'start' || space.kind === 'finish' ? 58 : 48)
       const fill = space.kind === 'event' ? 0xc96850 : space.kind === 'finish' ? 0x4b4f46 : 0xe2ddcb
       cell.roundRect(-size / 2, -size / 2, size, size, 5)
         .fill({ color: fill, alpha: 0.96 })
@@ -179,28 +193,35 @@ export class BoardScene implements BoardSceneController {
       cellContainer.rotation = space.rotation * Math.PI / 180
       const number = new Text({
         text: space.kind === 'event' ? '鹅' : String(space.index),
-        style: { fontFamily: 'Microsoft YaHei', fontSize: space.kind === 'event' ? 15 : 13, fill: space.kind === 'event' ? 0xfff4df : 0x54574e, fontWeight: '700' },
+        style: { fontFamily: 'Microsoft YaHei', fontSize: compact ? 9 : space.kind === 'event' ? 15 : 13, fill: space.kind === 'event' ? 0xfff4df : 0x54574e, fontWeight: '700' },
       })
       number.anchor.set(0.5)
       cellContainer.addChild(cell, number)
       this.spaceLayer.addChild(cellContainer)
     }
 
-    this.addLandmark(repairTexture, 128, 603, 150, '维修室')
-    this.addLandmark(dogTexture, 770, 505, 150, '大黄狗')
-    this.addLandmark(beachTexture, 930, 266, 142, '拾荒沙滩')
-    this.addLandmark(finishTexture, 425, 170, 164, '试航终点')
+    for (const landmark of this.map.landmarks) {
+      const anchor = spacePoint(this.map, landmark.spaceIds[0])
+      this.addLandmark(
+        landmarkTextures.get(landmark.id) ?? Texture.WHITE,
+        landmark.x ?? anchor.x,
+        landmark.y ?? anchor.y - 45,
+        landmark.size ?? (compact ? 96 : 150),
+        landmark.name,
+        landmark.id === 'noise-house',
+      )
+    }
 
     const title = new Text({
-      text: '奥普港 · 核心体验样片',
+      text: `${this.map.name} · 65 格竞速`,
       style: { fontFamily: 'Microsoft YaHei', fontSize: 22, fill: 0x55584f, fontWeight: '700', letterSpacing: 0 },
     })
-    title.position.set(280, 280)
+    title.position.set(520, 385)
     title.rotation = -0.02
     this.foregroundLayer.addChild(title)
   }
 
-  private addLandmark(texture: Texture, x: number, y: number, size: number, label: string) {
+  private addLandmark(texture: Texture, x: number, y: number, size: number, label: string, isFinish = false) {
     const container = new Container({ x, y })
     const sprite = new Sprite(texture)
     sprite.anchor.set(0.5, 1)
@@ -212,7 +233,7 @@ export class BoardScene implements BoardSceneController {
     })
     text.anchor.set(0.5)
     text.position.set(0, 14)
-    const labelPaper = new Graphics().roundRect(-text.width / 2 - 8, 1, text.width + 16, 27, 3).fill({ color: 0xe4deca, alpha: 0.88 })
+    const labelPaper = new Graphics().roundRect(-text.width / 2 - 8, 1, text.width + 16, 27, 3).fill({ color: isFinish ? 0xd5ad43 : 0xe4deca, alpha: 0.9 })
     container.addChild(sprite, labelPaper, text)
     this.landmarkLayer.addChild(container)
   }
@@ -237,10 +258,11 @@ export class BoardScene implements BoardSceneController {
     body.addChild(model)
     root.addChild(shadow, body)
     const offset = tokenOffset(player.seatIndex, playerCount)
-    const point = spacePoint(player.spaceId)
+    const point = spacePoint(this.map, player.spaceId)
+    if (this.map.spaces.length > 24) root.scale.set(0.68)
     root.position.set(point.x + offset.x, point.y + offset.y)
     this.tokenLayer.addChild(root)
-    const visual = { root, body, shadow }
+    const visual = { root, body, shadow, animating: false }
     this.tokens.set(player.playerId, visual)
     return visual
   }
@@ -255,17 +277,19 @@ export class BoardScene implements BoardSceneController {
     }
     for (const player of snapshot.state.players) {
       const token = this.tokens.get(player.playerId) ?? this.makeToken(player, snapshot.state.players.length)
-      const point = spacePoint(player.spaceId)
+      const point = spacePoint(this.map, player.spaceId)
       const offset = tokenOffset(player.seatIndex, snapshot.state.players.length)
       token.root.position.set(point.x + offset.x, point.y + offset.y)
       token.body.position.y = 0
       token.body.scale.set(1)
       token.shadow.scale.set(1)
+      token.animating = false
     }
     this.setActivePlayer(snapshot.state.activePlayerId)
   }
 
   setActivePlayer(playerId: string) {
+    this.activePlayerId = playerId
     for (const [id, token] of this.tokens) {
       token.root.alpha = id === playerId ? 1 : 0.88
       token.body.scale.set(id === playerId ? 1.07 : 1)
@@ -288,7 +312,7 @@ export class BoardScene implements BoardSceneController {
   private async playDice(cue: Extract<PresentationCue, { type: 'dice-roll' }>, speed: number) {
     this.audio.play('dice.roll')
     this.diceContainer?.destroy({ children: true })
-    const container = new Container({ x: 1085, y: 700 })
+    const container = new Container({ x: this.map.logicalSize.width - 195, y: this.map.logicalSize.height - 120 })
     const values = [...cue.dice]
     values.forEach((value, index) => {
       const die = new Container({ x: index * 76 })
@@ -335,16 +359,17 @@ export class BoardScene implements BoardSceneController {
     const player = previousSnapshot.state.players.find((candidate) => candidate.playerId === cue.playerId)
     if (!player) return
     const color = SEAT_COLORS[player.colorId] ?? 0xe82f73
-    const points = [spacePoint(player.spaceId), ...cue.path.map(spacePoint)]
+    const points = [spacePoint(this.map, player.spaceId), ...cue.path.map((spaceId) => spacePoint(this.map, spaceId))]
     this.routeGraphic?.destroy()
     this.routeGraphic = null
     await this.animate(390 / speed, (progress) => this.drawPartialRoute(points, progress, color), Easing.Quadratic.Out)
   }
 
   private async emphasizeTarget(cue: Extract<PresentationCue, { type: 'target-highlight' }>, speed: number) {
-    const point = spacePoint(cue.spaceId)
+    const point = spacePoint(this.map, cue.spaceId)
     this.targetGraphic?.destroy()
-    const target = new Graphics().circle(0, 0, 38).stroke({ color: 0xe82f73, width: 7, alpha: 1 })
+    const targetRadius = this.map.spaces.length > 24 ? 25 : 38
+    const target = new Graphics().circle(0, 0, targetRadius).stroke({ color: 0xe82f73, width: 6, alpha: 1 })
     target.position.set(point.x, point.y)
     this.effectsLayer.addChild(target)
     this.targetGraphic = target
@@ -366,12 +391,13 @@ export class BoardScene implements BoardSceneController {
     const player = snapshot.state.players.find((candidate) => candidate.playerId === cue.playerId)
     const token = this.tokens.get(cue.playerId)
     if (!player || !token) return
+    token.animating = true
     const offset = tokenOffset(player.seatIndex, snapshot.state.players.length)
     let facing = 1
     for (let index = 0; index < cue.path.length; index += 1) {
       if (index > 0) facing = Math.sign(cue.path[index] - cue.path[index - 1]) || facing
       const from = { x: token.root.x, y: token.root.y }
-      const destination = spacePoint(cue.path[index])
+      const destination = spacePoint(this.map, cue.path[index])
       const duration = (index === cue.path.length - 1 ? 135 : 100) / speed
       await this.animate(duration, (progress) => {
         token.root.position.set(
@@ -398,6 +424,65 @@ export class BoardScene implements BoardSceneController {
       }
     }
     this.audio.play('token.land')
+    token.animating = false
+  }
+
+  private async relocateToken(cue: Extract<PresentationCue, { type: 'token-relocate' }>, snapshot: GameSnapshot, speed: number) {
+    const token = this.tokens.get(cue.playerId)
+    const player = snapshot.state.players.find((candidate) => candidate.playerId === cue.playerId)
+    if (!token || !player) return
+    token.animating = true
+    if (cue.blocked) {
+      const originX = token.root.x
+      this.audio.play('collision.blocked')
+      await this.animate(320 / speed, (progress) => {
+        token.root.x = originX + Math.sin(progress * Math.PI * 6) * (1 - progress) * 12
+        token.body.rotation = Math.sin(progress * Math.PI * 5) * 0.08
+      })
+      token.root.x = originX
+      token.body.rotation = 0
+      token.animating = false
+      return
+    }
+    const destination = spacePoint(this.map, cue.toSpaceId)
+    const offset = tokenOffset(player.seatIndex, snapshot.state.players.length)
+    const from = { x: token.root.x, y: token.root.y }
+    this.audio.play(cue.reason === 'swap' ? 'token.swap' : 'collision.hit')
+    await this.animate(420 / speed, (progress) => {
+      const height = Math.sin(progress * Math.PI)
+      token.root.position.set(
+        from.x + (destination.x + offset.x - from.x) * progress,
+        from.y + (destination.y + offset.y - from.y) * progress,
+      )
+      token.body.y = -height * (cue.reason === 'swap' ? 54 : 30)
+      token.body.rotation = Math.sin(progress * Math.PI * 2) * 0.12
+      token.shadow.scale.set(1 - height * 0.35)
+    }, Easing.Cubic.InOut)
+    token.body.y = 0
+    token.body.rotation = 0
+    token.shadow.scale.set(1)
+    token.animating = false
+  }
+
+  private async playWin(cue: Extract<PresentationCue, { type: 'game-over' }>, speed: number) {
+    this.audio.play('game.win')
+    this.winGraphic?.destroy()
+    const graphic = new Graphics()
+    graphic.rect(0, 0, this.map.logicalSize.width, this.map.logicalSize.height).fill({ color: 0x11130f, alpha: 0.62 })
+    for (const spaceId of this.map.winningSpaceIds) {
+      const point = spacePoint(this.map, spaceId)
+      graphic.circle(point.x, point.y, 32).stroke({ color: 0xe5b83f, width: 7, alpha: 0.95 })
+    }
+    this.effectsLayer.addChild(graphic)
+    this.winGraphic = graphic
+    const winner = this.tokens.get(cue.winnerPlayerId)
+    await this.animate(620 / speed, (progress) => {
+      graphic.alpha = progress
+      if (winner) {
+        const pulse = 1 + Math.sin(progress * Math.PI * 3) * 0.12
+        winner.body.scale.set(pulse)
+      }
+    }, Easing.Cubic.Out)
   }
 
   private stage(options: BoardPlaybackOptions | undefined, stage: PresentationStage) {
@@ -433,6 +518,10 @@ export class BoardScene implements BoardSceneController {
         await this.hopToken(cue, update.snapshot, speed)
         this.machine.send({ type: 'MOVE_DONE' })
         this.stage(options, 'ready')
+      } else if (cue.type === 'token-relocate') {
+        await this.relocateToken(cue, update.snapshot, speed)
+      } else if (cue.type === 'game-over') {
+        await this.playWin(cue, speed)
       }
     }
   }

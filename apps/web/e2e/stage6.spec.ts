@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 import { PNG } from 'pngjs'
 
-async function startSample(page: Page, mode = '1v1', seed = 3) {
-  await page.goto(`/play?mode=${mode}&seed=${seed}`)
+async function startGame(page: Page, mode = '1v1', seed = 3, speed = 1) {
+  await page.goto(`/play?mode=${mode}&seed=${seed}&speed=${speed}`)
   await expect(page.getByRole('heading', { name: '选择棋子与起始道具' })).toBeVisible()
   await expect(page.locator('canvas[data-testid="pixi-canvas"]')).toHaveCount(1)
   await page.getByRole('radio', { name: '黄鹅' }).click()
@@ -31,7 +31,7 @@ test('renders a nonblank complete board at all desktop targets', async ({ page }
     { width: 1920, height: 1080 },
   ]) {
     await page.setViewportSize(viewport)
-    await startSample(page, '1v3', 3)
+    await startGame(page, '1v3', 3)
     const canvas = page.locator('canvas[data-testid="pixi-canvas"]')
     const bounds = await canvas.boundingBox()
     expect(bounds?.width).toBe(viewport.width)
@@ -40,26 +40,26 @@ test('renders a nonblank complete board at all desktop targets', async ({ page }
     const canvasArea = (bounds?.width ?? 0) * (bounds?.height ?? 0)
     expect(pixels.opaque).toBeGreaterThan(canvasArea * 0.95)
     expect(pixels.varied).toBeGreaterThan(canvasArea * 0.2)
-    await page.screenshot({ path: testInfo.outputPath(`stage5-${viewport.width}x${viewport.height}.png`), fullPage: true })
+    await page.screenshot({ path: testInfo.outputPath(`stage6-${viewport.width}x${viewport.height}.png`), fullPage: true })
   }
 })
 
 test('plays route states in order before opening an event', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 })
-  await startSample(page, '1v1', 3)
+  await startGame(page, '1v1', 3)
   await page.evaluate(() => {
     const target = document.querySelector('.round-float span')
-    ;(window as typeof window & { __stage5States?: string[] }).__stage5States = target?.textContent ? [target.textContent] : []
+    ;(window as typeof window & { __stage6States?: string[] }).__stage6States = target?.textContent ? [target.textContent] : []
     if (target) new MutationObserver(() => {
       const text = target.textContent
-      if (text) (window as typeof window & { __stage5States?: string[] }).__stage5States?.push(text)
+      if (text) (window as typeof window & { __stage6States?: string[] }).__stage6States?.push(text)
     }).observe(target, { childList: true, subtree: true, characterData: true })
   })
   await page.getByRole('button', { name: '投掷双骰' }).click()
   await expect(page.locator('.round-float span')).toHaveText('骰子滚动')
   await expect(page.getByRole('heading', { name: '从三张牌中选择' })).toBeVisible()
   await expect(page.locator('.round-float span')).toHaveText('等待行动')
-  const states = await page.evaluate(() => (window as typeof window & { __stage5States?: string[] }).__stage5States ?? [])
+  const states = await page.evaluate(() => (window as typeof window & { __stage6States?: string[] }).__stage6States ?? [])
   const expected = ['骰子滚动', '路线预览', '目标锁定', '路线收起', '棋子移动', '等待行动']
   let cursor = -1
   for (const state of expected) {
@@ -71,7 +71,7 @@ test('plays route states in order before opening an event', async ({ page }) => 
 
 test('resolves a dice-check event and shows its outcome', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 })
-  await startSample(page, '1v1', 3)
+  await startGame(page, '1v1', 3)
   await page.getByRole('button', { name: '投掷双骰' }).click()
   await expect(page.getByRole('heading', { name: '从三张牌中选择' })).toBeVisible()
 
@@ -89,7 +89,7 @@ test('resolves a dice-check event and shows its outcome', async ({ page }) => {
 
 test('fast-forwards presentation to the authority snapshot after focus loss', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 })
-  await startSample(page, '1v1', 3)
+  await startGame(page, '1v1', 3)
   await page.getByRole('button', { name: '投掷双骰' }).click()
   await expect(page.locator('.round-float span')).toHaveText('骰子滚动')
 
@@ -110,3 +110,31 @@ test('recreates and disposes the Pixi application twenty times', async ({ page }
   }
   expect(await page.locator('canvas[data-testid="pixi-canvas"]').count()).toBe(1)
 })
+
+for (const [mode, seed] of [['1v1', 41], ['1v2', 73], ['1v3', 109]] as const) {
+  test(`completes a deterministic ${mode} match on winning spaces 63-65`, async ({ page }, testInfo) => {
+    test.setTimeout(90_000)
+    await page.setViewportSize({ width: 1280, height: 720 })
+    await startGame(page, mode, seed, 20)
+
+    for (let step = 0; step < 240; step += 1) {
+      const winHeading = page.locator('.win-panel h2')
+      if (await winHeading.isVisible()) {
+        await expect(page.locator('.win-summary > p')).toContainText(/进入第 (63|64|65) 格/)
+        await expect(page.locator('.final-ranking li')).toHaveCount(Number(mode.at(-1)) + 1)
+        await page.screenshot({ path: testInfo.outputPath(`stage6-finish-${mode}.png`), fullPage: true })
+        return
+      }
+      const outcomeContinue = page.getByRole('button', { name: '继续' })
+      const eventChoice = page.locator('.event-choice').first()
+      const itemChoice = page.locator('.item-compare-grid button').last()
+      const roll = page.getByRole('button', { name: '投掷双骰' })
+      if (await outcomeContinue.isVisible()) await outcomeContinue.click()
+      else if (await eventChoice.isVisible()) await eventChoice.click()
+      else if (await itemChoice.isVisible()) await itemChoice.click()
+      else if (await roll.isEnabled()) await roll.click()
+      else await page.waitForTimeout(30)
+    }
+    throw new Error(`${mode} did not reach a winner within the interaction limit.`)
+  })
+}

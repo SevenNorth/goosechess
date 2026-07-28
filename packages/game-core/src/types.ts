@@ -15,11 +15,15 @@ export interface LandmarkDefinition {
   readonly id: string
   readonly name: string
   readonly spaceIds: readonly number[]
+  readonly x?: number
+  readonly y?: number
+  readonly size?: number
 }
 
 export interface MapAssetManifest {
   readonly background: string
   readonly landmarkAtlas: string
+  readonly landmarks?: Readonly<Record<string, string>>
 }
 
 export interface MapDefinition {
@@ -196,6 +200,7 @@ export type RuleCue =
   | { readonly type: 'route-preview'; readonly playerId: string; readonly path: readonly number[]; readonly targetSpaceId: number }
   | { readonly type: 'target-highlight'; readonly spaceId: number }
   | { readonly type: 'token-hop'; readonly playerId: string; readonly path: readonly number[] }
+  | { readonly type: 'token-relocate'; readonly playerId: string; readonly fromSpaceId: number; readonly toSpaceId: number; readonly reason: 'collision' | 'swap'; readonly blocked?: boolean }
   | { readonly type: 'event-cards'; readonly eventIds: readonly [string, string, string] }
   | { readonly type: 'game-over'; readonly winnerPlayerId: string }
 
