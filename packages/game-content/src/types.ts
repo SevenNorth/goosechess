@@ -1,44 +1,22 @@
-export type Effect =
-  | { type: 'move'; spaces: number }
-  | { type: 'skip'; turns: number }
-  | { type: 'extra-turn' }
-  | { type: 'gain-item' }
-  | { type: 'opponent-move'; spaces: number }
-  | { type: 'swap' }
-  | { type: 'world-max-die'; value: number; rounds: number }
+import type {
+  EventDefinition,
+  GameEffect,
+  ItemBehavior,
+  ItemDefinition,
+  TokenSkinDefinition,
+} from '@goose-chess/game-core'
 
-export interface EventCard {
-  id: string
-  title: string
-  flavor: string
-  kind: '常规事件' | '骰子检定' | '奇遇事件'
-  threshold?: number
-  success?: Effect[]
-  failure?: Effect[]
-  effect?: Effect[]
-  successText?: string
-  failureText?: string
+export type Effect = GameEffect
+
+export interface EventCard extends EventDefinition {
   accent: 'coral' | 'teal' | 'gold'
-  aiValue: number
 }
 
-export type ItemEffect =
-  | 'check-pass'
-  | 'move-plus-three'
-  | 'opponent-back-two'
-  | 'teleport-beach'
-  | 'fixed-eight'
-  | 'opponent-max-three'
-  | 'skip-shield'
-  | 'collision-shield'
+export type ItemEffect = ItemBehavior
 
-export interface ItemCard {
-  id: string
-  title: string
+export interface ItemCard extends ItemDefinition {
   description: string
   quote: string
-  mode: '主动' | '被动'
-  effect: ItemEffect
   priority: number
 }
 
@@ -57,11 +35,9 @@ export interface MapContentDefinition {
   landmarkIds: readonly string[]
 }
 
-export interface SkinContentDefinition {
-  id: string
+export interface SkinContentDefinition extends TokenSkinDefinition {
   version: number
   title: string
-  assetKey: string
 }
 
 export interface RulesetContentDefinition {

@@ -17,6 +17,9 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@goose-chess/game-core": "0.1.0"
+  },
   "devDependencies": {
     "typescript": "6.0.3",
     "vitest": "4.1.10"

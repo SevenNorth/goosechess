@@ -5,9 +5,9 @@ import ts from 'typescript'
 const workspaceRoot = resolve(import.meta.dirname, '..')
 const packageRules = {
   'game-core': new Set(),
-  'game-content': new Set(),
+  'game-content': new Set(['@goose-chess/game-core']),
   'game-ai': new Set(['@goose-chess/game-core']),
-  'game-protocol': new Set(['zod']),
+  'game-protocol': new Set(['@goose-chess/game-core', 'zod']),
 }
 
 const violations = []

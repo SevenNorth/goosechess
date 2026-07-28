@@ -225,7 +225,7 @@ function App() {
     return null
   }
 
-  const applyEffects = (id: PlayerId, effects: Effect[], consumeCurrentItem = false) => {
+  const applyEffects = (id: PlayerId, effects: readonly Effect[], consumeCurrentItem = false) => {
     const nextPlayers: Record<PlayerId, Player> = {
       human: { ...players.human },
       ai: { ...players.ai },

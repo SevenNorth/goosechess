@@ -24,18 +24,26 @@ const snapshot: GameSnapshot = {
   revision: 4,
   rulesetId: 'classic-race',
   rulesetVersion: 1,
+  mapId: 'aup-port-65',
   contentVersion: '2026.07.28.1',
+  rngSeed: 42,
   rngCursor: 8,
   state: {
     phase: 'awaiting-event-choice',
     round: 2,
     activePlayerId: 'player-1',
     players: [
-      { playerId: 'player-1', seatIndex: 0, displayName: '玩家', controller: 'local', skinId: 'goose-white', spaceId: 6, itemId: null, skipTurns: 0 },
-      { playerId: 'ai-1', seatIndex: 1, displayName: '电脑', controller: 'ai', skinId: 'goose-blue', spaceId: 4, itemId: 'clover', skipTurns: 0 },
+      { playerId: 'player-1', seatIndex: 0, displayName: '玩家', controller: 'local', colorId: 'pink', skinId: 'goose-white', spaceId: 6, itemId: null, skipTurns: 0, nextMoveBonus: 0, nextMaxDie: null, nextFixedMoveTotal: null },
+      { playerId: 'ai-1', seatIndex: 1, displayName: '电脑', controller: 'ai', colorId: 'blue', skinId: 'goose-blue', spaceId: 4, itemId: 'clover', skipTurns: 0, nextMoveBonus: 0, nextMaxDie: null, nextFixedMoveTotal: null },
     ],
     pendingEventIds: ['fishing', 'crab', 'quiet'],
+    pendingItemId: null,
+    eventContinuation: 'end-turn',
+    recentEventIds: ['tailwind'],
     winnerPlayerId: null,
+    extraTurnQueued: false,
+    globalDieRule: null,
+    lastDice: null,
   },
 }
 

@@ -1,4 +1,5 @@
-import { EVENTS, ITEMS } from './legacy-content.js'
+import { EVENTS, ITEMS, LEGACY_EVENT_SPACE_IDS } from './legacy-content.js'
+import type { GameDefinition, LandmarkDefinition, MapDefinition } from '@goose-chess/game-core'
 import type {
   ContentManifest,
   LandmarkContentDefinition,
@@ -31,10 +32,10 @@ export const DEFAULT_MAP_CONTENT = {
 } as const satisfies MapContentDefinition
 
 export const SKINS = [
-  { id: 'goose-white', version: 1, title: '白鹅', assetKey: 'token.goose-white' },
-  { id: 'goose-yellow', version: 1, title: '黄鹅', assetKey: 'token.goose-yellow' },
-  { id: 'goose-blue', version: 1, title: '蓝鹅', assetKey: 'token.goose-blue' },
-  { id: 'goose-pink', version: 1, title: '粉鹅', assetKey: 'token.goose-pink' },
+  { id: 'goose-white', version: 1, title: '白鹅', name: '白鹅', atlas: 'assets/tokens/goose-white.json', animations: { idle: 'idle', active: 'active', hop: 'hop', hit: 'hit' }, anchor: { x: 0.5, y: 0.9 }, shadowScale: 1 },
+  { id: 'goose-yellow', version: 1, title: '黄鹅', name: '黄鹅', atlas: 'assets/tokens/goose-yellow.json', animations: { idle: 'idle', active: 'active', hop: 'hop', hit: 'hit' }, anchor: { x: 0.5, y: 0.9 }, shadowScale: 1 },
+  { id: 'goose-blue', version: 1, title: '蓝鹅', name: '蓝鹅', atlas: 'assets/tokens/goose-blue.json', animations: { idle: 'idle', active: 'active', hop: 'hop', hit: 'hit' }, anchor: { x: 0.5, y: 0.9 }, shadowScale: 1 },
+  { id: 'goose-pink', version: 1, title: '粉鹅', name: '粉鹅', atlas: 'assets/tokens/goose-pink.json', animations: { idle: 'idle', active: 'active', hop: 'hop', hit: 'hit' }, anchor: { x: 0.5, y: 0.9 }, shadowScale: 1 },
 ] as const satisfies readonly SkinContentDefinition[]
 
 export const DEFAULT_RULESET = {
@@ -56,3 +57,66 @@ export const DEFAULT_CONTENT_MANIFEST = {
   skins: SKINS,
   rulesets: [DEFAULT_RULESET],
 } as const satisfies ContentManifest
+
+const landmarkBySpaceId: ReadonlyMap<number, string> = new Map(
+  LANDMARK_DEFINITIONS.flatMap((landmark) => landmark.spaceIds.map((spaceId) => [spaceId, landmark.id] as const)),
+)
+
+export const DEFAULT_MAP_DEFINITION = {
+  id: DEFAULT_MAP_CONTENT.id,
+  name: DEFAULT_MAP_CONTENT.title,
+  logicalSize: { width: 1000, height: 600 },
+  spaces: Array.from({ length: DEFAULT_MAP_CONTENT.spaceCount }, (_, index) => ({
+    index,
+    x: index,
+    y: 0,
+    rotation: 0,
+    kind: index === 0
+      ? 'start' as const
+      : DEFAULT_MAP_CONTENT.winningSpaceIds.includes(index as 63 | 64 | 65)
+        ? 'finish' as const
+        : LEGACY_EVENT_SPACE_IDS.includes(index as typeof LEGACY_EVENT_SPACE_IDS[number])
+          ? 'event' as const
+          : 'normal' as const,
+    ...(landmarkBySpaceId.has(index) ? { landmarkId: landmarkBySpaceId.get(index) } : {}),
+  })),
+  winningSpaceIds: DEFAULT_MAP_CONTENT.winningSpaceIds,
+  landmarks: LANDMARK_DEFINITIONS.map((landmark) => ({ id: landmark.id, name: landmark.title, spaceIds: landmark.spaceIds })) satisfies readonly LandmarkDefinition[],
+  allowedEventIds: DEFAULT_RULESET.eventPoolIds,
+  blockedItemIds: [],
+  assets: {
+    background: 'assets/maps/aup-port/background.webp',
+    landmarkAtlas: 'assets/maps/aup-port/landmarks.json',
+  },
+} as const satisfies MapDefinition
+
+export const DEFAULT_GAME_DEFINITION = {
+  contentVersion: CONTENT_VERSION,
+  map: DEFAULT_MAP_DEFINITION,
+  ruleset: DEFAULT_RULESET,
+  events: EVENTS,
+  items: ITEMS,
+  skins: SKINS,
+} as const satisfies GameDefinition
+
+export const TEST_MAP_DEFINITION = {
+  id: 'test-harbor-7',
+  name: '测试港口',
+  logicalSize: { width: 700, height: 120 },
+  spaces: Array.from({ length: 8 }, (_, index) => ({
+    index,
+    x: index * 100,
+    y: 60,
+    rotation: 0,
+    kind: index === 0 ? 'start' as const : index >= 6 ? 'finish' as const : index === 3 ? 'event' as const : 'normal' as const,
+    ...(index >= 6 ? { landmarkId: 'test-finish' } : {}),
+  })),
+  winningSpaceIds: [6, 7],
+  landmarks: [{ id: 'test-finish', name: '测试终点', spaceIds: [6, 7] }],
+  allowedEventIds: DEFAULT_RULESET.eventPoolIds,
+  blockedItemIds: [],
+  assets: {
+    background: 'assets/maps/test-harbor/background.webp',
+    landmarkAtlas: 'assets/maps/test-harbor/landmarks.json',
+  },
+} as const satisfies MapDefinition

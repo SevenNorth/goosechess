@@ -31,10 +31,14 @@ export const PlayerSnapshotSchema = z.object({
   seatIndex: z.number().int().min(0).max(3),
   displayName: z.string().trim().min(1).max(48),
   controller: z.enum(['local', 'ai', 'remote']),
+  colorId: IdSchema,
   skinId: IdSchema,
   spaceId: SpaceIdSchema,
   itemId: IdSchema.nullable(),
   skipTurns: z.number().int().nonnegative(),
+  nextMoveBonus: z.number().int(),
+  nextMaxDie: z.number().int().min(1).max(6).nullable(),
+  nextFixedMoveTotal: z.number().int().positive().nullable(),
 }).strict()
 
 export const SerializableGameStateSchema = z.object({
@@ -43,14 +47,27 @@ export const SerializableGameStateSchema = z.object({
     'awaiting-action',
     'awaiting-event-choice',
     'awaiting-item-choice',
-    'resolving',
     'game-over',
   ]),
   round: z.number().int().positive(),
-  activePlayerId: IdSchema.nullable(),
+  activePlayerId: IdSchema,
   players: z.array(PlayerSnapshotSchema).min(2).max(4),
   pendingEventIds: z.array(IdSchema).max(3),
+  pendingItemId: IdSchema.nullable(),
+  eventContinuation: z.enum(['end-turn', 'awaiting-action']).nullable(),
+  recentEventIds: z.array(IdSchema).max(2),
   winnerPlayerId: IdSchema.nullable(),
+  extraTurnQueued: z.boolean(),
+  globalDieRule: z.object({
+    maxFace: z.number().int().min(1).max(6),
+    remainingRounds: z.number().int().positive(),
+  }).strict().nullable(),
+  lastDice: z.object({
+    playerId: IdSchema,
+    purpose: z.enum(['move', 'check']),
+    faces: DicePairSchema,
+    total: z.number().int().min(2).max(12),
+  }).strict().nullable(),
 }).strict()
 
 export const GameSnapshotSchema = z.object({
@@ -59,7 +76,9 @@ export const GameSnapshotSchema = z.object({
   revision: RevisionSchema,
   rulesetId: IdSchema,
   rulesetVersion: z.number().int().positive(),
+  mapId: IdSchema,
   contentVersion: z.string().trim().min(1).max(64),
+  rngSeed: z.number().int().nonnegative(),
   rngCursor: z.number().int().nonnegative(),
   state: SerializableGameStateSchema,
 }).strict()
@@ -70,9 +89,13 @@ export const DomainEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('dice-rolled'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, purpose: z.enum(['move', 'check']), dice: DicePairSchema }).strict(),
   z.object({ type: z.literal('token-moved'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, fromSpaceId: SpaceIdSchema, path: z.array(SpaceIdSchema).min(1), toSpaceId: SpaceIdSchema }).strict(),
   z.object({ type: z.literal('event-offered'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, eventCardIds: z.array(IdSchema).length(3) }).strict(),
-  z.object({ type: z.literal('event-resolved'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, eventCardId: IdSchema }).strict(),
+  z.object({ type: z.literal('collision-resolved'), eventId: IdSchema, revision: RevisionSchema, movingPlayerId: IdSchema, displacedPlayerId: IdSchema, fromSpaceId: SpaceIdSchema, toSpaceId: SpaceIdSchema, blocked: z.boolean() }).strict(),
+  z.object({ type: z.literal('event-resolved'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, eventCardId: IdSchema, passed: z.boolean().nullable() }).strict(),
   z.object({ type: z.literal('item-changed'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, itemId: IdSchema.nullable() }).strict(),
+  z.object({ type: z.literal('item-offered'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, itemId: IdSchema }).strict(),
+  z.object({ type: z.literal('turn-skipped'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, remainingTurns: z.number().int().nonnegative() }).strict(),
   z.object({ type: z.literal('turn-advanced'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, round: z.number().int().positive() }).strict(),
+  z.object({ type: z.literal('global-die-rule-changed'), eventId: IdSchema, revision: RevisionSchema, maxFace: z.number().int().min(1).max(6).nullable(), remainingRounds: z.number().int().nonnegative() }).strict(),
   z.object({ type: z.literal('game-won'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, spaceId: SpaceIdSchema }).strict(),
 ])
 
