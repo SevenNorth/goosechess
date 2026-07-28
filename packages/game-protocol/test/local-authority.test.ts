@@ -97,4 +97,34 @@ describe('LocalAuthority', () => {
       error: { code: 'stale_revision', retryable: true },
     })
   })
+
+  it('serializes a legal movement that is clamped to an empty path', async () => {
+    const authority = LocalAuthority.create({
+      gameId: 'game-1',
+      definition: {
+        ...AUTHORITY_DEFINITION,
+        events: AUTHORITY_DEFINITION.events.map((event, index) => index === 0
+          ? { ...event, effect: [{ type: 'move' as const, spaces: -2 }] }
+          : event),
+      },
+      participants: AUTHORITY_PARTICIPANTS,
+      seed: 1,
+    })
+    const snapshot = authority.getSnapshot()
+    snapshot.state.phase = 'awaiting-event-choice'
+    snapshot.state.pendingEventIds = ['event-a', 'event-b', 'event-c']
+    const restored = LocalAuthority.restore({
+      definition: {
+        ...AUTHORITY_DEFINITION,
+        events: AUTHORITY_DEFINITION.events.map((event, index) => index === 0
+          ? { ...event, effect: [{ type: 'move' as const, spaces: -2 }] }
+          : event),
+      },
+      snapshot,
+    })
+
+    const result = await restored.submit(command('empty-path', 'p0', 0, { type: 'choose-event', eventId: 'event-a' }))
+    expect(result).toMatchObject({ ok: true })
+    if (result.ok) expect(result.update.events).toContainEqual(expect.objectContaining({ type: 'token-moved', path: [] }))
+  })
 })

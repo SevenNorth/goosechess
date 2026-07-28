@@ -1,5 +1,6 @@
 import {
   createInitialGameState,
+  createGameDecisionView,
   reduceGameCommand,
   type CoreGameCommand,
   type GameDefinition,
@@ -177,6 +178,14 @@ export class LocalAuthority implements GameAuthorityPort {
 
   getSnapshot() {
     return GameSnapshotSchema.parse(this.snapshot)
+  }
+
+  getDecisionView(playerId: string) {
+    return createGameDecisionView(this.state, this.definition, {
+      gameId: this.gameId,
+      revision: this.snapshot.revision,
+      playerId,
+    })
   }
 
   async submit(envelope: CommandEnvelope): Promise<CommandResult> {

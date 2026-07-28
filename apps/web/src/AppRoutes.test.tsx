@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import AppRoutes from './AppRoutes'
@@ -11,7 +11,11 @@ describe('客户端路由', () => {
     render(<MemoryRouter initialEntries={['/']}><AppRoutes /></MemoryRouter>)
 
     expect(screen.getByRole('heading', { name: '选择人机模式' })).toBeTruthy()
-    expect(screen.getByRole('link', { name: /1v1/ }).getAttribute('href')).toBe('/play')
+    expect(screen.getByRole('radio', { name: /1v1/ }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('link', { name: '开始对局' }).getAttribute('href')).toBe('/play?mode=1v1')
+
+    fireEvent.click(screen.getByRole('radio', { name: /1v3/ }))
+    expect(screen.getByRole('link', { name: '开始对局' }).getAttribute('href')).toBe('/play?mode=1v3')
   })
 
   it('play 路由承载现有游戏原型', () => {

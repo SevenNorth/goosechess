@@ -14,11 +14,13 @@
   "scripts": {
     "dev": "npm run dev --workspace @goose-chess/web",
     "build": "npm run build --workspace @goose-chess/game-core && npm run build --workspace @goose-chess/game-protocol && npm run build --workspace @goose-chess/game-content && npm run build --workspace @goose-chess/game-ai && npm run build --workspace @goose-chess/web",
+    "build:rules": "npm run build --workspace @goose-chess/game-core && npm run build --workspace @goose-chess/game-protocol && npm run build --workspace @goose-chess/game-content && npm run build --workspace @goose-chess/game-ai",
     "preview": "npm run preview --workspace @goose-chess/web",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint . && npm run check:boundaries",
-    "check:boundaries": "node scripts/check-package-boundaries.mjs"
+    "check:boundaries": "node scripts/check-package-boundaries.mjs",
+    "simulate": "npm run build:rules && node scripts/simulate.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

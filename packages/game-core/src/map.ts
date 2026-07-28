@@ -30,7 +30,7 @@ export function createMapRegistry(maps: readonly MapDefinition[]): MapRegistry {
   }
 }
 
-export function calculateMovementPath(map: MapDefinition, fromSpaceId: number, spaces: number): MovementResult {
+export function calculateMovementPath(map: Pick<MapDefinition, 'spaces'>, fromSpaceId: number, spaces: number): MovementResult {
   if (!Number.isInteger(spaces)) throw new RangeError('Movement distance must be an integer.')
   const fromIndex = map.spaces.findIndex((space) => space.index === fromSpaceId)
   if (fromIndex < 0) throw new RangeError(`Unknown starting space: ${fromSpaceId}.`)
@@ -61,6 +61,6 @@ export function calculateMovementPath(map: MapDefinition, fromSpaceId: number, s
   }
 }
 
-export function isWinningSpace(map: MapDefinition, spaceId: number) {
+export function isWinningSpace(map: Pick<MapDefinition, 'winningSpaceIds'>, spaceId: number) {
   return map.winningSpaceIds.includes(spaceId)
 }

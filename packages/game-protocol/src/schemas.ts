@@ -87,7 +87,7 @@ export const DomainEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('starting-item-chosen'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, itemId: IdSchema }).strict(),
   z.object({ type: z.literal('skin-selected'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, skinId: IdSchema }).strict(),
   z.object({ type: z.literal('dice-rolled'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, purpose: z.enum(['move', 'check']), dice: DicePairSchema }).strict(),
-  z.object({ type: z.literal('token-moved'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, fromSpaceId: SpaceIdSchema, path: z.array(SpaceIdSchema).min(1), toSpaceId: SpaceIdSchema }).strict(),
+  z.object({ type: z.literal('token-moved'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, fromSpaceId: SpaceIdSchema, path: z.array(SpaceIdSchema), toSpaceId: SpaceIdSchema }).strict(),
   z.object({ type: z.literal('event-offered'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, eventCardIds: z.array(IdSchema).length(3) }).strict(),
   z.object({ type: z.literal('collision-resolved'), eventId: IdSchema, revision: RevisionSchema, movingPlayerId: IdSchema, displacedPlayerId: IdSchema, fromSpaceId: SpaceIdSchema, toSpaceId: SpaceIdSchema, blocked: z.boolean() }).strict(),
   z.object({ type: z.literal('event-resolved'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, eventCardId: IdSchema, passed: z.boolean().nullable() }).strict(),

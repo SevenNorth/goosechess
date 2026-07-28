@@ -1,14 +1,13 @@
-import { Bot, ChevronRight, Construction, Dices, UsersRound } from 'lucide-react'
+import { useState } from 'react'
+import { Bot, Construction, Dices, Play, UsersRound } from 'lucide-react'
 import { Link, Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { OFFLINE_MATCH_MODES, type OfflineMatchMode } from '@goose-chess/game-protocol'
 import App from './App'
 
-const MODES = [
-  { id: '1v1', opponents: 1 },
-  { id: '1v2', opponents: 2 },
-  { id: '1v3', opponents: 3 },
-] as const
-
 function PreparationPage() {
+  const [selectedMode, setSelectedMode] = useState<OfflineMatchMode>('1v1')
+  const opponentCount = Number(selectedMode.at(-1))
+
   return (
     <main className="preparation-shell">
       <header className="preparation-header">
@@ -25,18 +24,33 @@ function PreparationPage() {
           <p>你将从维修室出发，与电脑棋手争先抵达喧声屋。</p>
         </div>
 
-        <div className="mode-grid">
-          {MODES.map((mode, index) => (
-            <Link className="mode-option" to="/play" key={mode.id}>
-              <span className="mode-number">0{index + 1}</span>
-              <div className="mode-icon"><UsersRound /></div>
-              <div>
-                <strong>{mode.id}</strong>
-                <small>1 名玩家 · {mode.opponents} 名电脑棋手</small>
-              </div>
-              <ChevronRight />
-            </Link>
-          ))}
+        <div className="mode-picker">
+          <div className="mode-picker-title">
+            <span><UsersRound /> 对局人数</span>
+            <small>共 {opponentCount + 1} 名棋手</small>
+          </div>
+          <div className="mode-segments" role="radiogroup" aria-label="人机对战模式">
+            {OFFLINE_MATCH_MODES.map((mode) => (
+              <button
+                className={mode === selectedMode ? 'mode-segment is-selected' : 'mode-segment'}
+                type="button"
+                role="radio"
+                aria-checked={mode === selectedMode}
+                onClick={() => setSelectedMode(mode)}
+                key={mode}
+              >
+                <strong>{mode}</strong>
+                <small>{Number(mode.at(-1))} 名电脑</small>
+              </button>
+            ))}
+          </div>
+          <div className="mode-summary" aria-live="polite">
+            <div className="mode-icon"><UsersRound /></div>
+            <div><strong>玩家 vs 电脑棋手</strong><small>1 名本地玩家 · {opponentCount} 名电脑棋手</small></div>
+          </div>
+          <Link className="primary-button start-match-button" to={`/play?mode=${selectedMode}`}>
+            <Play /> 开始对局
+          </Link>
         </div>
 
         <div className="online-note">

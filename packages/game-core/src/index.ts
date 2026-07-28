@@ -6,29 +6,10 @@ export * from './map.js'
 export * from './content.js'
 export * from './state.js'
 export * from './rules.js'
+export * from './decision.js'
 
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
-
-export interface PublicPlayerView {
-  readonly playerId: string
-  readonly seatIndex: number
-  readonly spaceId: number
-  readonly itemId: string | null
-}
-
-export interface DecisionOption<TCommand extends JsonValue = JsonValue> {
-  readonly command: TCommand
-  readonly reasonTags: readonly string[]
-}
-
-export interface DecisionView<TCommand extends JsonValue = JsonValue> {
-  readonly gameId: string
-  readonly revision: number
-  readonly activePlayerId: string
-  readonly players: readonly PublicPlayerView[]
-  readonly legalOptions: readonly DecisionOption<TCommand>[]
-}
 
 export interface AuthorityTransition<TState, TEvent, TCue> {
   readonly state: TState
