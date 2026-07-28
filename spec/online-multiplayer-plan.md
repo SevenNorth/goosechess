@@ -18,8 +18,9 @@
 
 ```text
 Browser Client
-  ├─ HTTPS: create / join / room metadata
-  └─ WebSocket: commands / snapshots / events / presence
+  ├─ HTTPS ─► Next.js: pages / auth callback / optional BFF
+  ├─ HTTPS ─► Game Server: create / join / room metadata
+  └─ WSS   ─► Game Server: commands / snapshots / events / presence
                          │
                          ▼
               Session Gateway (TypeScript)
@@ -31,13 +32,22 @@ Browser Client
            Shared Game Core   Snapshot Store
 ```
 
-- 服务端使用 Node.js + TypeScript，与浏览器共享规则和协议类型。
-- HTTP 只处理建房、入房和恢复凭证；进入房间后使用 WebSocket 双向通信。
+- Web 客户端使用 Next.js App Router + React + TypeScript。
+- 游戏服务端是独立 Node.js + TypeScript 常驻服务，与浏览器共享规则和协议类型。
+- 游戏服务端的 HTTP 接口只处理建房、入房和恢复凭证；进入房间后使用 WebSocket 双向通信。
 - 协议第一版使用经过运行时校验的 JSON，暂不引入二进制协议。
 - 每个房间对应一个顺序处理命令的 session actor，避免同一回合并发写入。
 - 本地人机版的 `LocalAuthority` 与服务端 `RoomAuthority` 调用同一个纯规则包。
 
 具体 HTTP/WebSocket 库和部署平台在技术验证阶段确定，不写进规则内核。
+
+### 2.1 为什么不直接使用 Next.js 游戏后端
+
+Next.js 的 Route Handlers、Server Actions 和服务端组件本身就是后端能力，可以用于登录、Cookie、普通 CRUD API 和页面数据加载。它不是“只能做前端”。
+
+权威游戏会话需要长期 WebSocket、持续房间内存、顺序命令队列、在线 AI 和精确的重连生命周期。即使自托管 Next.js 可以挂载这些功能，也会让页面服务与游戏房间只能一起扩缩容和重启；部署到无状态函数平台时风险更明显。
+
+因此正式边界是：Next.js 负责 Web 产品层，独立 Node.js 服务负责实时游戏层。两者可以共享认证信息和 TypeScript 包，但不能同时成为对局状态源。
 
 ## 3. 代码与包边界
 
@@ -45,8 +55,8 @@ Browser Client
 
 ```text
 apps/
-  web/                 React + PixiJS 客户端
-  game-server/         房间、连接与权威会话
+  web/                 Next.js + React + PixiJS 客户端
+  game-server/         独立 Node.js 房间、连接与权威会话
 packages/
   game-core/           纯规则、随机数、地图与内容定义
   game-protocol/       命令、快照、事件与运行时校验

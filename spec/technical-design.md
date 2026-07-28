@@ -3,7 +3,7 @@
 ## 1. 架构目标
 
 - 规则逻辑可以脱离画面进行单元测试和模拟对局。
-- React UI 与 PixiJS 场景读取同一份游戏状态。
+- Next.js 中的 React UI 与 PixiJS 场景读取同一份客户端游戏状态。
 - 动画只负责表现，不直接决定规则结果。
 - 所有随机结果可以通过种子重放。
 - 事件和道具通过配置扩展，不在渲染代码中写分支。
@@ -17,31 +17,54 @@
 
 | 领域 | 方案 | 原因 |
 |---|---|---|
-| 应用框架 | React + TypeScript | 继续使用现有工程，适合复杂卡牌和面板 UI |
+| Web 应用 | Next.js App Router + React + TypeScript | 提供页面路由、应用外壳和未来账号/房间页面能力 |
 | 场景渲染 | PixiJS v8 | 适合 2D 棋盘、精灵、镜头、滤镜和粒子 |
 | 状态机 | XState v5 | 明确表达回合、动画等待、事件选择和结算阶段 |
 | 动画 | PixiJS ticker + tween.js | 保持场景动画与渲染循环同步 |
+| 游戏服务端 | 独立 Node.js + TypeScript 服务 | 常驻承载房间、WebSocket、在线 AI 和权威结算 |
 | 音频 | 自定义 `AudioPort` | 第一阶段只建立接口与无声音实现，不引入播放库 |
 | 测试 | Vitest | 复用现有测试环境，支持规则模拟 |
 
 首阶段不接入 WebSocket 库或部署游戏服务器，但协议数据结构和权威端接口属于技术基线，不得留到联机阶段再反推规则层。
 
-不建议直接使用 `@pixi/react` 作为首选集成层。建议在一个 React 组件中创建并销毁 PixiJS `Application`，由场景控制器命令式管理显示对象。这样可以减少 React 版本、PixiJS 生命周期和高频动画更新之间的耦合。
+不建议直接使用 `@pixi/react` 作为首选集成层。棋盘入口使用 Client Component，并通过禁用 SSR 的动态导入加载；在该组件中创建和销毁 PixiJS `Application`，由场景控制器命令式管理显示对象。模块顶层不得读取 `window`、`document` 或 WebGL API，避免 Next.js 服务端构建阶段执行浏览器代码。
+
+### 2.1 Next.js 后端能力边界
+
+Next.js 可以直接实现后端功能。Route Handlers、Server Actions 和服务端组件适合：
+
+- 页面服务端渲染和静态资源入口。
+- 登录回调、Cookie/session 处理和普通请求响应 API。
+- 读取房间摘要、生成分享元数据或作为轻量 BFF。
+
+但本项目不使用 Next.js 进程承载在线对局的权威房间，原因是：
+
+- 房间需要跨多个请求持续存在，并顺序处理整局命令。
+- WebSocket、在线 AI、超时和断线恢复需要可控的常驻进程生命周期。
+- 前端页面和游戏房间需要独立发布、扩缩容、重启和故障隔离。
+- Next.js 部署到无状态或函数平台时，实例回收和多实例路由不能保证房间内存持续存在。
+
+自托管 Next.js 并附加自定义 WebSocket 服务在技术上可行，但会耦合两种生命周期，因此不作为正式方案。浏览器通过 HTTPS/WSS 直接连接独立游戏服务器；Next.js 只传递必要的登录凭证或房间入口信息。
 
 ## 3. 模块边界
 
 ```text
-Controller (local / AI / remote)
-  │ 提交可序列化 GameCommand
-  ▼
-Game Authority + Rules Engine
-  │ 产生 GameSnapshot / DomainEvent / PresentationCue
-  ▼
-Client Session Store
-  ├──────────────► React UI 更新卡牌、面板和弹窗
-  └──────────────► Pixi Scene 播放棋子、骰子和镜头动画
-                          │
-                          └─ 完成后只解锁本地表现队列
+Next.js Web Client
+  Controller (local / AI / remote)
+       │ 提交可序列化 GameCommand
+       ▼
+  GameAuthorityPort
+       ├─ 离线 ─► LocalAuthority ──────────┐
+       └─ 在线 ─► WSS ─► Node RoomAuthority ┤
+                                           ▼
+                                    Shared Game Core
+                                           │
+                  GameSnapshot / DomainEvent / PresentationCue
+                                           ▼
+                                  Client Session Store
+                         ┌─────────────────┴────────────────┐
+                         ▼                                  ▼
+                     React UI                 Pixi PresentationQueue
 ```
 
 ### 3.1 Rules Engine / Game Authority
@@ -81,7 +104,7 @@ Client Session Store
 
 Pixi Scene 不得自行修改参与者位置。它只根据已提交的状态快照和表现提示播放动画。
 
-### 3.3 React UI
+### 3.3 Next.js / React UI
 
 负责：
 
@@ -91,6 +114,13 @@ Pixi Scene 不得自行修改参与者位置。它只根据已提交的状态快
 - 道具槽与道具选择。
 - 事件三选一卡牌。
 - 检定结果、规则、设置、日志和结算。
+
+### 3.4 运行位置
+
+- 离线 `1v1`、`1v2`、`1v3`：`LocalAuthority`、AI 控制器和规则内核都在浏览器 Client Component 边界内运行，不调用 Next.js 后端。
+- 在线真人座位：浏览器只提交命令，独立游戏服务器的 `RoomAuthority` 执行规则。
+- 在线 AI 座位：共享 `game-ai` 代码在独立游戏服务器运行，由服务器提交 AI 命令。
+- Next.js 服务端不运行离线 AI，也不保存在线房间的权威快照。
 
 ## 4. 规则阶段与客户端表现状态机
 
@@ -309,46 +339,45 @@ interface GameSnapshot {
 - XState actor、Pixi 对象、DOM 引用、计时器和音频句柄都不得进入快照。
 - 房间、登录和传输协议后续实现；规则层只依赖 `GameAuthorityPort`，不直接依赖 WebSocket。
 
-## 8. 建议目录
+## 8. Monorepo 目录
 
 ```text
-src/
-  app/
-    App.tsx
-    routes/
-  game/
-    authority/
-    controllers/
-    machine/
-    protocol/
-    rules/
-    random/
-    ai/
-    content/
-    types/
-  session/
-    presentation/
-  scene/
-    PixiBoard.tsx
-    BoardScene.ts
-    layers/
-    actors/
-    animations/
-    assets/
-  ui/
-    hud/
-    cards/
-    dialogs/
-  audio/
-  styles/
-public/
-  assets/
-    maps/
-      default-harbor/
-    tokens/
-      skins/
-    cards/
-    effects/
+apps/
+  web/
+    src/
+      app/
+        page.tsx
+        play/page.tsx
+        room/[roomCode]/page.tsx
+      game-client/
+        GameShell.tsx
+        authority/
+        controllers/
+        machine/
+        presentation/
+      scene/
+        PixiBoard.tsx
+        BoardScene.ts
+        layers/
+        actors/
+        animations/
+      ui/
+        hud/
+        cards/
+        dialogs/
+      audio/
+    public/assets/
+  game-server/
+    src/
+      http/
+      websocket/
+      rooms/
+      persistence/
+packages/
+  game-core/
+  game-ai/
+  game-protocol/
+  game-content/
 ```
 
 ## 9. 声音接口
@@ -390,3 +419,5 @@ interface AudioPort {
 - 协议测试：命令与快照可 JSON 往返、重复命令幂等、过期 revision 被拒绝。
 - 控制器一致性测试：本地、AI 和模拟远程控制器提交相同命令时产生完全相同的规则结果。
 - 恢复测试：从任意回合快照恢复后，后续固定命令与随机结果和不中断的对局一致。
+- Next.js 边界测试：服务端渲染游戏路由时不会执行 PixiJS/WebGL，客户端挂载后棋盘正常创建和销毁。
+- 服务边界测试：在线阶段验证 Next.js 重启不影响现有权威房间，游戏服务器重连由快照协议恢复。
