@@ -128,10 +128,11 @@ for (const [mode, seed] of [['1v1', 41], ['1v2', 73], ['1v3', 109]] as const) {
       const outcomeContinue = page.getByRole('button', { name: '继续' })
       const eventChoice = page.locator('.event-choice').first()
       const itemChoice = page.locator('.item-compare-grid button').last()
+      const itemConfirm = page.getByRole('button', { name: '确认保留' })
       const roll = page.getByRole('button', { name: '投掷双骰' })
       if (await outcomeContinue.isVisible()) await outcomeContinue.click()
       else if (await eventChoice.isVisible()) await eventChoice.click()
-      else if (await itemChoice.isVisible()) await itemChoice.click()
+      else if (await itemChoice.isVisible()) { await itemChoice.click(); await itemConfirm.click() }
       else if (await roll.isEnabled()) await roll.click()
       else await page.waitForTimeout(30)
     }

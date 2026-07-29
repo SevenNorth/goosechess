@@ -133,6 +133,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const [selectedSkin, setSelectedSkin] = useState('goose-white')
   const [selectedStartingItem, setSelectedStartingItem] = useState<string>('boots')
   const [itemDetailsOpen, setItemDetailsOpen] = useState(false)
+  const [keepPendingItem, setKeepPendingItem] = useState(false)
   const [eventOutcome, setEventOutcome] = useState<EventOutcome | null>(null)
   const [showWin, setShowWin] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
@@ -256,6 +257,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const localPlayer = snapshot.state.players.find((player) => player.playerId === 'local-player')!
   const activePlayer = snapshot.state.players.find((player) => player.playerId === snapshot.state.activePlayerId)!
   const localItem = itemById(localPlayer.itemId)
+  const LocalItemIcon = localItem ? ITEM_COPY[localItem.id]?.icon ?? PackageOpen : PackageOpen
   const localDecision = match.authority.getDecisionView('local-player')
   const canRoll = !locked && board && snapshot.state.phase === 'awaiting-action' && snapshot.state.activePlayerId === 'local-player'
   const canUseItem = localItem && localDecision.legalCommands.some((command) => command.type === 'use-item' && command.itemId === localItem.id)
@@ -375,21 +377,22 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
 
       {!locked && !eventOutcome && snapshot.state.phase === 'awaiting-item-choice' && snapshot.state.activePlayerId === 'local-player' && pendingItem && (
         <div className="overlay-stage item-compare-overlay">
-          <section className="item-compare-panel"><div className="panel-kicker">发现新道具</div><h2>选择保留的道具</h2>
-            <div className="item-compare-grid">
-              <button type="button" disabled={locked} onClick={() => void submitLocal({ type: 'choose-item', itemId: null })}><span>当前</span><strong>{localItem?.title}</strong><small>{ITEM_COPY[localItem?.id ?? '']?.description}</small></button>
-              <button type="button" disabled={locked} onClick={() => void submitLocal({ type: 'choose-item', itemId: pendingItem.id })}><span>新道具</span><strong>{pendingItem.title}</strong><small>{ITEM_COPY[pendingItem.id]?.description}</small></button>
+          <section className="item-compare-panel" role="dialog" aria-modal="true" aria-labelledby="item-compare-title"><div className="panel-kicker">发现新道具</div><h2 id="item-compare-title">选择保留的道具</h2>
+            <div className="item-compare-grid" role="radiogroup" aria-label="要保留的道具">
+              <button className={keepPendingItem ? '' : 'is-selected'} type="button" role="radio" aria-checked={!keepPendingItem} disabled={locked} onClick={() => setKeepPendingItem(false)}><span>当前</span><strong>{localItem?.title}</strong><small>{ITEM_COPY[localItem?.id ?? '']?.description}</small>{!keepPendingItem && <Check className="item-choice-check" />}</button>
+              <button className={keepPendingItem ? 'is-selected' : ''} type="button" role="radio" aria-checked={keepPendingItem} disabled={locked} onClick={() => setKeepPendingItem(true)}><span>新道具</span><strong>{pendingItem.title}</strong><small>{ITEM_COPY[pendingItem.id]?.description}</small>{keepPendingItem && <Check className="item-choice-check" />}</button>
             </div>
+            <button className="primary-command item-choice-confirm" type="button" disabled={locked} onClick={() => { const itemId = keepPendingItem ? pendingItem.id : null; setKeepPendingItem(false); void submitLocal({ type: 'choose-item', itemId }) }}><Check /> 确认保留</button>
           </section>
         </div>
       )}
 
       {itemDetailsOpen && localItem && (
-        <div className="item-drawer-backdrop" onClick={() => setItemDetailsOpen(false)}>
-          <section className="item-drawer" onClick={(event) => event.stopPropagation()}>
+        <div className="item-modal-backdrop" onClick={() => setItemDetailsOpen(false)}>
+          <section className="item-modal" role="dialog" aria-modal="true" aria-labelledby="item-modal-title" onClick={(event) => event.stopPropagation()}>
             <button className="drawer-close" type="button" title="关闭道具详情" aria-label="关闭道具详情" onClick={() => setItemDetailsOpen(false)}><X /></button>
-            <span>{localItem.mode}道具</span><h2>{localItem.title}</h2><p>{ITEM_COPY[localItem.id]?.description}</p>
-            <div><button className="secondary-command" type="button" onClick={() => setItemDetailsOpen(false)}>返回</button>{canUseItem && <button className="primary-command" type="button" disabled={locked} onClick={() => { setItemDetailsOpen(false); void submitLocal({ type: 'use-item', itemId: localItem.id }) }}>使用</button>}</div>
+            <div className="item-modal-icon"><LocalItemIcon /></div><span>{localItem.mode}道具</span><h2 id="item-modal-title">{canUseItem ? `使用${localItem.title}` : localItem.title}</h2><p>{ITEM_COPY[localItem.id]?.description}</p>
+            <div className="item-modal-actions"><button className="secondary-command" type="button" onClick={() => setItemDetailsOpen(false)}>取消</button>{canUseItem && <button className="primary-command" type="button" disabled={locked} onClick={() => { setItemDetailsOpen(false); void submitLocal({ type: 'use-item', itemId: localItem.id }) }}><Check /> 确认使用</button>}</div>
           </section>
         </div>
       )}

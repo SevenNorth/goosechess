@@ -18,10 +18,14 @@ async function driveUntilFinished(page: Page) {
     const outcomeContinue = page.getByRole('button', { name: '继续' })
     const eventChoice = page.locator('.event-choice').first()
     const itemChoice = page.locator('.item-compare-grid button').last()
+    const itemConfirm = page.getByRole('button', { name: '确认保留' })
     const roll = page.getByRole('button', { name: '投掷双骰' })
     if (await outcomeContinue.isVisible()) await outcomeContinue.click()
     else if (await eventChoice.isVisible()) await eventChoice.click()
-    else if (await itemChoice.isVisible()) await itemChoice.click()
+    else if (await itemChoice.isVisible()) {
+      await itemChoice.click()
+      await itemConfirm.click()
+    }
     else if (await roll.isEnabled()) await roll.click()
     else await page.waitForTimeout(25)
   }
@@ -122,6 +126,34 @@ test('offers animation speed and camera motion settings', async ({ page }) => {
   await expect(camera).toBeChecked()
   await camera.uncheck()
   await expect(camera).not.toBeChecked()
+})
+
+test('confirms item use in the center and highlights the retained item', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await startGame(page, '1v1', 53)
+  await page.locator('.held-item').click()
+  const useDialog = page.getByRole('dialog', { name: '使用轻便靴子' })
+  await expect(useDialog).toBeVisible()
+  const dialogBox = await useDialog.boundingBox()
+
+  expect(dialogBox).not.toBeNull()
+  expect(Math.abs(dialogBox!.x + dialogBox!.width / 2 - 960)).toBeLessThan(2)
+  await useDialog.getByRole('button', { name: '取消' }).click()
+  await page.getByRole('button', { name: '投掷双骰' }).click()
+  await page.getByRole('button', { name: /走失的猫/ }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+
+  const itemDialog = page.getByRole('dialog', { name: '选择保留的道具' })
+  const currentItem = itemDialog.getByRole('radio', { name: /当前/ })
+  const newItem = itemDialog.getByRole('radio', { name: /新道具/ })
+  await expect(currentItem).toHaveAttribute('aria-checked', 'true')
+  await expect(currentItem).toHaveClass(/is-selected/)
+  await newItem.click()
+  await expect(currentItem).toHaveAttribute('aria-checked', 'false')
+  await expect(newItem).toHaveAttribute('aria-checked', 'true')
+  await expect(newItem).toHaveClass(/is-selected/)
+  await itemDialog.getByRole('button', { name: '确认保留' }).click()
+  await expect(itemDialog).toHaveCount(0)
 })
 
 test('shows a clear warning below the supported landscape size', async ({ page }) => {

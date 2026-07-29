@@ -57,4 +57,17 @@ describe('PixiJS 65 格完整对局', () => {
 
     expect(onExit).toHaveBeenCalledOnce()
   })
+
+  it('通过居中确认弹窗使用主动道具', async () => {
+    render(<App seed={5} />)
+    fireEvent.click(screen.getByRole('button', { name: '开始试航' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '投掷双骰' }).hasAttribute('disabled')).toBe(false))
+
+    fireEvent.click(screen.getByRole('button', { name: /当前道具.*轻便靴子/ }))
+    const dialog = screen.getByRole('dialog', { name: '使用轻便靴子' })
+
+    expect(within(dialog).getByRole('button', { name: '取消' })).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole('button', { name: '确认使用' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /暂无道具/ })).toBeTruthy())
+  })
 })

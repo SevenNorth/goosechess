@@ -74,23 +74,34 @@ describe('deterministic rule kernel', () => {
     }
   })
 
-  it('resolves multiple collisions in seat order and consumes collision shields', () => {
+  it('moves the previous occupant back to the movement origin after a collision', () => {
     const definition = makeDefinition(makeMap(20, [19]))
-    const initial = createInitialGameState({ definition, participants: makeParticipants(4, [4, 6, 6, 0]), seed: 3 })
+    const initial = createInitialGameState({ definition, participants: makeParticipants(2, [4, 6]), seed: 3 })
+    const result = settleMovement(initial, definition, 'p0', 2)
+
+    expect(result.state.players.map((player) => player.spaceId)).toEqual([6, 4])
+    expect(result.cues.filter((cue) => cue.type === 'token-relocate')).toEqual([
+      { type: 'token-relocate', playerId: 'p1', fromSpaceId: 6, toSpaceId: 4, reason: 'collision', blocked: false },
+    ])
+  })
+
+  it('bounces the moving token when a collision shield keeps the occupant in place', () => {
+    const definition = makeDefinition(makeMap(20, [19]))
+    const initial = createInitialGameState({ definition, participants: makeParticipants(2, [4, 6]), seed: 3 })
     const state = {
       ...initial,
-      players: initial.players.map((player) => player.playerId === 'p2' ? { ...player, itemId: 'cat' } : player),
+      players: initial.players.map((player) => player.playerId === 'p1' ? { ...player, itemId: 'cat' } : player),
     }
     const result = settleMovement(state, definition, 'p0', 2)
     const collisions = result.events.filter((event) => event.type === 'collision-resolved')
 
-    expect(collisions.map((event) => event.displacedPlayerId)).toEqual(['p1', 'p2'])
+    expect(collisions).toMatchObject([{ movingPlayerId: 'p0', displacedPlayerId: 'p1', blocked: true }])
     expect(result.cues.filter((cue) => cue.type === 'token-relocate')).toEqual([
-      { type: 'token-relocate', playerId: 'p1', fromSpaceId: 6, toSpaceId: 4, reason: 'collision', blocked: false },
-      { type: 'token-relocate', playerId: 'p2', fromSpaceId: 6, toSpaceId: 6, reason: 'collision', blocked: true },
+      { type: 'token-relocate', playerId: 'p1', fromSpaceId: 6, toSpaceId: 6, reason: 'collision', blocked: true },
+      { type: 'token-relocate', playerId: 'p0', fromSpaceId: 6, toSpaceId: 4, reason: 'collision', blocked: false },
     ])
-    expect(result.state.players.map((player) => player.spaceId)).toEqual([6, 4, 6, 0])
-    expect(result.state.players[2].itemId).toBeNull()
+    expect(result.state.players.map((player) => player.spaceId)).toEqual([4, 6])
+    expect(result.state.players[1].itemId).toBeNull()
   })
 
   it.each([2, 3, 4])('advances a full %i-player round without hardcoded identities', (playerCount) => {

@@ -114,6 +114,7 @@ export function settleMovement(
       const blocked = itemBehavior(definition, occupant.itemId) === 'collision-shield'
       if (blocked) {
         occupant.itemId = null
+        movingPlayer.spaceId = movement.fromSpaceId
         events.push({ type: 'item-changed', playerId: occupant.playerId, itemId: null })
       } else {
         occupant.spaceId = movement.fromSpaceId
@@ -134,10 +135,20 @@ export function settleMovement(
         reason: 'collision',
         blocked,
       })
+      if (blocked) {
+        cues.push({
+          type: 'token-relocate',
+          playerId: movingPlayer.playerId,
+          fromSpaceId: movement.toSpaceId,
+          toSpaceId: movement.fromSpaceId,
+          reason: 'collision',
+          blocked: false,
+        })
+      }
     }
   }
 
-  const landedOnEvent = definition.map.spaces.find((space) => space.index === movement.toSpaceId)?.kind === 'event'
+  const landedOnEvent = definition.map.spaces.find((space) => space.index === movingPlayer.spaceId)?.kind === 'event'
   return { state, events, cues, landedOnEvent }
 }
 
