@@ -8,6 +8,7 @@ import {
   History,
   PackageOpen,
   RotateCcw,
+  SlidersHorizontal,
   Shield,
   Sparkles,
   UserRound,
@@ -78,6 +79,9 @@ interface GameSessionProps {
   readonly seed: number
   readonly onRestart: () => void
   readonly animationSpeed: number
+  readonly cameraMotion: boolean
+  readonly onAnimationSpeedChange: (speed: number) => void
+  readonly onCameraMotionChange: (enabled: boolean) => void
 }
 
 function hashPlayerId(playerId: string) {
@@ -116,7 +120,7 @@ function gameLogLines(update: AuthorityUpdate) {
   return lines
 }
 
-function GameSession({ mode, seed, onRestart, animationSpeed }: GameSessionProps) {
+function GameSession({ mode, seed, onRestart, animationSpeed, cameraMotion, onAnimationSpeedChange, onCameraMotionChange }: GameSessionProps) {
   const [match] = useState(() => createOfflineMatch({ mode, seed, gameId: `offline-${mode}-${seed}` }, GAME_DEFINITION))
   const [snapshot, setSnapshot] = useState(() => match.authority.getSnapshot())
   const [board, setBoard] = useState<BoardSceneController | null>(null)
@@ -130,6 +134,7 @@ function GameSession({ mode, seed, onRestart, animationSpeed }: GameSessionProps
   const [eventOutcome, setEventOutcome] = useState<EventOutcome | null>(null)
   const [showWin, setShowWin] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [logs, setLogs] = useState<LogEntry[]>([{ id: 1, text: '试航棋盘已经铺好。' }])
   const logId = useRef(2)
 
@@ -166,6 +171,7 @@ function GameSession({ mode, seed, onRestart, animationSpeed }: GameSessionProps
       await board.playUpdate(result.update, previousSnapshot, {
         onStageChange: (stage) => mountedRef.current && setPresentationStage(stage),
         speed: animationSpeed,
+        cameraMotion,
       })
     }
     if (actorIsLocal && resolved?.type === 'event-resolved') {
@@ -174,7 +180,7 @@ function GameSession({ mode, seed, onRestart, animationSpeed }: GameSessionProps
     }
     if (gameWon) setShowWin(true)
     return true
-  }, [addLogs, animationSpeed, board])
+  }, [addLogs, animationSpeed, board, cameraMotion])
 
   const submitLocal = useCallback(async (command: CoreGameCommand) => {
     if (lockedRef.current) return false
@@ -260,12 +266,13 @@ function GameSession({ mode, seed, onRestart, animationSpeed }: GameSessionProps
 
   return (
     <main className="stage5-shell">
-      <PixiBoard map={GAME_DEFINITION.map} snapshot={snapshot} onReady={(controller) => { controller.sync(snapshot); setBoard(controller) }} />
+      <PixiBoard map={GAME_DEFINITION.map} snapshot={snapshot} onReady={(controller) => { controller.sync(snapshot); setBoard(controller) }} onDispose={() => setBoard(null)} />
 
       <header className="stage5-topbar">
         <div className="stage5-brand"><span>鹅</span><div><strong>鹅了个棋</strong><small>奥普港 65 格竞速 · {mode}</small></div></div>
         <div className="topbar-actions">
           <button className="icon-command" type="button" title="对局日志" aria-label="对局日志" onClick={() => setShowLogs(true)}><History /></button>
+          <button className="icon-command" type="button" title="表现设置" aria-label="表现设置" onClick={() => setShowSettings(true)}><SlidersHorizontal /></button>
           <button className="icon-command" type="button" title="声音尚未接入" aria-label="声音尚未接入" disabled><VolumeX /></button>
           <button className="icon-command" type="button" title="重新开始" aria-label="重新开始" onClick={onRestart}><RotateCcw /></button>
         </div>
@@ -279,7 +286,7 @@ function GameSession({ mode, seed, onRestart, animationSpeed }: GameSessionProps
             <article className={player.playerId === snapshot.state.activePlayerId ? 'hud-player is-active' : 'hud-player'} key={player.playerId} style={{ '--seat-color': COLOR_HEX[player.colorId] } as React.CSSProperties}>
               <span className="hud-avatar">{player.controller === 'local' ? <UserRound /> : <Bot />}</span>
               <div className="hud-player-copy">
-                <div><strong>{player.displayName}</strong><span>{player.spaceId} / {finalSpaceId}</span></div>
+                <div><strong title={player.displayName}>{player.displayName}</strong><span>{player.spaceId} / {finalSpaceId}</span></div>
                 <div className="hud-progress"><i style={{ width: `${progress}%` }} /></div>
                 <small>{item?.title ?? '无道具'}{player.skipTurns ? ` · 暂停 ${player.skipTurns}` : ''}</small>
               </div>
@@ -345,7 +352,7 @@ function GameSession({ mode, seed, onRestart, animationSpeed }: GameSessionProps
             <div className="panel-kicker">{activeLandmark ? `${activeLandmark.name} · 地标事件` : '遭遇事件'}</div><h2 id="event-title">从三张牌中选择</h2>
             <div className="event-card-grid">
               {offeredEvents.map((event, index) => <button className={`event-choice tone-${index}`} type="button" disabled={locked} onClick={() => void submitLocal({ type: 'choose-event', eventId: event.id })} key={event.id}>
-                <span>{event.kind}</span><div className="event-sketch">{['!', '?', '↗'][index]}</div><strong>{event.title}</strong><p>{event.flavor}</p><small>{event.threshold ? `双骰 ≥ ${event.threshold}` : '直接结算'}</small>
+                <span>{event.kind}</span><div className="event-sketch">{['!', '?', '↗'][index]}</div><strong title={event.title}>{event.title}</strong><p>{event.flavor}</p><small>{event.threshold ? `双骰 ≥ ${event.threshold}` : '直接结算'}</small>
               </button>)}
             </div>
           </section>
@@ -377,7 +384,7 @@ function GameSession({ mode, seed, onRestart, animationSpeed }: GameSessionProps
       {itemDetailsOpen && localItem && (
         <div className="item-drawer-backdrop" onClick={() => setItemDetailsOpen(false)}>
           <section className="item-drawer" onClick={(event) => event.stopPropagation()}>
-            <button className="drawer-close" type="button" aria-label="关闭" onClick={() => setItemDetailsOpen(false)}><X /></button>
+            <button className="drawer-close" type="button" title="关闭道具详情" aria-label="关闭道具详情" onClick={() => setItemDetailsOpen(false)}><X /></button>
             <span>{localItem.mode}道具</span><h2>{localItem.title}</h2><p>{ITEM_COPY[localItem.id]?.description}</p>
             <div><button className="secondary-command" type="button" onClick={() => setItemDetailsOpen(false)}>返回</button>{canUseItem && <button className="primary-command" type="button" disabled={locked} onClick={() => { setItemDetailsOpen(false); void submitLocal({ type: 'use-item', itemId: localItem.id }) }}>使用</button>}</div>
           </section>
@@ -388,7 +395,13 @@ function GameSession({ mode, seed, onRestart, animationSpeed }: GameSessionProps
         <div className="overlay-stage win-overlay"><section className="win-panel"><div className="win-landmark"><img src="/assets/maps/aup-port/noise-house.png" alt="喧声屋" /><Crown /></div><div className="win-summary"><div className="panel-kicker">喧声屋终局</div><h2>{snapshot.state.players.find((player) => player.playerId === snapshot.state.winnerPlayerId)?.displayName} 获胜</h2><p>进入第 {snapshot.state.players.find((player) => player.playerId === snapshot.state.winnerPlayerId)?.spaceId} 格 · 第 {snapshot.state.round} 轮</p><ol className="final-ranking">{standings.map((player, index) => <li key={player.playerId}><span>{index + 1}</span><strong>{player.displayName}</strong><small>第 {player.spaceId} 格</small></li>)}</ol><button className="primary-command" type="button" onClick={onRestart}><RotateCcw /> 再来一局</button></div></section></div>
       )}
 
-      {showLogs && <div className="log-drawer-backdrop" onClick={() => setShowLogs(false)}><aside className="log-drawer" onClick={(event) => event.stopPropagation()}><header><h2>对局日志</h2><button className="drawer-close" type="button" aria-label="关闭日志" onClick={() => setShowLogs(false)}><X /></button></header>{logs.map((entry) => <p key={entry.id}>{entry.text}</p>)}</aside></div>}
+      {showLogs && <div className="log-drawer-backdrop" onClick={() => setShowLogs(false)}><aside className="log-drawer" onClick={(event) => event.stopPropagation()}><header><h2>对局日志</h2><button className="drawer-close" type="button" title="关闭日志" aria-label="关闭日志" onClick={() => setShowLogs(false)}><X /></button></header>{logs.map((entry) => <p key={entry.id}>{entry.text}</p>)}</aside></div>}
+
+      {showSettings && <div className="settings-backdrop" onClick={() => setShowSettings(false)}><section className="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={(event) => event.stopPropagation()}>
+        <header><div><span>桌面表现</span><h2 id="settings-title">表现设置</h2></div><button className="drawer-close" type="button" title="关闭设置" aria-label="关闭设置" onClick={() => setShowSettings(false)}><X /></button></header>
+        <div className="settings-row"><div><strong>动画速度</strong><small>调整骰子、路线与棋子移动节奏</small></div><div className="speed-segments" role="radiogroup" aria-label="动画速度">{[0.75, 1, 1.5, 2].map((speed) => <button type="button" role="radio" aria-checked={animationSpeed === speed} className={animationSpeed === speed ? 'is-selected' : ''} onClick={() => onAnimationSpeedChange(speed)} key={speed}>{speed}x</button>)}</div></div>
+        <label className="settings-row camera-setting"><div><strong>镜头运动</strong><small>移动时轻微聚焦目标，关闭后保持全棋盘固定</small></div><input type="checkbox" checked={cameraMotion} onChange={(event) => onCameraMotionChange(event.target.checked)} /><span aria-hidden="true" /></label>
+      </section></div>}
     </main>
   )
 }
@@ -397,11 +410,23 @@ export interface AppProps {
   readonly mode?: OfflineMatchMode
   readonly seed?: number
   readonly animationSpeed?: number
+  readonly cameraMotion?: boolean
 }
 
-function App({ mode = '1v1', seed = 20260728, animationSpeed = 1 }: AppProps) {
+function App({ mode = '1v1', seed = 20260728, animationSpeed: initialAnimationSpeed = 1, cameraMotion: initialCameraMotion = true }: AppProps) {
   const [restart, setRestart] = useState(0)
-  return <GameSession key={`${mode}-${seed}-${restart}`} mode={mode} seed={seed + restart} animationSpeed={animationSpeed} onRestart={() => setRestart((value) => value + 1)} />
+  const [animationSpeed, setAnimationSpeed] = useState(initialAnimationSpeed)
+  const [cameraMotion, setCameraMotion] = useState(initialCameraMotion)
+  return <GameSession
+    key={`${mode}-${seed}-${restart}`}
+    mode={mode}
+    seed={seed + restart}
+    animationSpeed={animationSpeed}
+    cameraMotion={cameraMotion}
+    onAnimationSpeedChange={setAnimationSpeed}
+    onCameraMotionChange={setCameraMotion}
+    onRestart={() => setRestart((value) => value + 1)}
+  />
 }
 
 export default App

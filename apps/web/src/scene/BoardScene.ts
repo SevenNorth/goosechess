@@ -13,6 +13,7 @@ import type { MapDefinition } from '@goose-chess/game-core'
 import type { GameSnapshot, AuthorityUpdate, PresentationCue } from '@goose-chess/game-protocol'
 import type { AudioPort } from '../audio/audio-port'
 import { presentationMachine, type PresentationStage } from '../game-client/machine/presentation-machine'
+import { settlePresentation } from '../game-client/presentation-recovery'
 const SEAT_COLORS: Readonly<Record<string, number>> = {
   pink: 0xe82f73,
   blue: 0x3977c5,
@@ -36,12 +37,23 @@ interface TokenVisual {
 export interface BoardPlaybackOptions {
   readonly onStageChange?: (stage: PresentationStage) => void
   readonly speed?: number
+  readonly cameraMotion?: boolean
+}
+
+export interface BoardSceneDiagnostics {
+  readonly activeScenes: number
+  readonly tickerHandlers: number
+  readonly loadedTextures: number
+  readonly windowListeners: number
+  readonly activeTweens: number
+  readonly tokenCount: number
 }
 
 export interface BoardSceneController {
   playUpdate(update: AuthorityUpdate, previousSnapshot: GameSnapshot, options?: BoardPlaybackOptions): Promise<void>
   sync(snapshot: GameSnapshot): void
   setActivePlayer(playerId: string): void
+  diagnostics(): BoardSceneDiagnostics
   destroy(): void
 }
 
@@ -57,8 +69,10 @@ function tokenOffset(seatIndex: number, playerCount: number) {
 }
 
 export class BoardScene implements BoardSceneController {
+  private static activeScenes = 0
   private readonly app = new Application()
   private readonly world = new Container()
+  private readonly staticBoardLayer = new Container()
   private readonly tableLayer = new Container()
   private readonly boardLayer = new Container()
   private readonly spaceLayer = new Container()
@@ -77,6 +91,15 @@ export class BoardScene implements BoardSceneController {
   private winGraphic: Graphics | null = null
   private playbackRevision = 0
   private activePlayerId = ''
+  private loadedTextureCount = 0
+  private windowListenerCount = 0
+  private tickerAttached = false
+  private appInitialized = false
+  private sceneCounted = false
+  private activePlaybackInterrupt: (() => void) | null = null
+  private cameraFocusX: number
+  private cameraFocusY: number
+  private cameraZoom = 1
   private destroyed = false
 
   private constructor(
@@ -84,17 +107,31 @@ export class BoardScene implements BoardSceneController {
     private readonly audio: AudioPort,
     private readonly map: MapDefinition,
   ) {
+    this.cameraFocusX = map.logicalSize.width / 2
+    this.cameraFocusY = map.logicalSize.height / 2
     this.machine = createActor(presentationMachine).start()
     this.resizeObserver = new ResizeObserver(() => this.resizeWorld())
   }
 
-  static async create(host: HTMLElement, audio: AudioPort, map: MapDefinition, isCancelled: () => boolean = () => false) {
+  static async create(
+    host: HTMLElement,
+    audio: AudioPort,
+    map: MapDefinition,
+    isCancelled: () => boolean = () => false,
+    onProgress: (progress: number) => void = () => undefined,
+  ) {
     const scene = new BoardScene(host, audio, map)
-    await scene.initialize(isCancelled)
-    return scene
+    try {
+      await scene.initialize(isCancelled, onProgress)
+      return scene
+    } catch (error) {
+      scene.destroy()
+      throw error
+    }
   }
 
-  private async initialize(isCancelled: () => boolean) {
+  private async initialize(isCancelled: () => boolean, onProgress: (progress: number) => void) {
+    onProgress(0.04)
     await this.app.init({
       resizeTo: this.host,
       antialias: true,
@@ -103,32 +140,41 @@ export class BoardScene implements BoardSceneController {
       backgroundColor: 0x171916,
       preference: 'webgl',
     })
+    this.appInitialized = true
     if (isCancelled()) {
       this.destroy()
       return
     }
+    BoardScene.activeScenes += 1
+    this.sceneCounted = true
+    onProgress(0.12)
     this.app.canvas.className = 'pixi-canvas'
     this.app.canvas.dataset.testid = 'pixi-canvas'
     this.host.appendChild(this.app.canvas)
     this.app.stage.addChild(this.world)
-    this.world.addChild(
+    this.staticBoardLayer.addChild(
       this.tableLayer,
       this.boardLayer,
       this.spaceLayer,
       this.landmarkLayer,
+    )
+    this.world.addChild(
+      this.staticBoardLayer,
       this.routeLayer,
       this.tokenLayer,
       this.effectsLayer,
       this.foregroundLayer,
     )
     this.app.ticker.add(this.updateTweens)
+    this.tickerAttached = true
     this.resizeObserver.observe(this.host)
-    await this.buildBoard()
+    await this.buildBoard(onProgress)
     if (isCancelled()) {
       this.destroy()
       return
     }
     this.resizeWorld()
+    onProgress(1)
   }
 
   private readonly updateTweens = () => {
@@ -147,21 +193,25 @@ export class BoardScene implements BoardSceneController {
     if (this.destroyed) return
     const width = this.app.screen.width
     const height = this.app.screen.height
-    const scale = Math.min(width / this.map.logicalSize.width, height / this.map.logicalSize.height)
+    const scale = Math.min(width / this.map.logicalSize.width, height / this.map.logicalSize.height) * this.cameraZoom
     this.world.scale.set(scale)
-    this.world.position.set((width - this.map.logicalSize.width * scale) / 2, (height - this.map.logicalSize.height * scale) / 2)
+    this.world.position.set(width / 2 - this.cameraFocusX * scale, height / 2 - this.cameraFocusY * scale)
   }
 
-  private async buildBoard() {
+  private async buildBoard(onProgress: (progress: number) => void) {
     const landmarkAssets = this.map.assets.landmarks ?? {}
     const landmarkTextures = new Map<string, Texture>()
-    const [tableTexture, paperTexture, ...loadedLandmarks] = await Promise.all([
-      Assets.load<Texture>('/assets/sample/tabletop.png'),
-      Assets.load<Texture>(`/${this.map.assets.background}`),
-      ...this.map.landmarks.map((landmark) => landmarkAssets[landmark.id]
-        ? Assets.load<Texture>(`/${landmarkAssets[landmark.id]}`)
-        : Promise.resolve(Texture.WHITE)),
-    ])
+    const assetPromises = [
+      '/assets/sample/tabletop.png',
+      `/${this.map.assets.background}`,
+      ...this.map.landmarks.map((landmark) => landmarkAssets[landmark.id] ? `/${landmarkAssets[landmark.id]}` : null),
+    ].map(async (url) => {
+      const texture = url ? await Assets.load<Texture>(url) : Texture.WHITE
+      this.loadedTextureCount += url ? 1 : 0
+      onProgress(0.12 + this.loadedTextureCount / (this.map.landmarks.length + 2) * 0.8)
+      return texture
+    })
+    const [tableTexture, paperTexture, ...loadedLandmarks] = await Promise.all(assetPromises)
     this.map.landmarks.forEach((landmark, index) => landmarkTextures.set(landmark.id, loadedLandmarks[index]))
     const worldWidth = this.map.logicalSize.width
     const worldHeight = this.map.logicalSize.height
@@ -219,6 +269,7 @@ export class BoardScene implements BoardSceneController {
     title.position.set(520, 385)
     title.rotation = -0.02
     this.foregroundLayer.addChild(title)
+    this.staticBoardLayer.cacheAsTexture({ resolution: 1, antialias: true })
   }
 
   private addLandmark(texture: Texture, x: number, y: number, size: number, label: string, isFinish = false) {
@@ -256,6 +307,7 @@ export class BoardScene implements BoardSceneController {
       .roundRect(-27, -9, 54, 11, 4).fill({ color: outline })
       .roundRect(-22, -7, 44, 7, 3).fill({ color: 0x6b6251 })
     body.addChild(model)
+    body.cacheAsTexture({ resolution: 1.5, antialias: true })
     root.addChild(shadow, body)
     const offset = tokenOffset(player.seatIndex, playerCount)
     const point = spacePoint(this.map, player.spaceId)
@@ -300,13 +352,30 @@ export class BoardScene implements BoardSceneController {
     if (this.destroyed) return Promise.resolve()
     return new Promise<void>((resolve) => {
       const state = { progress: 0 }
-      new Tween(state, this.tweens)
+      const tween = new Tween(state, this.tweens)
         .to({ progress: 1 }, Math.max(1, duration))
         .easing(easing)
         .onUpdate(() => update(state.progress))
-        .onComplete(() => resolve())
+        .onComplete(() => {
+          this.tweens.remove(tween)
+          resolve()
+        })
         .start(performance.now())
     })
+  }
+
+  private resetCamera() {
+    this.cameraFocusX = this.map.logicalSize.width / 2
+    this.cameraFocusY = this.map.logicalSize.height / 2
+    this.cameraZoom = 1
+    this.resizeWorld()
+  }
+
+  private updateCamera(focusX: number, focusY: number, zoom: number) {
+    this.cameraFocusX = focusX
+    this.cameraFocusY = focusY
+    this.cameraZoom = zoom
+    this.resizeWorld()
   }
 
   private async playDice(cue: Extract<PresentationCue, { type: 'dice-roll' }>, speed: number) {
@@ -365,7 +434,7 @@ export class BoardScene implements BoardSceneController {
     await this.animate(390 / speed, (progress) => this.drawPartialRoute(points, progress, color), Easing.Quadratic.Out)
   }
 
-  private async emphasizeTarget(cue: Extract<PresentationCue, { type: 'target-highlight' }>, speed: number) {
+  private async emphasizeTarget(cue: Extract<PresentationCue, { type: 'target-highlight' }>, speed: number, cameraMotion: boolean) {
     const point = spacePoint(this.map, cue.spaceId)
     this.targetGraphic?.destroy()
     const targetRadius = this.map.spaces.length > 24 ? 25 : 38
@@ -373,9 +442,15 @@ export class BoardScene implements BoardSceneController {
     target.position.set(point.x, point.y)
     this.effectsLayer.addChild(target)
     this.targetGraphic = target
+    const cameraStart = { x: this.cameraFocusX, y: this.cameraFocusY, zoom: this.cameraZoom }
     await this.animate(220 / speed, (progress) => {
       target.scale.set(0.8 + Math.sin(progress * Math.PI) * 0.28)
       target.alpha = 0.65 + Math.sin(progress * Math.PI) * 0.35
+      if (cameraMotion) this.updateCamera(
+        cameraStart.x + (point.x - cameraStart.x) * progress,
+        cameraStart.y + (point.y - cameraStart.y) * progress,
+        cameraStart.zoom + (1.06 - cameraStart.zoom) * progress,
+      )
     }, Easing.Quadratic.Out)
   }
 
@@ -387,7 +462,7 @@ export class BoardScene implements BoardSceneController {
     this.routeGraphic = null
   }
 
-  private async hopToken(cue: Extract<PresentationCue, { type: 'token-hop' }>, snapshot: GameSnapshot, speed: number) {
+  private async hopToken(cue: Extract<PresentationCue, { type: 'token-hop' }>, snapshot: GameSnapshot, speed: number, cameraMotion: boolean) {
     const player = snapshot.state.players.find((candidate) => candidate.playerId === cue.playerId)
     const token = this.tokens.get(cue.playerId)
     if (!player || !token) return
@@ -425,6 +500,16 @@ export class BoardScene implements BoardSceneController {
     }
     this.audio.play('token.land')
     token.animating = false
+    if (cameraMotion) {
+      const cameraStart = { x: this.cameraFocusX, y: this.cameraFocusY, zoom: this.cameraZoom }
+      const center = { x: this.map.logicalSize.width / 2, y: this.map.logicalSize.height / 2 }
+      await this.animate(180 / speed, (progress) => this.updateCamera(
+        cameraStart.x + (center.x - cameraStart.x) * progress,
+        cameraStart.y + (center.y - cameraStart.y) * progress,
+        cameraStart.zoom + (1 - cameraStart.zoom) * progress,
+      ), Easing.Quadratic.Out)
+    }
+    this.resetCamera()
   }
 
   private async relocateToken(cue: Extract<PresentationCue, { type: 'token-relocate' }>, snapshot: GameSnapshot, speed: number) {
@@ -491,6 +576,8 @@ export class BoardScene implements BoardSceneController {
 
   private async runUpdate(update: AuthorityUpdate, previousSnapshot: GameSnapshot, playbackRevision: number, options?: BoardPlaybackOptions) {
     const speed = options?.speed ?? 1
+    const cameraMotion = options?.cameraMotion ?? true
+    if (!cameraMotion) this.resetCamera()
     for (let index = 0; index < update.cues.length; index += 1) {
       if (playbackRevision !== this.playbackRevision) return
       const cue = update.cues[index]
@@ -508,14 +595,14 @@ export class BoardScene implements BoardSceneController {
         this.machine.send({ type: 'ROUTE_DONE' })
         this.stage(options, 'targetEmphasis')
       } else if (cue.type === 'target-highlight') {
-        await this.emphasizeTarget(cue, speed)
+        await this.emphasizeTarget(cue, speed, cameraMotion)
         this.machine.send({ type: 'TARGET_DONE' })
         this.stage(options, 'routeFade')
         await this.fadeRoute(speed)
         this.machine.send({ type: 'ROUTE_HIDDEN' })
         this.stage(options, 'moving')
       } else if (cue.type === 'token-hop') {
-        await this.hopToken(cue, update.snapshot, speed)
+        await this.hopToken(cue, update.snapshot, speed, cameraMotion)
         this.machine.send({ type: 'MOVE_DONE' })
         this.stage(options, 'ready')
       } else if (cue.type === 'token-relocate') {
@@ -529,24 +616,26 @@ export class BoardScene implements BoardSceneController {
   async playUpdate(update: AuthorityUpdate, previousSnapshot: GameSnapshot, options?: BoardPlaybackOptions) {
     const playbackRevision = ++this.playbackRevision
     const playback = this.runUpdate(update, previousSnapshot, playbackRevision, options)
-    let timeoutId = 0
-    let interruptPlayback: (() => void) | undefined
-    const interrupted = new Promise<'interrupted'>((resolve) => {
-      interruptPlayback = () => resolve('interrupted')
-      timeoutId = window.setTimeout(interruptPlayback, 12_000)
+    const outcome = await settlePresentation(playback, {
+      timeoutMs: 12_000,
+      subscribeInterrupt: (interrupt) => {
+        this.activePlaybackInterrupt = interrupt
+        const onBlur = () => interrupt()
+        window.addEventListener('blur', onBlur, { once: true })
+        this.windowListenerCount += 1
+        return () => {
+          this.activePlaybackInterrupt = null
+          window.removeEventListener('blur', onBlur)
+          this.windowListenerCount = Math.max(0, this.windowListenerCount - 1)
+        }
+      },
     })
-    const onBlur = () => interruptPlayback?.()
-    window.addEventListener('blur', onBlur, { once: true })
-    const outcome = await Promise.race([
-      playback.then(() => 'complete' as const).catch(() => 'failed' as const),
-      interrupted,
-    ])
-    window.clearTimeout(timeoutId)
-    window.removeEventListener('blur', onBlur)
+    if (this.destroyed) return
     if (outcome !== 'complete') {
       this.playbackRevision += 1
       this.tweens.removeAll()
     }
+    this.resetCamera()
     this.machine.send({ type: 'RESET' })
     this.routeGraphic?.destroy()
     this.routeGraphic = null
@@ -556,15 +645,38 @@ export class BoardScene implements BoardSceneController {
     this.stage(options, 'ready')
   }
 
+  diagnostics(): BoardSceneDiagnostics {
+    return {
+      activeScenes: BoardScene.activeScenes,
+      tickerHandlers: this.tickerAttached ? 1 : 0,
+      loadedTextures: this.loadedTextureCount,
+      windowListeners: this.windowListenerCount,
+      activeTweens: this.tweens.getAll().length,
+      tokenCount: this.tokens.size,
+    }
+  }
+
   destroy() {
     if (this.destroyed) return
     this.destroyed = true
+    this.activePlaybackInterrupt?.()
+    this.activePlaybackInterrupt = null
     this.playbackRevision += 1
     this.resizeObserver.disconnect()
     this.machine.stop()
     this.tweens.removeAll()
-    this.app.ticker.remove(this.updateTweens)
-    this.app.destroy({ removeView: true }, { children: true })
+    if (this.tickerAttached) {
+      this.app.ticker.remove(this.updateTweens)
+      this.tickerAttached = false
+    }
+    if (this.appInitialized) {
+      this.app.destroy({ removeView: true }, { children: true })
+      this.appInitialized = false
+    }
+    if (this.sceneCounted) {
+      BoardScene.activeScenes = Math.max(0, BoardScene.activeScenes - 1)
+      this.sceneCounted = false
+    }
     this.tokens.clear()
     this.audio.dispose()
   }

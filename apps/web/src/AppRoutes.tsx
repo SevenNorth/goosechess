@@ -96,11 +96,18 @@ function PlayPage() {
 
 export default function AppRoutes() {
   return (
-    <Routes>
-      <Route path="/" element={<PreparationPage />} />
-      <Route path="/play" element={<PlayPage />} />
-      <Route path="/room/:roomCode" element={<RoomUnavailablePage />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/" element={<PreparationPage />} />
+        <Route path="/play" element={<PlayPage />} />
+        <Route path="/room/:roomCode" element={<RoomUnavailablePage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+      <aside className="desktop-size-warning" role="status" aria-label="桌面窗口尺寸提示">
+        <Dices />
+        <strong>请扩大为横向桌面窗口</strong>
+        <span>鹅了个棋当前需要至少 1180 x 680 的横屏空间。</span>
+      </aside>
+    </>
   )
 }

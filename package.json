@@ -23,7 +23,12 @@
     "check:boundaries": "node scripts/check-package-boundaries.mjs",
     "simulate": "npm run build:rules && node scripts/simulate.mjs",
     "validate:content": "npm run build:rules && node scripts/validate-content.mjs",
-    "e2e": "playwright test"
+    "check:versions": "node scripts/check-version-upgrades.mjs",
+    "check:release": "node scripts/check-release-assets.mjs",
+    "e2e": "playwright test",
+    "e2e:ci": "playwright test stage7-release.spec.ts",
+    "e2e:stability": "node scripts/run-stability.mjs",
+    "e2e:stability:smoke": "node scripts/run-stability.mjs --minutes=0.1"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
