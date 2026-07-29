@@ -65,6 +65,50 @@ test('starts every offline mode with mouse controls only', async ({ page }) => {
   }
 })
 
+test('returns from a selected match to the preparation page', async ({ page }) => {
+  await page.goto('/play?mode=1v2&seed=31')
+  await waitForBoard(page)
+
+  await page.getByRole('button', { name: '返回首页' }).click()
+
+  await expect(page).toHaveURL('/')
+  await expect(page.getByRole('heading', { name: '选择人机模式' })).toBeVisible()
+})
+
+test('keeps a full desktop board fixed at its native scale', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await startGame(page, '1v1', 31)
+  const before = await page.evaluate(() => window.__GOOSE_CHESS_DIAGNOSTICS__?.())
+
+  expect(before?.pannable).toBe(false)
+  expect(before?.cameraZoom).toBe(1)
+  await page.getByRole('button', { name: '投掷双骰' }).click()
+  await page.waitForTimeout(500)
+  const after = await page.evaluate(() => window.__GOOSE_CHESS_DIAGNOSTICS__?.())
+
+  expect(after?.cameraZoom).toBe(1)
+  expect(after?.cameraFocusX).toBe(before?.cameraFocusX)
+  expect(after?.cameraFocusY).toBe(before?.cameraFocusY)
+})
+
+test('allows dragging a board that does not fit the viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await startGame(page, '1v1', 31)
+  const canvas = page.locator('canvas[data-testid="pixi-canvas"]')
+  const before = await page.evaluate(() => window.__GOOSE_CHESS_DIAGNOSTICS__?.())
+  const box = await canvas.boundingBox()
+
+  expect(before?.pannable).toBe(true)
+  expect(box).not.toBeNull()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box!.x + box!.width / 2 - 120, box!.y + box!.height / 2 - 80, { steps: 6 })
+  await page.mouse.up()
+  const after = await page.evaluate(() => window.__GOOSE_CHESS_DIAGNOSTICS__?.())
+
+  expect(after?.cameraFocusX !== before?.cameraFocusX || after?.cameraFocusY !== before?.cameraFocusY).toBe(true)
+})
+
 test('offers animation speed and camera motion settings', async ({ page }) => {
   await startGame(page)
   const settingsButton = page.getByRole('button', { name: '表现设置' })

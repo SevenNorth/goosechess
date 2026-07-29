@@ -8,7 +8,7 @@ import type {
   SkinContentDefinition,
 } from './types.js'
 
-export const CONTENT_VERSION = '2026.07.28.2'
+export const CONTENT_VERSION = '2026.07.29.1'
 
 export const LANDMARK_DEFINITIONS = [
   { id: 'repair-room', title: '维修室', spaceIds: [0] },
@@ -78,6 +78,7 @@ const DEFAULT_SPACE_POINTS = Array.from({ length: 66 }, (_, index) => {
             : index <= 52 ? line(19, 77, 41, 52, 57)
               : index <= 56 ? line(52, 34, 53, 56, 82, false)
                 : line(76, 31, 57, 65, 35)
+  if (index === 21) return { x: 1120, y: 139 }
   return { x: Math.round(percent.x * 12.8), y: Math.round(percent.y * 8.2) }
 })
 
@@ -90,7 +91,7 @@ const LANDMARK_PLACEMENTS: Readonly<Record<string, { x: number; y: number; size:
   madhouse: { x: 1050, y: 410, size: 108 },
   'grand-boil': { x: 930, y: 270, size: 108 },
   mixologist: { x: 715, y: 270, size: 104 },
-  'noise-house': { x: 525, y: 250, size: 142 },
+  'noise-house': { x: 469, y: 330, size: 210 },
 }
 
 export const DEFAULT_MAP_DEFINITION = {

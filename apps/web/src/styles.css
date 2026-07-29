@@ -77,6 +77,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .stage5-shell { position: relative; width: 100vw; height: 100vh; min-width: 1180px; min-height: 680px; overflow: hidden; background: #171916 url('/assets/sample/tabletop.png') repeat; }
 .pixi-board-host { position: absolute; inset: 68px 0 0; }
 .pixi-canvas { display: block; width: 100%; height: 100%; }
+.pixi-canvas.is-pannable { cursor: grab; touch-action: none; }
+.pixi-canvas.is-pannable.is-dragging { cursor: grabbing; }
 .board-load-state { position: absolute; z-index: 80; inset: 68px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #eef0e8; background: #171916 url('/assets/sample/tabletop.png') repeat; }
 .board-load-state > span { color: #c7ccc2; font-size: 12px; font-weight: 800; }
 .board-load-state > strong { margin-top: 9px; color: var(--gold); font-size: 30px; }
@@ -133,7 +135,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .held-item strong { margin-top: 6px; font-size: 18px; }
 .held-item small { margin-top: 8px; color: #bec4ba; font-size: 10px; line-height: 1.55; }
 
-.overlay-stage { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 28px; background: rgba(12,13,11,.86); }
+.overlay-stage { position: fixed; z-index: 50; inset: 68px 0 0; display: grid; place-items: center; padding: 28px; background: rgba(12,13,11,.86); }
 .panel-kicker { margin-bottom: 5px; color: var(--pink); font-size: 10px; font-weight: 900; }
 .setup-panel, .event-panel, .outcome-panel, .item-compare-panel, .win-panel { color: #eff0e9; text-align: center; }
 .setup-panel { width: min(900px, calc(100vw - 80px)); }

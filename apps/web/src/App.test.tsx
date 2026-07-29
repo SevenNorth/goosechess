@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
 describe('PixiJS 65 格完整对局', () => {
@@ -47,5 +47,14 @@ describe('PixiJS 65 格完整对局', () => {
 
     expect(screen.getByRole('heading', { name: '选择棋子与起始道具' })).toBeTruthy()
     expect(within(screen.getByRole('region', { name: '参赛棋手' })).getAllByRole('article')).toHaveLength(3)
+  })
+
+  it('在提供退出回调时显示返回首页按钮', () => {
+    const onExit = vi.fn()
+    render(<App onExit={onExit} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '返回首页' }))
+
+    expect(onExit).toHaveBeenCalledOnce()
   })
 })

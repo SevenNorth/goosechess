@@ -24,7 +24,7 @@ function createTestController(): BoardSceneController {
     },
     sync() {},
     setActivePlayer() {},
-    diagnostics() { return { activeScenes: 0, tickerHandlers: 0, loadedTextures: 0, windowListeners: 0, activeTweens: 0, tokenCount: 0 } },
+    diagnostics() { return { activeScenes: 0, tickerHandlers: 0, loadedTextures: 0, windowListeners: 0, activeTweens: 0, tokenCount: 0, pannable: false, cameraZoom: 1, cameraFocusX: 0, cameraFocusY: 0 } },
     destroy() {},
   }
 }

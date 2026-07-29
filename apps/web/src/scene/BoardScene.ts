@@ -14,6 +14,7 @@ import type { GameSnapshot, AuthorityUpdate, PresentationCue } from '@goose-ches
 import type { AudioPort } from '../audio/audio-port'
 import { presentationMachine, type PresentationStage } from '../game-client/machine/presentation-machine'
 import { settlePresentation } from '../game-client/presentation-recovery'
+import { tokenOffset } from './token-layout'
 const SEAT_COLORS: Readonly<Record<string, number>> = {
   pink: 0xe82f73,
   blue: 0x3977c5,
@@ -47,6 +48,10 @@ export interface BoardSceneDiagnostics {
   readonly windowListeners: number
   readonly activeTweens: number
   readonly tokenCount: number
+  readonly pannable: boolean
+  readonly cameraZoom: number
+  readonly cameraFocusX: number
+  readonly cameraFocusY: number
 }
 
 export interface BoardSceneController {
@@ -61,11 +66,6 @@ function spacePoint(map: MapDefinition, spaceId: number) {
   const space = map.spaces.find((candidate) => candidate.index === spaceId)
   if (!space) throw new Error(`Unknown board space: ${spaceId}.`)
   return { x: space.x, y: space.y }
-}
-
-function tokenOffset(seatIndex: number, playerCount: number) {
-  if (playerCount <= 2) return { x: seatIndex === 0 ? -24 : 24, y: 0 }
-  return { x: (seatIndex % 2) * 72 - 36, y: Math.floor(seatIndex / 2) * 44 - 22 }
 }
 
 export class BoardScene implements BoardSceneController {
@@ -100,6 +100,9 @@ export class BoardScene implements BoardSceneController {
   private cameraFocusX: number
   private cameraFocusY: number
   private cameraZoom = 1
+  private dragPointerId: number | null = null
+  private dragClientX = 0
+  private dragClientY = 0
   private destroyed = false
 
   private constructor(
@@ -151,6 +154,10 @@ export class BoardScene implements BoardSceneController {
     this.app.canvas.className = 'pixi-canvas'
     this.app.canvas.dataset.testid = 'pixi-canvas'
     this.host.appendChild(this.app.canvas)
+    this.app.canvas.addEventListener('pointerdown', this.onPointerDown)
+    this.app.canvas.addEventListener('pointermove', this.onPointerMove)
+    this.app.canvas.addEventListener('pointerup', this.onPointerUp)
+    this.app.canvas.addEventListener('pointercancel', this.onPointerUp)
     this.app.stage.addChild(this.world)
     this.staticBoardLayer.addChild(
       this.tableLayer,
@@ -193,9 +200,57 @@ export class BoardScene implements BoardSceneController {
     if (this.destroyed) return
     const width = this.app.screen.width
     const height = this.app.screen.height
-    const scale = Math.min(width / this.map.logicalSize.width, height / this.map.logicalSize.height) * this.cameraZoom
+    const fitScale = Math.min(width / this.map.logicalSize.width, height / this.map.logicalSize.height)
+    const baseScale = fitScale >= 1 ? 1 : Math.max(fitScale, 0.9)
+    const scale = baseScale * this.cameraZoom
+    const visibleHalfWidth = width / scale / 2
+    const visibleHalfHeight = height / scale / 2
+    this.cameraFocusX = visibleHalfWidth >= this.map.logicalSize.width / 2
+      ? this.map.logicalSize.width / 2
+      : Math.min(this.map.logicalSize.width - visibleHalfWidth, Math.max(visibleHalfWidth, this.cameraFocusX))
+    this.cameraFocusY = visibleHalfHeight >= this.map.logicalSize.height / 2
+      ? this.map.logicalSize.height / 2
+      : Math.min(this.map.logicalSize.height - visibleHalfHeight, Math.max(visibleHalfHeight, this.cameraFocusY))
     this.world.scale.set(scale)
     this.world.position.set(width / 2 - this.cameraFocusX * scale, height / 2 - this.cameraFocusY * scale)
+    this.app.canvas.classList.toggle('is-pannable', this.requiresPanning())
+  }
+
+  private requiresPanning() {
+    if (!this.appInitialized) return false
+    const fitScale = Math.min(
+      this.app.screen.width / this.map.logicalSize.width,
+      this.app.screen.height / this.map.logicalSize.height,
+    )
+    const baseScale = fitScale >= 1 ? 1 : Math.max(fitScale, 0.9)
+    return this.app.screen.width / baseScale < this.map.logicalSize.width - 0.5
+      || this.app.screen.height / baseScale < this.map.logicalSize.height - 0.5
+  }
+
+  private readonly onPointerDown = (event: PointerEvent) => {
+    if (event.button !== 0 || !this.requiresPanning()) return
+    this.dragPointerId = event.pointerId
+    this.dragClientX = event.clientX
+    this.dragClientY = event.clientY
+    this.app.canvas.setPointerCapture(event.pointerId)
+    this.app.canvas.classList.add('is-dragging')
+  }
+
+  private readonly onPointerMove = (event: PointerEvent) => {
+    if (event.pointerId !== this.dragPointerId) return
+    const scale = this.world.scale.x || 1
+    this.cameraFocusX -= (event.clientX - this.dragClientX) / scale
+    this.cameraFocusY -= (event.clientY - this.dragClientY) / scale
+    this.dragClientX = event.clientX
+    this.dragClientY = event.clientY
+    this.resizeWorld()
+  }
+
+  private readonly onPointerUp = (event: PointerEvent) => {
+    if (event.pointerId !== this.dragPointerId) return
+    this.dragPointerId = null
+    if (this.app.canvas.hasPointerCapture(event.pointerId)) this.app.canvas.releasePointerCapture(event.pointerId)
+    this.app.canvas.classList.remove('is-dragging')
   }
 
   private async buildBoard(onProgress: (progress: number) => void) {
@@ -238,12 +293,17 @@ export class BoardScene implements BoardSceneController {
       const fill = space.kind === 'event' ? 0xc96850 : space.kind === 'finish' ? 0x4b4f46 : 0xe2ddcb
       cell.roundRect(-size / 2, -size / 2, size, size, 5)
         .fill({ color: fill, alpha: 0.96 })
-        .stroke({ color: space.kind === 'event' ? 0x713d34 : 0x55584e, width: 3, alpha: 0.85 })
+        .stroke({ color: space.kind === 'event' ? 0x713d34 : space.kind === 'finish' ? 0xd5ad43 : 0x55584e, width: 3, alpha: 0.85 })
       cellContainer.position.set(space.x, space.y)
       cellContainer.rotation = space.rotation * Math.PI / 180
       const number = new Text({
-        text: space.kind === 'event' ? '鹅' : String(space.index),
-        style: { fontFamily: 'Microsoft YaHei', fontSize: compact ? 9 : space.kind === 'event' ? 15 : 13, fill: space.kind === 'event' ? 0xfff4df : 0x54574e, fontWeight: '700' },
+        text: space.kind === 'event' ? '!' : String(space.index),
+        style: {
+          fontFamily: 'Microsoft YaHei',
+          fontSize: compact ? (space.kind === 'finish' ? 11 : 9) : space.kind === 'event' ? 15 : 13,
+          fill: space.kind === 'event' ? 0xfff4df : space.kind === 'finish' ? 0xffe39a : 0x54574e,
+          fontWeight: '700',
+        },
       })
       number.anchor.set(0.5)
       cellContainer.addChild(cell, number)
@@ -268,7 +328,15 @@ export class BoardScene implements BoardSceneController {
     })
     title.position.set(520, 385)
     title.rotation = -0.02
-    this.foregroundLayer.addChild(title)
+    const eventLegend = new Container({ x: 535, y: 425 })
+    const eventLegendMark = new Graphics().roundRect(0, 0, 24, 24, 4).fill({ color: 0xc96850 }).stroke({ color: 0x713d34, width: 2 })
+    const eventLegendBang = new Text({ text: '!', style: { fontFamily: 'Arial', fontSize: 14, fill: 0xfff4df, fontWeight: '900' } })
+    eventLegendBang.anchor.set(0.5)
+    eventLegendBang.position.set(12, 12)
+    const eventLegendLabel = new Text({ text: '事件格', style: { fontFamily: 'Microsoft YaHei', fontSize: 12, fill: 0x55584f, fontWeight: '700' } })
+    eventLegendLabel.position.set(32, 4)
+    eventLegend.addChild(eventLegendMark, eventLegendBang, eventLegendLabel)
+    this.foregroundLayer.addChild(title, eventLegend)
     this.staticBoardLayer.cacheAsTexture({ resolution: 1, antialias: true })
   }
 
@@ -285,11 +353,19 @@ export class BoardScene implements BoardSceneController {
     text.anchor.set(0.5)
     text.position.set(0, 14)
     const labelPaper = new Graphics().roundRect(-text.width / 2 - 8, 1, text.width + 16, 27, 3).fill({ color: isFinish ? 0xd5ad43 : 0xe4deca, alpha: 0.9 })
-    container.addChild(sprite, labelPaper, text)
-    this.landmarkLayer.addChild(container)
+    if (isFinish) {
+      container.addChild(sprite)
+      this.boardLayer.addChild(container)
+      const finishLabel = new Container({ x, y })
+      finishLabel.addChild(labelPaper, text)
+      this.landmarkLayer.addChild(finishLabel)
+    } else {
+      container.addChild(sprite, labelPaper, text)
+      this.landmarkLayer.addChild(container)
+    }
   }
 
-  private makeToken(player: GameSnapshot['state']['players'][number], playerCount: number) {
+  private makeToken(player: GameSnapshot['state']['players'][number], players: GameSnapshot['state']['players']) {
     const root = new Container()
     const shadow = new Graphics().ellipse(0, 1, 29, 10).fill({ color: 0x181914, alpha: 0.3 })
     const body = new Container()
@@ -309,7 +385,7 @@ export class BoardScene implements BoardSceneController {
     body.addChild(model)
     body.cacheAsTexture({ resolution: 1.5, antialias: true })
     root.addChild(shadow, body)
-    const offset = tokenOffset(player.seatIndex, playerCount)
+    const offset = tokenOffset(player, players)
     const point = spacePoint(this.map, player.spaceId)
     if (this.map.spaces.length > 24) root.scale.set(0.68)
     root.position.set(point.x + offset.x, point.y + offset.y)
@@ -328,9 +404,9 @@ export class BoardScene implements BoardSceneController {
       }
     }
     for (const player of snapshot.state.players) {
-      const token = this.tokens.get(player.playerId) ?? this.makeToken(player, snapshot.state.players.length)
+      const token = this.tokens.get(player.playerId) ?? this.makeToken(player, snapshot.state.players)
       const point = spacePoint(this.map, player.spaceId)
-      const offset = tokenOffset(player.seatIndex, snapshot.state.players.length)
+      const offset = tokenOffset(player, snapshot.state.players)
       token.root.position.set(point.x + offset.x, point.y + offset.y)
       token.body.position.y = 0
       token.body.scale.set(1)
@@ -446,7 +522,7 @@ export class BoardScene implements BoardSceneController {
     await this.animate(220 / speed, (progress) => {
       target.scale.set(0.8 + Math.sin(progress * Math.PI) * 0.28)
       target.alpha = 0.65 + Math.sin(progress * Math.PI) * 0.35
-      if (cameraMotion) this.updateCamera(
+      if (cameraMotion && this.requiresPanning()) this.updateCamera(
         cameraStart.x + (point.x - cameraStart.x) * progress,
         cameraStart.y + (point.y - cameraStart.y) * progress,
         cameraStart.zoom + (1.06 - cameraStart.zoom) * progress,
@@ -467,7 +543,7 @@ export class BoardScene implements BoardSceneController {
     const token = this.tokens.get(cue.playerId)
     if (!player || !token) return
     token.animating = true
-    const offset = tokenOffset(player.seatIndex, snapshot.state.players.length)
+    const offset = tokenOffset(player, snapshot.state.players)
     let facing = 1
     for (let index = 0; index < cue.path.length; index += 1) {
       if (index > 0) facing = Math.sign(cue.path[index] - cue.path[index - 1]) || facing
@@ -500,7 +576,7 @@ export class BoardScene implements BoardSceneController {
     }
     this.audio.play('token.land')
     token.animating = false
-    if (cameraMotion) {
+    if (cameraMotion && this.requiresPanning()) {
       const cameraStart = { x: this.cameraFocusX, y: this.cameraFocusY, zoom: this.cameraZoom }
       const center = { x: this.map.logicalSize.width / 2, y: this.map.logicalSize.height / 2 }
       await this.animate(180 / speed, (progress) => this.updateCamera(
@@ -530,7 +606,7 @@ export class BoardScene implements BoardSceneController {
       return
     }
     const destination = spacePoint(this.map, cue.toSpaceId)
-    const offset = tokenOffset(player.seatIndex, snapshot.state.players.length)
+    const offset = tokenOffset(player, snapshot.state.players)
     const from = { x: token.root.x, y: token.root.y }
     this.audio.play(cue.reason === 'swap' ? 'token.swap' : 'collision.hit')
     await this.animate(420 / speed, (progress) => {
@@ -653,6 +729,10 @@ export class BoardScene implements BoardSceneController {
       windowListeners: this.windowListenerCount,
       activeTweens: this.tweens.getAll().length,
       tokenCount: this.tokens.size,
+      pannable: this.requiresPanning(),
+      cameraZoom: this.cameraZoom,
+      cameraFocusX: this.cameraFocusX,
+      cameraFocusY: this.cameraFocusY,
     }
   }
 
@@ -670,6 +750,10 @@ export class BoardScene implements BoardSceneController {
       this.tickerAttached = false
     }
     if (this.appInitialized) {
+      this.app.canvas.removeEventListener('pointerdown', this.onPointerDown)
+      this.app.canvas.removeEventListener('pointermove', this.onPointerMove)
+      this.app.canvas.removeEventListener('pointerup', this.onPointerUp)
+      this.app.canvas.removeEventListener('pointercancel', this.onPointerUp)
       this.app.destroy({ removeView: true }, { children: true })
       this.appInitialized = false
     }

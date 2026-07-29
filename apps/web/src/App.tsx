@@ -6,6 +6,7 @@ import {
   Dices,
   Footprints,
   History,
+  House,
   PackageOpen,
   RotateCcw,
   SlidersHorizontal,
@@ -78,6 +79,7 @@ interface GameSessionProps {
   readonly mode: OfflineMatchMode
   readonly seed: number
   readonly onRestart: () => void
+  readonly onExit?: () => void
   readonly animationSpeed: number
   readonly cameraMotion: boolean
   readonly onAnimationSpeedChange: (speed: number) => void
@@ -120,7 +122,7 @@ function gameLogLines(update: AuthorityUpdate) {
   return lines
 }
 
-function GameSession({ mode, seed, onRestart, animationSpeed, cameraMotion, onAnimationSpeedChange, onCameraMotionChange }: GameSessionProps) {
+function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMotion, onAnimationSpeedChange, onCameraMotionChange }: GameSessionProps) {
   const [match] = useState(() => createOfflineMatch({ mode, seed, gameId: `offline-${mode}-${seed}` }, GAME_DEFINITION))
   const [snapshot, setSnapshot] = useState(() => match.authority.getSnapshot())
   const [board, setBoard] = useState<BoardSceneController | null>(null)
@@ -271,6 +273,7 @@ function GameSession({ mode, seed, onRestart, animationSpeed, cameraMotion, onAn
       <header className="stage5-topbar">
         <div className="stage5-brand"><span>鹅</span><div><strong>鹅了个棋</strong><small>奥普港 65 格竞速 · {mode}</small></div></div>
         <div className="topbar-actions">
+          {onExit && <button className="icon-command" type="button" title="返回首页" aria-label="返回首页" onClick={onExit}><House /></button>}
           <button className="icon-command" type="button" title="对局日志" aria-label="对局日志" onClick={() => setShowLogs(true)}><History /></button>
           <button className="icon-command" type="button" title="表现设置" aria-label="表现设置" onClick={() => setShowSettings(true)}><SlidersHorizontal /></button>
           <button className="icon-command" type="button" title="声音尚未接入" aria-label="声音尚未接入" disabled><VolumeX /></button>
@@ -400,7 +403,7 @@ function GameSession({ mode, seed, onRestart, animationSpeed, cameraMotion, onAn
       {showSettings && <div className="settings-backdrop" onClick={() => setShowSettings(false)}><section className="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={(event) => event.stopPropagation()}>
         <header><div><span>桌面表现</span><h2 id="settings-title">表现设置</h2></div><button className="drawer-close" type="button" title="关闭设置" aria-label="关闭设置" onClick={() => setShowSettings(false)}><X /></button></header>
         <div className="settings-row"><div><strong>动画速度</strong><small>调整骰子、路线与棋子移动节奏</small></div><div className="speed-segments" role="radiogroup" aria-label="动画速度">{[0.75, 1, 1.5, 2].map((speed) => <button type="button" role="radio" aria-checked={animationSpeed === speed} className={animationSpeed === speed ? 'is-selected' : ''} onClick={() => onAnimationSpeedChange(speed)} key={speed}>{speed}x</button>)}</div></div>
-        <label className="settings-row camera-setting"><div><strong>镜头运动</strong><small>移动时轻微聚焦目标，关闭后保持全棋盘固定</small></div><input type="checkbox" checked={cameraMotion} onChange={(event) => onCameraMotionChange(event.target.checked)} /><span aria-hidden="true" /></label>
+        <label className="settings-row camera-setting"><div><strong>自动镜头跟随</strong><small>仅在棋盘无法完整显示时跟随目标；仍可拖拽查看</small></div><input type="checkbox" checked={cameraMotion} onChange={(event) => onCameraMotionChange(event.target.checked)} /><span aria-hidden="true" /></label>
       </section></div>}
     </main>
   )
@@ -411,9 +414,10 @@ export interface AppProps {
   readonly seed?: number
   readonly animationSpeed?: number
   readonly cameraMotion?: boolean
+  readonly onExit?: () => void
 }
 
-function App({ mode = '1v1', seed = 20260728, animationSpeed: initialAnimationSpeed = 1, cameraMotion: initialCameraMotion = true }: AppProps) {
+function App({ mode = '1v1', seed = 20260728, animationSpeed: initialAnimationSpeed = 1, cameraMotion: initialCameraMotion = true, onExit }: AppProps) {
   const [restart, setRestart] = useState(0)
   const [animationSpeed, setAnimationSpeed] = useState(initialAnimationSpeed)
   const [cameraMotion, setCameraMotion] = useState(initialCameraMotion)
@@ -426,6 +430,7 @@ function App({ mode = '1v1', seed = 20260728, animationSpeed: initialAnimationSp
     onAnimationSpeedChange={setAnimationSpeed}
     onCameraMotionChange={setCameraMotion}
     onRestart={() => setRestart((value) => value + 1)}
+    onExit={onExit}
   />
 }
 
