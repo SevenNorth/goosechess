@@ -391,8 +391,10 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
         root.scale.setScalar(THREE.MathUtils.lerp(0.7, 1.08, easeOutCubic(travel)))
         visuals.dice.forEach((die, index) => {
           const profile = animation.profiles[index]
+          const side = index === 0 ? -1 : 1
+          const distanceFromCenter = THREE.MathUtils.lerp(0.62, 1, travel)
           const spread = Math.sin(Math.min(1, rollProgress / 0.82) * Math.PI) * (animation.reduceMotion ? 0.06 : 0.2)
-          die.root.position.x = (index === 0 ? -0.62 : 0.62) + profile.direction * spread
+          die.root.position.x = side * (distanceFromCenter + spread)
           die.root.position.y = bounceHeight(rollProgress, index, animation.reduceMotion)
           die.root.position.z = Math.sin(Math.min(1, rollProgress / 0.62) * Math.PI) * (animation.reduceMotion ? 0.04 : 0.24)
           if (rollProgress < profile.spinEnd) {
