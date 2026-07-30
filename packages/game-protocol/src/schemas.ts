@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const PROTOCOL_SCHEMA_VERSION = 1 as const
+export const PROTOCOL_SCHEMA_VERSION = 2 as const
 
 const IdSchema = z.string().trim().min(1).max(128)
 const RevisionSchema = z.number().int().nonnegative()
@@ -10,6 +10,7 @@ const DicePairSchema = z.tuple([z.number().int().min(1).max(6), z.number().int()
 export const GameCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('select-skin'), skinId: IdSchema }).strict(),
   z.object({ type: z.literal('choose-starting-item'), itemId: IdSchema }).strict(),
+  z.object({ type: z.literal('request-order-roll') }).strict(),
   z.object({ type: z.literal('use-item'), itemId: IdSchema }).strict(),
   z.object({ type: z.literal('request-roll') }).strict(),
   z.object({ type: z.literal('choose-event'), eventId: IdSchema }).strict(),
@@ -44,6 +45,7 @@ export const PlayerSnapshotSchema = z.object({
 export const SerializableGameStateSchema = z.object({
   phase: z.enum([
     'setup',
+    'determining-order',
     'awaiting-action',
     'awaiting-event-choice',
     'awaiting-item-choice',
@@ -52,6 +54,12 @@ export const SerializableGameStateSchema = z.object({
   round: z.number().int().positive(),
   activePlayerId: IdSchema,
   players: z.array(PlayerSnapshotSchema).min(2).max(4),
+  turnOrderGroups: z.array(z.array(IdSchema).min(1).max(4)).min(1).max(4),
+  orderRollResults: z.array(z.object({ playerId: IdSchema, face: z.number().int().min(1).max(6) }).strict()).max(4),
+  orderRollHistory: z.array(z.object({
+    playerIds: z.array(IdSchema).min(2).max(4),
+    results: z.array(z.object({ playerId: IdSchema, face: z.number().int().min(1).max(6) }).strict()).min(2).max(4),
+  }).strict()),
   pendingEventIds: z.array(IdSchema).max(3),
   pendingItemId: IdSchema.nullable(),
   eventContinuation: z.enum(['end-turn', 'awaiting-action']).nullable(),
@@ -86,6 +94,8 @@ export const GameSnapshotSchema = z.object({
 export const DomainEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('starting-item-chosen'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, itemId: IdSchema }).strict(),
   z.object({ type: z.literal('skin-selected'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, skinId: IdSchema }).strict(),
+  z.object({ type: z.literal('order-die-rolled'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, face: z.number().int().min(1).max(6) }).strict(),
+  z.object({ type: z.literal('turn-order-determined'), eventId: IdSchema, revision: RevisionSchema, playerIds: z.array(IdSchema).min(2).max(4) }).strict(),
   z.object({ type: z.literal('dice-rolled'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, purpose: z.enum(['move', 'check']), dice: DicePairSchema }).strict(),
   z.object({ type: z.literal('token-moved'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, fromSpaceId: SpaceIdSchema, path: z.array(SpaceIdSchema), toSpaceId: SpaceIdSchema }).strict(),
   z.object({ type: z.literal('event-offered'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, eventCardIds: z.array(IdSchema).length(3) }).strict(),

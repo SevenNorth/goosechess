@@ -114,6 +114,8 @@ function gameLogLines(update: AuthorityUpdate) {
   const lines: string[] = []
   for (const event of update.events) {
     if (event.type === 'dice-rolled') lines.push(`${event.playerId} 掷出 ${event.dice[0] + event.dice[1]} 点。`)
+    if (event.type === 'order-die-rolled') lines.push(`${event.playerId} 的座次骰为 ${event.face} 点。`)
+    if (event.type === 'turn-order-determined') lines.push(`行动顺序已确定：${event.playerIds.join(' → ')}。`)
     if (event.type === 'collision-resolved') lines.push(event.blocked ? `${event.displacedPlayerId} 挡住了碰撞。` : `${event.displacedPlayerId} 被撞回。`)
     if (event.type === 'event-resolved') lines.push(`事件「${eventById(event.eventCardId)?.title ?? event.eventCardId}」已结算。`)
     if (event.type === 'item-changed') lines.push(`${event.playerId} 的道具已更新。`)
@@ -135,6 +137,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const [itemDetailsOpen, setItemDetailsOpen] = useState(false)
   const [keepPendingItem, setKeepPendingItem] = useState(false)
   const [eventOutcome, setEventOutcome] = useState<EventOutcome | null>(null)
+  const [showOrderResult, setShowOrderResult] = useState(false)
   const [showWin, setShowWin] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -170,6 +173,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
     addLogs(gameLogLines(result.update))
     const resolved = result.update.events.find((event) => event.type === 'event-resolved')
     const gameWon = result.update.events.some((event) => event.type === 'game-won')
+    const orderDetermined = result.update.events.some((event) => event.type === 'turn-order-determined')
     if (board) {
       await board.playUpdate(result.update, previousSnapshot, {
         onStageChange: (stage) => mountedRef.current && setPresentationStage(stage),
@@ -182,6 +186,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
       if (event) setEventOutcome({ event, passed: resolved.passed })
     }
     if (gameWon) setShowWin(true)
+    if (orderDetermined) setShowOrderResult(true)
     return true
   }, [addLogs, animationSpeed, board, cameraMotion])
 
@@ -217,6 +222,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
 
   const shouldDriveAi = snapshot.state.phase !== 'game-over'
     && !eventOutcome
+    && !showOrderResult
     && (snapshot.state.phase === 'setup'
       ? snapshot.state.players.some((player) => player.controller === 'ai' && player.itemId === null)
         && snapshot.state.players.find((player) => player.playerId === 'local-player')?.itemId !== null
@@ -240,6 +246,10 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
           const turn = await aiController.takeTurn(match.authority.getDecisionView(playerId))
           if (!turn || !await presentResult(turn.result, current, false)) break
           addLogs([`${player.displayName}：${turn.decision.reasonTag}`])
+          if (turn.result.ok && turn.result.update.events.some((event) => event.type === 'turn-order-determined')) break
+          if (current.state.phase === 'determining-order' && import.meta.env.MODE !== 'test') {
+            await new Promise((resolve) => window.setTimeout(resolve, Math.max(140, 520 / animationSpeed)))
+          }
           const next = match.authority.getSnapshot()
           const nextPlayer = next.state.players.find((candidate) => candidate.playerId === next.state.activePlayerId)
           if (next.state.phase !== 'setup' && nextPlayer?.controller !== 'ai') break
@@ -259,7 +269,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const localItem = itemById(localPlayer.itemId)
   const LocalItemIcon = localItem ? ITEM_COPY[localItem.id]?.icon ?? PackageOpen : PackageOpen
   const localDecision = match.authority.getDecisionView('local-player')
-  const canRoll = !locked && board && snapshot.state.phase === 'awaiting-action' && snapshot.state.activePlayerId === 'local-player'
+  const canRoll = !locked && !showOrderResult && board && snapshot.state.phase === 'awaiting-action' && snapshot.state.activePlayerId === 'local-player'
   const canUseItem = localItem && localDecision.legalCommands.some((command) => command.type === 'use-item' && command.itemId === localItem.id)
   const offeredEvents = snapshot.state.pendingEventIds.map(eventById).filter((event) => event !== undefined)
   const pendingItem = itemById(snapshot.state.pendingItemId)
@@ -267,6 +277,13 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const activeLandmark = GAME_DEFINITION.map.landmarks.find((landmark) => landmark.id === activeSpace?.landmarkId)
   const finalSpaceId = GAME_DEFINITION.map.spaces.at(-1)?.index ?? 65
   const standings = [...snapshot.state.players].sort((left, right) => right.spaceId - left.spaceId || left.seatIndex - right.seatIndex)
+  const provisionalOrder = snapshot.state.turnOrderGroups.flat()
+  const unresolvedOrderGroup = snapshot.state.turnOrderGroups.find((group) => group.length > 1) ?? []
+  const latestOrderFaces = new Map<string, number>()
+  for (const round of snapshot.state.orderRollHistory) {
+    for (const result of round.results) latestOrderFaces.set(result.playerId, result.face)
+  }
+  for (const result of snapshot.state.orderRollResults) latestOrderFaces.set(result.playerId, result.face)
 
   return (
     <main className="stage5-shell">
@@ -347,6 +364,32 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
               })}
             </div>
             <button className="primary-command setup-start" type="button" disabled={locked || !board} onClick={() => void completeSetup()}><Sparkles /> 开始试航</button>
+          </section>
+        </div>
+      )}
+
+      {(snapshot.state.phase === 'determining-order' || showOrderResult) && (
+        <div className="overlay-stage order-overlay">
+          <section className="order-panel" role="dialog" aria-modal="true" aria-labelledby="order-title">
+            <div className="panel-kicker">开局座次</div>
+            <h2 id="order-title">{showOrderResult ? '行动顺序已确定' : unresolvedOrderGroup.length < snapshot.state.players.length ? '同点小组重新投掷' : '投掷单骰决定顺序'}</h2>
+            <ol className="order-list">
+              {provisionalOrder.map((playerId, index) => {
+                const player = snapshot.state.players.find((candidate) => candidate.playerId === playerId)!
+                const isTied = unresolvedOrderGroup.includes(playerId)
+                const isRolling = snapshot.state.phase === 'determining-order' && snapshot.state.activePlayerId === playerId
+                return <li className={`${isTied ? 'is-tied' : ''} ${isRolling ? 'is-rolling' : ''}`} key={playerId} style={{ '--seat-color': COLOR_HEX[player.colorId] } as React.CSSProperties}>
+                  <span className="order-rank">{index + 1}</span>
+                  <span className="order-player"><i /><strong>{player.displayName}</strong><small>{isRolling ? '等待投掷' : isTied ? '同点组' : '暂定'}</small></span>
+                  <span className="order-die" aria-label={latestOrderFaces.has(playerId) ? `${latestOrderFaces.get(playerId)} 点` : '尚未投掷'}>{latestOrderFaces.get(playerId) ?? '·'}</span>
+                </li>
+              })}
+            </ol>
+            {showOrderResult
+              ? <button className="primary-command order-command" type="button" onClick={() => setShowOrderResult(false)}><Check /> 进入第一回合</button>
+              : snapshot.state.activePlayerId === 'local-player'
+                ? <button className="primary-command order-command" type="button" disabled={locked} onClick={() => void submitLocal({ type: 'request-order-roll' })}><Dices /> 投掷单骰</button>
+                : <div className="order-wait" aria-live="polite"><Dices /> {activePlayer.displayName} 正在投掷</div>}
           </section>
         </div>
       )}

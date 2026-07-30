@@ -40,6 +40,7 @@ function toCoreCommand(command: GameCommand): CoreGameCommand {
   switch (command.type) {
     case 'select-skin': return { type: command.type, skinId: command.skinId }
     case 'choose-starting-item': return { type: command.type, itemId: command.itemId }
+    case 'request-order-roll': return { type: command.type }
     case 'use-item': return { type: command.type, itemId: command.itemId }
     case 'request-roll': return { type: command.type }
     case 'choose-event': return { type: command.type, eventId: command.eventId }
@@ -64,6 +65,12 @@ function toSnapshot(gameId: string, revision: number, definition: GameDefinition
       round: state.round,
       activePlayerId: state.activePlayerId,
       players: state.players.map((player) => ({ ...player })),
+      turnOrderGroups: state.turnOrderGroups.map((group) => [...group]),
+      orderRollResults: state.orderRollResults.map((result) => ({ ...result })),
+      orderRollHistory: state.orderRollHistory.map((round) => ({
+        playerIds: [...round.playerIds],
+        results: round.results.map((result) => ({ ...result })),
+      })),
       pendingEventIds: [...state.pendingEventIds],
       pendingItemId: state.pendingItemId,
       eventContinuation: state.eventContinuation,
@@ -82,6 +89,12 @@ function fromSnapshot(snapshot: GameSnapshot): GameState {
     round: snapshot.state.round,
     activePlayerId: snapshot.state.activePlayerId,
     players: snapshot.state.players.map((player) => ({ ...player })),
+    turnOrderGroups: snapshot.state.turnOrderGroups.map((group) => [...group]),
+    orderRollResults: snapshot.state.orderRollResults.map((result) => ({ ...result })),
+    orderRollHistory: snapshot.state.orderRollHistory.map((round) => ({
+      playerIds: [...round.playerIds],
+      results: round.results.map((result) => ({ ...result })),
+    })),
     rng: { seed: snapshot.rngSeed, cursor: snapshot.rngCursor },
     pendingEventIds: [...snapshot.state.pendingEventIds],
     pendingItemId: snapshot.state.pendingItemId,
@@ -106,6 +119,10 @@ function assertSnapshotMatchesDefinition(snapshot: GameSnapshot, definition: Gam
   const eventIds = new Set(definition.events.map((event) => event.id))
   const spaceIds = new Set(definition.map.spaces.map((space) => space.index))
   if (playerIds.size !== snapshot.state.players.length || !playerIds.has(snapshot.state.activePlayerId)) issues.push('player identities')
+  const orderIds = snapshot.state.turnOrderGroups.flat()
+  if (orderIds.length !== playerIds.size || new Set(orderIds).size !== playerIds.size || orderIds.some((playerId) => !playerIds.has(playerId))) issues.push('turn order')
+  if (snapshot.state.orderRollResults.some((result) => !playerIds.has(result.playerId))) issues.push('order roll results')
+  if (snapshot.state.orderRollHistory.some((round) => round.playerIds.length !== round.results.length || round.results.some((result) => !round.playerIds.includes(result.playerId)))) issues.push('order roll history')
   snapshot.state.players.forEach((player, index) => {
     if (player.seatIndex !== index || !spaceIds.has(player.spaceId) || !skinIds.has(player.skinId) || (player.itemId !== null && !itemIds.has(player.itemId))) {
       issues.push(`player ${player.playerId}`)
@@ -124,6 +141,8 @@ function decorateEvent(event: RuleEvent, revision: number, index: number): Domai
   switch (event.type) {
     case 'starting-item-chosen': return { ...common, ...event }
     case 'skin-selected': return { ...common, ...event }
+    case 'order-die-rolled': return { ...common, ...event }
+    case 'turn-order-determined': return { ...common, ...event, playerIds: [...event.playerIds] }
     case 'dice-rolled': return { ...common, ...event, dice: [...event.dice] as [number, number] }
     case 'token-moved': return { ...common, ...event, path: [...event.path] }
     case 'collision-resolved': return { ...common, ...event }

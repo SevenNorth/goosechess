@@ -1,6 +1,20 @@
 import { expect, test, type Page } from '@playwright/test'
 import { PNG } from 'pngjs'
 
+async function completeOrderRolls(page: Page) {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const confirm = page.getByRole('button', { name: '进入第一回合' })
+    if (await confirm.isVisible()) {
+      await confirm.click()
+      return
+    }
+    const roll = page.getByRole('button', { name: '投掷单骰' })
+    if (await roll.count() > 0 && await roll.isEnabled()) await roll.click()
+    else await page.waitForTimeout(30)
+  }
+  throw new Error('Turn-order rolls did not finish.')
+}
+
 async function startGame(page: Page, mode = '1v1', seed = 3, speed = 1) {
   await page.goto(`/play?mode=${mode}&seed=${seed}&speed=${speed}`)
   await expect(page.getByRole('heading', { name: '选择棋子与起始道具' })).toBeVisible()
@@ -8,6 +22,7 @@ async function startGame(page: Page, mode = '1v1', seed = 3, speed = 1) {
   await page.getByRole('radio', { name: '黄鹅' }).click()
   await page.getByRole('button', { name: /四叶草/ }).click()
   await page.getByRole('button', { name: '开始试航' }).click()
+  await completeOrderRolls(page)
   await expect(page.getByRole('button', { name: '投掷双骰' })).toBeEnabled()
 }
 
@@ -25,6 +40,7 @@ async function canvasPixelStats(page: Page) {
 }
 
 test('renders a nonblank complete board at all desktop targets', async ({ page }, testInfo) => {
+  test.setTimeout(90_000)
   for (const viewport of [
     { width: 1280, height: 720 },
     { width: 1600, height: 900 },
@@ -46,7 +62,7 @@ test('renders a nonblank complete board at all desktop targets', async ({ page }
 
 test('plays route states in order before opening an event', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 })
-  await startGame(page, '1v1', 3)
+  await startGame(page, '1v1', 6)
   await page.evaluate(() => {
     const target = document.querySelector('.round-float span')
     ;(window as typeof window & { __stage6States?: string[] }).__stage6States = target?.textContent ? [target.textContent] : []
@@ -71,7 +87,7 @@ test('plays route states in order before opening an event', async ({ page }) => 
 
 test('resolves a dice-check event and shows its outcome', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 })
-  await startGame(page, '1v1', 3)
+  await startGame(page, '1v1', 6)
   await page.getByRole('button', { name: '投掷双骰' }).click()
   await expect(page.getByRole('heading', { name: '从三张牌中选择' })).toBeVisible()
 
@@ -89,7 +105,7 @@ test('resolves a dice-check event and shows its outcome', async ({ page }) => {
 
 test('fast-forwards presentation to the authority snapshot after focus loss', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 })
-  await startGame(page, '1v1', 3)
+  await startGame(page, '1v1', 6)
   await page.getByRole('button', { name: '投掷双骰' }).click()
   await expect(page.locator('.round-float span')).toHaveText('骰子滚动')
 

@@ -37,6 +37,50 @@ describe('deterministic rule kernel', () => {
     expect(recentSelections).toBeLessThan(normalSelections)
   })
 
+  it('rerolls only tied groups and locks the resulting turn order', () => {
+    const definition = makeDefinition(makeMap(100, [99]))
+    const participants = makeParticipants(4).map((participant) => ({ ...participant, startingItemId: undefined }))
+    let state = createInitialGameState({ definition, participants, seed: 25374 })
+
+    for (const participant of participants) {
+      const prepared = reduceGameCommand(state, definition, participant.playerId, { type: 'choose-starting-item', itemId: 'clover' })
+      expect(prepared.ok).toBe(true)
+      if (!prepared.ok) return
+      state = prepared.state
+    }
+    expect(state).toMatchObject({ phase: 'determining-order', activePlayerId: 'p0' })
+
+    for (const playerId of ['p0', 'p1', 'p2', 'p3', 'p1', 'p2']) {
+      const rolled = reduceGameCommand(state, definition, playerId, { type: 'request-order-roll' })
+      expect(rolled.ok).toBe(true)
+      if (!rolled.ok) return
+      state = rolled.state
+    }
+
+    expect(state.phase).toBe('awaiting-action')
+    expect(state.activePlayerId).toBe('p0')
+    expect(state.turnOrderGroups).toEqual([['p0'], ['p2'], ['p1'], ['p3']])
+    expect(state.orderRollHistory).toEqual([
+      {
+        playerIds: ['p0', 'p1', 'p2', 'p3'],
+        results: [
+          { playerId: 'p0', face: 4 },
+          { playerId: 'p1', face: 3 },
+          { playerId: 'p2', face: 3 },
+          { playerId: 'p3', face: 1 },
+        ],
+      },
+      {
+        playerIds: ['p1', 'p2'],
+        results: [
+          { playerId: 'p1', face: 5 },
+          { playerId: 'p2', face: 6 },
+        ],
+      },
+    ])
+    expect(state.rng.cursor).toBe(6)
+  })
+
   it('uses map order for bounce paths and wins on final spaces 63, 64, or 65', () => {
     const map = makeMap(66, [63, 64, 65])
     const definition = makeDefinition(map)

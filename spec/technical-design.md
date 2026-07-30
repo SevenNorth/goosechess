@@ -128,7 +128,8 @@ setup.seats
   └─ setup.modeSelect
     └─ setup.itemSelect
       └─ setup.skinSelect
-        └─ turn.start
+        └─ setup.orderRoll
+          └─ turn.start
           ├─ turn.skipped
           └─ turn.itemWindow
             └─ turn.rolling
@@ -222,6 +223,8 @@ interface MapDefinition {
 
 事件与道具保留结构化配置，不包含可执行脚本。
 
+座次投掷属于权威规则状态。快照保存当前有序分组、当前小组已经公开的单骰结果和历史投掷轮次；权威端每次只接受当前待投参与者的 `request-order-roll` 命令。一个小组投完后按点数降序拆成若干子组，单人组视为已确定，同点子组继续进入下一轮。所有分组均为单人后，将扁平顺序锁定为本局行动顺序并进入第一回合。客户端不得自行打乱参与者数组或提交骰子点数。
+
 ```ts
 interface EventDefinition {
   id: string
@@ -285,6 +288,11 @@ interface ParticipantState {
   statuses: TemporaryStatus[]
 }
 
+interface OrderRollRound {
+  playerIds: string[]
+  results: Array<{ playerId: string; face: number }>
+}
+
 interface RulesetDefinition {
   id: string
   version: number
@@ -329,7 +337,7 @@ interface GameSnapshot {
 }
 ```
 
-- `GameCommand` 使用可穷举联合类型，包括选择起始道具、使用道具、请求投骰、选择事件和确认继续等意图；不包含随机结果。
+- `GameCommand` 使用可穷举联合类型，包括选择起始道具、请求座次投掷、使用道具、请求移动投骰、选择事件和确认继续等意图；不包含随机结果。
 - 权威端校验 `playerId`、行动权和 `expectedRevision`，拒绝重复或过期命令。
 - 每次规则提交产生递增 `revision`、领域事件和新的快照；所有字段必须通过 JSON 往返测试。
 - 断线恢复使用“最近快照 + 之后的事件”，重新连接后客户端跳过已确认的表现提示。
@@ -414,6 +422,7 @@ interface AudioPort {
 - 皮肤测试：所有皮肤动画键和资源存在，并验证更换 `skinId` 不改变任何规则结果。
 - 表现顺序测试：路线完成、目标圈完成、路线消失后才能开始棋子跳跃，不能跳过或重复移动状态。
 - 人数组合测试：`1v1`、`1v2`、`1v3` 都能按实际座位数推进，跳过暂停者，且轮次只在整轮完成后增加。
+- 座次测试：2 至 4 人单骰结果按降序排列；只重掷同点小组；连续同点可继续拆组；固定种子可重放相同座次和投掷历史。
 - 协议测试：命令与快照可 JSON 往返、重复命令幂等、过期 revision 被拒绝。
 - 控制器一致性测试：本地、AI 和模拟远程控制器提交相同命令时产生完全相同的规则结果。
 - 恢复测试：从任意回合快照恢复后，后续固定命令与随机结果和不中断的对局一致。

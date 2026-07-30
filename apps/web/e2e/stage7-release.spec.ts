@@ -5,10 +5,25 @@ async function waitForBoard(page: Page) {
   await expect(page.getByText('正在铺设奥普港棋盘')).toHaveCount(0)
 }
 
+async function completeOrderRolls(page: Page) {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const confirm = page.getByRole('button', { name: '进入第一回合' })
+    if (await confirm.isVisible()) {
+      await confirm.click()
+      return
+    }
+    const roll = page.getByRole('button', { name: '投掷单骰' })
+    if (await roll.count() > 0 && await roll.isEnabled()) await roll.click()
+    else await page.waitForTimeout(30)
+  }
+  throw new Error('Turn-order rolls did not finish.')
+}
+
 async function startGame(page: Page, mode = '1v1', seed = 3, speed = 20) {
   await page.goto(`/play?mode=${mode}&seed=${seed}&speed=${speed}`)
   await waitForBoard(page)
   await page.getByRole('button', { name: '开始试航' }).click()
+  await completeOrderRolls(page)
   await expect(page.getByRole('button', { name: '投掷双骰' })).toBeEnabled()
 }
 
@@ -130,7 +145,7 @@ test('offers animation speed and camera motion settings', async ({ page }) => {
 
 test('confirms item use in the center and highlights the retained item', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
-  await startGame(page, '1v1', 53)
+  await startGame(page, '1v1', 89)
   await page.locator('.held-item').click()
   const useDialog = page.getByRole('dialog', { name: '使用轻便靴子' })
   await expect(useDialog).toBeVisible()

@@ -6,11 +6,27 @@ import App from './App'
 describe('PixiJS 65 格完整对局', () => {
   afterEach(cleanup)
 
-  async function startGame(options: { mode?: '1v1' | '1v2' | '1v3'; seed?: number } = {}) {
+  async function finishOrderRolls(confirm = true) {
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const enter = screen.queryByRole('button', { name: '进入第一回合' })
+      if (enter) {
+        if (confirm) fireEvent.click(enter)
+        return
+      }
+      const orderRoll = screen.queryByRole('button', { name: '投掷单骰' })
+      if (orderRoll && !orderRoll.hasAttribute('disabled')) fireEvent.click(orderRoll)
+      await new Promise((resolve) => window.setTimeout(resolve, 10))
+    }
+    throw new Error('座次投掷未在预期时间内完成。')
+  }
+
+  async function startGame(options: { mode?: '1v1' | '1v2' | '1v3'; seed?: number; startingItem?: 'boots' | 'clover' } = {}) {
     render(<App mode={options.mode} seed={options.seed} />)
     fireEvent.click(screen.getByRole('radio', { name: '黄鹅' }))
-    fireEvent.click(screen.getByRole('button', { name: /四叶草/ }))
+    if (options.startingItem !== 'boots') fireEvent.click(screen.getByRole('button', { name: /四叶草/ }))
     fireEvent.click(screen.getByRole('button', { name: '开始试航' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: /投掷单骰决定顺序|同点小组重新投掷/ })).toBeTruthy())
+    await finishOrderRolls()
     await waitFor(() => expect(screen.getByRole('button', { name: '投掷双骰' }).hasAttribute('disabled')).toBe(false))
   }
 
@@ -20,6 +36,17 @@ describe('PixiJS 65 格完整对局', () => {
     expect(within(screen.getByRole('region', { name: '参赛棋手' })).getAllByRole('article')).toHaveLength(4)
     expect(screen.queryByRole('heading', { name: '选择棋子与起始道具' })).toBeNull()
     expect(screen.getByRole('button', { name: /四叶草/ })).toBeTruthy()
+  })
+
+  it('完成单骰座次投掷后展示最终顺序', async () => {
+    render(<App mode="1v3" seed={7} />)
+    fireEvent.click(screen.getByRole('button', { name: '开始试航' }))
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: '投掷单骰决定顺序' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: '投掷单骰' }))
+    await finishOrderRolls(false)
+    expect(screen.getByRole('button', { name: '进入第一回合' })).toBeTruthy()
+    expect(within(screen.getByRole('dialog', { name: '行动顺序已确定' })).getAllByRole('listitem')).toHaveLength(4)
   })
 
   it('通过 authority 投掷双骰并更新本地棋手位置', async () => {
@@ -32,12 +59,19 @@ describe('PixiJS 65 格完整对局', () => {
     expect(screen.getByText('合计').nextElementSibling?.textContent).not.toBe('--')
   })
 
-  it('固定种子落到事件格后显示三张事件牌', async () => {
+  it('固定种子流程落到事件格后显示三张事件牌', async () => {
     await startGame({ seed: 3 })
 
-    fireEvent.click(screen.getByRole('button', { name: '投掷双骰' }))
+    for (let turn = 0; turn < 12 && !screen.queryByRole('heading', { name: '从三张牌中选择' }); turn += 1) {
+      const roll = screen.getByRole('button', { name: '投掷双骰' })
+      fireEvent.click(roll)
+      await waitFor(() => expect(
+        screen.queryByRole('heading', { name: '从三张牌中选择' })
+          ?? (!roll.hasAttribute('disabled') ? roll : null),
+      ).toBeTruthy(), { timeout: 3000 })
+    }
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: '从三张牌中选择' })).toBeTruthy())
+    expect(screen.getByRole('heading', { name: '从三张牌中选择' })).toBeTruthy()
     expect(within(screen.getByRole('region', { name: '从三张牌中选择' })).getAllByRole('button')).toHaveLength(3)
   })
 
@@ -59,9 +93,7 @@ describe('PixiJS 65 格完整对局', () => {
   })
 
   it('通过居中确认弹窗使用主动道具', async () => {
-    render(<App seed={5} />)
-    fireEvent.click(screen.getByRole('button', { name: '开始试航' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '投掷双骰' }).hasAttribute('disabled')).toBe(false))
+    await startGame({ seed: 5, startingItem: 'boots' })
 
     fireEvent.click(screen.getByRole('button', { name: /当前道具.*轻便靴子/ }))
     const dialog = screen.getByRole('dialog', { name: '使用轻便靴子' })

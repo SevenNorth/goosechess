@@ -11,7 +11,7 @@ import {
 } from '../src/index.js'
 
 const envelope: CommandEnvelope = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   gameId: 'game-1',
   commandId: 'command-1',
   playerId: 'player-1',
@@ -20,7 +20,7 @@ const envelope: CommandEnvelope = {
 }
 
 const snapshot: GameSnapshot = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   gameId: 'game-1',
   revision: 4,
   rulesetId: 'classic-race',
@@ -37,6 +37,9 @@ const snapshot: GameSnapshot = {
       { playerId: 'player-1', seatIndex: 0, displayName: '玩家', controller: 'local', colorId: 'pink', skinId: 'goose-white', spaceId: 6, itemId: null, skipTurns: 0, nextMoveBonus: 0, nextMaxDie: null, nextFixedMoveTotal: null },
       { playerId: 'ai-1', seatIndex: 1, displayName: '电脑', controller: 'ai', colorId: 'blue', skinId: 'goose-blue', spaceId: 4, itemId: 'clover', skipTurns: 0, nextMoveBonus: 0, nextMaxDie: null, nextFixedMoveTotal: null },
     ],
+    turnOrderGroups: [['player-1'], ['ai-1']],
+    orderRollResults: [],
+    orderRollHistory: [],
     pendingEventIds: ['fishing', 'crab', 'quiet'],
     pendingItemId: null,
     eventContinuation: 'end-turn',

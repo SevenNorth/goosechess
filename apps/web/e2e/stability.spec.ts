@@ -19,8 +19,12 @@ async function clickNextAction(page: Page) {
   const event = page.locator('.event-choice').first()
   const item = page.locator('.item-compare-grid button').last()
   const itemConfirm = page.getByRole('button', { name: '确认保留' })
+  const orderRoll = page.getByRole('button', { name: '投掷单骰' })
+  const orderConfirm = page.getByRole('button', { name: '进入第一回合' })
   const roll = page.getByRole('button', { name: '投掷双骰' })
   if (await tryClick(setup)) return 'setup'
+  if (await tryClick(orderRoll)) return 'order-roll'
+  if (await tryClick(orderConfirm)) return 'order-confirm'
   if (await tryClick(restart)) return 'restart'
   if (await tryClick(outcome)) return 'outcome'
   if (await tryClick(event)) return 'event'

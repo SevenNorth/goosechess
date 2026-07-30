@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { LocalAuthority, type CommandEnvelope, type GameCommand } from '../src/index.js'
+import { LocalAuthority, PROTOCOL_SCHEMA_VERSION, type CommandEnvelope, type GameCommand } from '../src/index.js'
 import { AUTHORITY_DEFINITION, AUTHORITY_PARTICIPANTS } from './authority-fixture.js'
 
 function command(commandId: string, playerId: string, expectedRevision: number, gameCommand: GameCommand): CommandEnvelope {
   return {
-    schemaVersion: 1,
+    schemaVersion: PROTOCOL_SCHEMA_VERSION,
     gameId: 'game-1',
     commandId,
     playerId,
@@ -44,6 +44,25 @@ describe('LocalAuthority', () => {
     const checkpoint = uninterrupted.getSnapshot()
     const restored = LocalAuthority.restore({ definition: AUTHORITY_DEFINITION, snapshot: checkpoint })
     const next = command('c2', 'p1', 1, { type: 'request-roll' })
+
+    expect(await restored.submit(next)).toEqual(await uninterrupted.submit(next))
+    expect(restored.getSnapshot()).toEqual(uninterrupted.getSnapshot())
+  })
+
+  it('restores a partially completed turn-order roll group', async () => {
+    const participants = AUTHORITY_PARTICIPANTS.map((participant) => ({ ...participant, startingItemId: undefined }))
+    const uninterrupted = LocalAuthority.create({
+      gameId: 'game-1',
+      definition: AUTHORITY_DEFINITION,
+      participants,
+      seed: 5,
+    })
+    await uninterrupted.submit(command('setup-1', 'p0', 0, { type: 'choose-starting-item', itemId: 'clover' }))
+    await uninterrupted.submit(command('setup-2', 'p1', 1, { type: 'choose-starting-item', itemId: 'clover' }))
+    await uninterrupted.submit(command('order-1', 'p0', 2, { type: 'request-order-roll' }))
+
+    const restored = LocalAuthority.restore({ definition: AUTHORITY_DEFINITION, snapshot: uninterrupted.getSnapshot() })
+    const next = command('order-2', 'p1', 3, { type: 'request-order-roll' })
 
     expect(await restored.submit(next)).toEqual(await uninterrupted.submit(next))
     expect(restored.getSnapshot()).toEqual(uninterrupted.getSnapshot())

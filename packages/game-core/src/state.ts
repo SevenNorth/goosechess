@@ -42,11 +42,17 @@ export function createInitialGameState(options: CreateGameStateOptions): GameSta
       }
     })
 
+  const setupPreconfigured = players.every((player) => player.itemId !== null)
   return {
-    phase: players.every((player) => player.itemId !== null) ? 'awaiting-action' : 'setup',
+    phase: setupPreconfigured ? 'awaiting-action' : 'setup',
     round: 1,
     activePlayerId: players[0].playerId,
     players,
+    turnOrderGroups: setupPreconfigured
+      ? players.map((player) => [player.playerId])
+      : [players.map((player) => player.playerId)],
+    orderRollResults: [],
+    orderRollHistory: [],
     rng: { seed: options.seed >>> 0, cursor: 0 },
     pendingEventIds: [],
     pendingItemId: null,

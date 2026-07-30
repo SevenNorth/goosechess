@@ -1,5 +1,5 @@
 export type PlayerController = 'local' | 'ai' | 'remote'
-export type GamePhase = 'setup' | 'awaiting-action' | 'awaiting-event-choice' | 'awaiting-item-choice' | 'game-over'
+export type GamePhase = 'setup' | 'determining-order' | 'awaiting-action' | 'awaiting-event-choice' | 'awaiting-item-choice' | 'game-over'
 export type DicePair = readonly [number, number]
 
 export interface BoardSpace {
@@ -155,11 +155,24 @@ export interface RngState {
   readonly cursor: number
 }
 
+export interface OrderRollResult {
+  readonly playerId: string
+  readonly face: number
+}
+
+export interface OrderRollRound {
+  readonly playerIds: readonly string[]
+  readonly results: readonly OrderRollResult[]
+}
+
 export interface GameState {
   readonly phase: GamePhase
   readonly round: number
   readonly activePlayerId: string
   readonly players: readonly ParticipantState[]
+  readonly turnOrderGroups: readonly (readonly string[])[]
+  readonly orderRollResults: readonly OrderRollResult[]
+  readonly orderRollHistory: readonly OrderRollRound[]
   readonly rng: RngState
   readonly pendingEventIds: readonly string[]
   readonly pendingItemId: string | null
@@ -174,6 +187,7 @@ export interface GameState {
 export type CoreGameCommand =
   | { readonly type: 'select-skin'; readonly skinId: string }
   | { readonly type: 'choose-starting-item'; readonly itemId: string }
+  | { readonly type: 'request-order-roll' }
   | { readonly type: 'use-item'; readonly itemId: string }
   | { readonly type: 'request-roll' }
   | { readonly type: 'choose-event'; readonly eventId: string }
@@ -183,6 +197,8 @@ export type CoreGameCommand =
 export type RuleEvent =
   | { readonly type: 'starting-item-chosen'; readonly playerId: string; readonly itemId: string }
   | { readonly type: 'skin-selected'; readonly playerId: string; readonly skinId: string }
+  | { readonly type: 'order-die-rolled'; readonly playerId: string; readonly face: number }
+  | { readonly type: 'turn-order-determined'; readonly playerIds: readonly string[] }
   | { readonly type: 'dice-rolled'; readonly playerId: string; readonly purpose: 'move' | 'check'; readonly dice: DicePair }
   | { readonly type: 'token-moved'; readonly playerId: string; readonly fromSpaceId: number; readonly path: readonly number[]; readonly toSpaceId: number }
   | { readonly type: 'collision-resolved'; readonly movingPlayerId: string; readonly displacedPlayerId: string; readonly fromSpaceId: number; readonly toSpaceId: number; readonly blocked: boolean }

@@ -75,6 +75,7 @@ export interface CommandValidationContext {
 const GameCommandTypes: ReadonlySet<string> = new Set<GameCommand['type']>([
   'select-skin',
   'choose-starting-item',
+  'request-order-roll',
   'use-item',
   'request-roll',
   'choose-event',
@@ -89,6 +90,7 @@ function referencedContent(command: GameCommand): { kind: keyof KnownContentIds;
     case 'use-item': return { kind: 'itemIds', id: command.itemId }
     case 'choose-item': return command.itemId ? { kind: 'itemIds', id: command.itemId } : null
     case 'choose-event': return { kind: 'eventIds', id: command.eventId }
+    case 'request-order-roll':
     case 'request-roll':
     case 'continue': return null
   }

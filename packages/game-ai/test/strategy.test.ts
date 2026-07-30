@@ -12,6 +12,7 @@ function view(overrides: Partial<GameDecisionView> = {}): GameDecisionView {
   return {
     gameId: 'game-1', revision: 3, viewerPlayerId: 'ai-1', phase: 'awaiting-action', round: 4,
     activePlayerId: 'ai-1',
+    turnOrderPlayerIds: ['local', 'ai-1'],
     players: [
       { playerId: 'local', seatIndex: 0, controller: 'local', spaceId: 22, itemId: null, skipTurns: 0, rank: 1, nextMoveBonus: 0, nextMaxDie: null, nextFixedMoveTotal: null },
       { playerId: 'ai-1', seatIndex: 1, controller: 'ai', spaceId: 10, itemId: null, skipTurns: 0, rank: 2, nextMoveBonus: 0, nextMaxDie: null, nextFixedMoveTotal: null },

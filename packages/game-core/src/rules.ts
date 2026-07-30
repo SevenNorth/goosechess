@@ -18,6 +18,9 @@ type MutableStateFields = {
 }
 type WorkingState = MutableStateFields & {
   players: MutableParticipant[]
+  turnOrderGroups: string[][]
+  orderRollResults: Array<{ playerId: string; face: number }>
+  orderRollHistory: Array<{ playerIds: string[]; results: Array<{ playerId: string; face: number }> }>
   pendingEventIds: string[]
   recentEventIds: string[]
 }
@@ -26,6 +29,12 @@ function cloneState(state: GameState): WorkingState {
   return {
     ...state,
     players: state.players.map((player) => ({ ...player })),
+    turnOrderGroups: state.turnOrderGroups.map((group) => [...group]),
+    orderRollResults: state.orderRollResults.map((result) => ({ ...result })),
+    orderRollHistory: state.orderRollHistory.map((round) => ({
+      playerIds: [...round.playerIds],
+      results: round.results.map((result) => ({ ...result })),
+    })),
     pendingEventIds: [...state.pendingEventIds],
     recentEventIds: [...state.recentEventIds],
     globalDieRule: state.globalDieRule ? { ...state.globalDieRule } : null,
@@ -43,8 +52,59 @@ function playerOf(state: WorkingState, playerId: string) {
 }
 
 function nextPlayer(state: WorkingState, playerId: string) {
-  const currentIndex = state.players.findIndex((player) => player.playerId === playerId)
-  return state.players[(currentIndex + 1) % state.players.length]
+  const order = state.turnOrderGroups.flat()
+  const currentIndex = order.indexOf(playerId)
+  return playerOf(state, order[(currentIndex + 1) % order.length])!
+}
+
+function unresolvedOrderGroupIndex(state: WorkingState) {
+  return state.turnOrderGroups.findIndex((group) => group.length > 1)
+}
+
+function beginOrderRolls(state: WorkingState) {
+  state.phase = 'determining-order'
+  state.orderRollResults = []
+  const groupIndex = unresolvedOrderGroupIndex(state)
+  if (groupIndex < 0) throw new Error('Turn order cannot begin without an unresolved group.')
+  state.activePlayerId = state.turnOrderGroups[groupIndex][0]
+}
+
+function submitOrderRoll(state: WorkingState, playerId: string, face: number, events: RuleEvent[]) {
+  const groupIndex = unresolvedOrderGroupIndex(state)
+  const group = state.turnOrderGroups[groupIndex]
+  if (groupIndex < 0 || !group?.includes(playerId)) return false
+  state.orderRollResults.push({ playerId, face })
+  events.push({ type: 'order-die-rolled', playerId, face })
+
+  const nextPlayerId = group.find((candidate) => !state.orderRollResults.some((result) => result.playerId === candidate))
+  if (nextPlayerId) {
+    state.activePlayerId = nextPlayerId
+    return true
+  }
+
+  const results = group.map((candidate) => state.orderRollResults.find((result) => result.playerId === candidate)!)
+  state.orderRollHistory.push({ playerIds: [...group], results: results.map((result) => ({ ...result })) })
+  const sorted = [...results].sort((left, right) => right.face - left.face || group.indexOf(left.playerId) - group.indexOf(right.playerId))
+  const replacement: string[][] = []
+  for (const result of sorted) {
+    const previous = replacement.at(-1)
+    const previousFace = previous && results.find((entry) => entry.playerId === previous[0])?.face
+    if (previous && previousFace === result.face) previous.push(result.playerId)
+    else replacement.push([result.playerId])
+  }
+  state.turnOrderGroups.splice(groupIndex, 1, ...replacement)
+  state.orderRollResults = []
+
+  const nextGroupIndex = unresolvedOrderGroupIndex(state)
+  if (nextGroupIndex >= 0) {
+    state.activePlayerId = state.turnOrderGroups[nextGroupIndex][0]
+  } else {
+    const playerIds = state.turnOrderGroups.flat()
+    state.phase = 'awaiting-action'
+    state.activePlayerId = playerIds[0]
+    events.push({ type: 'turn-order-determined', playerIds })
+  }
+  return true
 }
 
 function itemBehavior(definition: GameDefinition, itemId: string | null) {
@@ -233,14 +293,15 @@ function advanceTurn(state: WorkingState, events: RuleEvent[]) {
     return
   }
 
-  let currentIndex = state.players.findIndex((player) => player.playerId === state.activePlayerId)
+  const order = state.turnOrderGroups.flat()
+  let currentIndex = order.indexOf(state.activePlayerId)
   for (;;) {
-    currentIndex = (currentIndex + 1) % state.players.length
+    currentIndex = (currentIndex + 1) % order.length
     if (currentIndex === 0) {
       state.round += 1
       decrementGlobalRule(state, events)
     }
-    const candidate = state.players[currentIndex]
+    const candidate = playerOf(state, order[currentIndex])!
     if (candidate.skipTurns > 0) {
       candidate.skipTurns -= 1
       events.push({ type: 'turn-skipped', playerId: candidate.playerId, remainingTurns: candidate.skipTurns })
@@ -428,7 +489,16 @@ export function reduceGameCommand(
       if (!definition.ruleset.itemPoolIds.includes(command.itemId)) return reject('unknown_content', `Unknown item id: ${command.itemId}.`)
       actor.itemId = command.itemId
       events.push({ type: 'starting-item-chosen', playerId: actorPlayerId, itemId: command.itemId })
-      if (state.players.every((player) => player.itemId !== null)) state.phase = 'awaiting-action'
+      if (state.players.every((player) => player.itemId !== null)) beginOrderRolls(state)
+      break
+    }
+    case 'request-order-roll': {
+      if (state.phase !== 'determining-order' || state.activePlayerId !== actorPlayerId) {
+        return reject('illegal_command', 'Only the current participant can roll for turn order.')
+      }
+      if (!submitOrderRoll(state, actorPlayerId, random.nextInt(1, 6), events)) {
+        return reject('illegal_command', 'The participant is not in the current order-roll group.')
+      }
       break
     }
     case 'use-item': {

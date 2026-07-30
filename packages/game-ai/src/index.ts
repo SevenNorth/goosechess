@@ -65,7 +65,8 @@ function playerOf(view: GameDecisionView, playerId = view.viewerPlayerId) {
 function nextPlayer(view: GameDecisionView) {
   const actor = playerOf(view)
   if (!actor) return undefined
-  return view.players[(actor.seatIndex + 1) % view.players.length]
+  const currentIndex = view.turnOrderPlayerIds.indexOf(actor.playerId)
+  return playerOf(view, view.turnOrderPlayerIds[(currentIndex + 1) % view.turnOrderPlayerIds.length])
 }
 
 function itemBehavior(view: GameDecisionView, itemId: string | null) {
@@ -189,6 +190,7 @@ function scoreItemUse(view: GameDecisionView, itemId: string): ScoredCommand {
 
 function scoreCommand(view: GameDecisionView, command: CoreGameCommand): ScoredCommand {
   switch (command.type) {
+    case 'request-order-roll': return { command, score: 0, reasonTag: 'roll-for-turn-order' }
     case 'request-roll': return scoreRoll(view)
     case 'use-item': return scoreItemUse(view, command.itemId)
     case 'choose-event': return scoreEvent(view, command.eventId)

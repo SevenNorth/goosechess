@@ -40,6 +40,7 @@ export interface GameDecisionView {
   readonly phase: GamePhase
   readonly round: number
   readonly activePlayerId: string
+  readonly turnOrderPlayerIds: readonly string[]
   readonly players: readonly PublicDecisionPlayer[]
   readonly map: PublicDecisionMap
   readonly dieRule: PublicDieRule
@@ -78,6 +79,10 @@ export function getLegalCommands(
       commands.push(...definition.ruleset.itemPoolIds.map((itemId) => ({ type: 'choose-starting-item' as const, itemId })))
     }
     return commands
+  }
+
+  if (state.phase === 'determining-order') {
+    return state.activePlayerId === playerId ? [{ type: 'request-order-roll' }] : []
   }
 
   if (state.activePlayerId !== playerId) return []
@@ -131,6 +136,7 @@ export function createGameDecisionView(
     phase: state.phase,
     round: state.round,
     activePlayerId: state.activePlayerId,
+    turnOrderPlayerIds: state.turnOrderGroups.flat(),
     players: state.players.map((player) => ({
       playerId: player.playerId,
       seatIndex: player.seatIndex,
