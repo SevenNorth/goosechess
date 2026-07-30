@@ -72,30 +72,6 @@ async function threeCanvasVisiblePixels(page: Page, region: 'center' | 'bottom')
   }, region)
 }
 
-async function threeCanvasCenterSignature(page: Page) {
-  return page.locator('canvas[data-testid="three-dice-canvas"]').evaluate((element) => {
-    const canvas = element as HTMLCanvasElement
-    const context = canvas.getContext('webgl2') ?? canvas.getContext('webgl')
-    if (!context) return { hash: 0, visible: 0 }
-    const x = Math.floor(context.drawingBufferWidth * 0.34)
-    const y = Math.floor(context.drawingBufferHeight * 0.3)
-    const width = Math.floor(context.drawingBufferWidth * 0.32)
-    const height = Math.floor(context.drawingBufferHeight * 0.4)
-    const pixels = new Uint8Array(width * height * 4)
-    context.readPixels(x, y, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
-    let hash = 2_166_136_261
-    let visible = 0
-    for (let index = 0; index < pixels.length; index += 16) {
-      if (pixels[index + 3] > 20) visible += 4
-      hash = Math.imul(hash ^ pixels[index], 16_777_619)
-      hash = Math.imul(hash ^ pixels[index + 1], 16_777_619)
-      hash = Math.imul(hash ^ pixels[index + 2], 16_777_619)
-      hash = Math.imul(hash ^ pixels[index + 3], 16_777_619)
-    }
-    return { hash: hash >>> 0, visible }
-  })
-}
-
 test('renders a nonblank complete board at all desktop targets', async ({ page }, testInfo) => {
   test.setTimeout(90_000)
   for (const viewport of [
@@ -285,10 +261,41 @@ test('reveals the standard 1x result on the 2.4 second dice timeline', async ({ 
   await page.evaluate(() => {
     const layer = document.querySelector('.three-dice-layer')
     const trigger = document.querySelector<HTMLButtonElement>('.three-dice-trigger')
-    const state = window as typeof window & { __standardDiceTiming?: { startedAt: number; settledAt: number } }
-    state.__standardDiceTiming = { startedAt: 0, settledAt: 0 }
+    const state = window as typeof window & {
+      __standardDiceTiming?: {
+        frames: { hash: number; visible: number }[]
+        settledAt: number
+        startedAt: number
+      }
+    }
+    state.__standardDiceTiming = { frames: [], startedAt: 0, settledAt: 0 }
+    const captureCenterFrame = () => {
+      const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-testid="three-dice-canvas"]')
+      const context = canvas?.getContext('webgl2') ?? canvas?.getContext('webgl')
+      if (!context) return { hash: 0, visible: 0 }
+      const x = Math.floor(context.drawingBufferWidth * 0.34)
+      const y = Math.floor(context.drawingBufferHeight * 0.3)
+      const width = Math.floor(context.drawingBufferWidth * 0.32)
+      const height = Math.floor(context.drawingBufferHeight * 0.4)
+      const pixels = new Uint8Array(width * height * 4)
+      context.readPixels(x, y, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
+      let hash = 2_166_136_261
+      let visible = 0
+      for (let index = 0; index < pixels.length; index += 16) {
+        if (pixels[index + 3] > 20) visible += 4
+        hash = Math.imul(hash ^ pixels[index], 16_777_619)
+        hash = Math.imul(hash ^ pixels[index + 1], 16_777_619)
+        hash = Math.imul(hash ^ pixels[index + 2], 16_777_619)
+        hash = Math.imul(hash ^ pixels[index + 3], 16_777_619)
+      }
+      return { hash: hash >>> 0, visible }
+    }
     trigger?.addEventListener('click', () => {
-      if (state.__standardDiceTiming) state.__standardDiceTiming.startedAt = performance.now()
+      if (!state.__standardDiceTiming) return
+      state.__standardDiceTiming.startedAt = performance.now()
+      for (const delay of [700, 1_100, 1_400]) window.setTimeout(() => {
+        state.__standardDiceTiming?.frames.push(captureCenterFrame())
+      }, delay)
     }, { once: true })
     if (layer) new MutationObserver(() => {
       if (layer.classList.contains('is-settled') && state.__standardDiceTiming && !state.__standardDiceTiming.settledAt) {
@@ -297,13 +304,18 @@ test('reveals the standard 1x result on the 2.4 second dice timeline', async ({ 
     }).observe(layer, { attributes: true, attributeFilter: ['class'] })
   })
   await page.getByRole('button', { name: '投掷双骰' }).click()
-  await page.waitForTimeout(700)
-  const earlyCenterFrame = await threeCanvasCenterSignature(page)
-  expect(earlyCenterFrame.visible).toBeGreaterThan(1_000)
-  await page.waitForTimeout(400)
-  const continuingCenterFrame = await threeCanvasCenterSignature(page)
-  expect(continuingCenterFrame.visible).toBeGreaterThan(1_000)
-  expect(continuingCenterFrame.hash).not.toBe(earlyCenterFrame.hash)
+  await expect.poll(() => page.evaluate(() => (
+    window as typeof window & { __standardDiceTiming?: { frames: unknown[] } }
+  ).__standardDiceTiming?.frames.length ?? 0)).toBe(3)
+  const frames = await page.evaluate(() => (
+    window as typeof window & {
+      __standardDiceTiming?: { frames: { hash: number; visible: number }[] }
+    }
+  ).__standardDiceTiming?.frames ?? [])
+  expect(frames).toHaveLength(3)
+  for (const frame of frames) expect(frame.visible).toBeGreaterThan(1_000)
+  expect(frames[1].hash).not.toBe(frames[0].hash)
+  expect(frames[2].hash).not.toBe(frames[1].hash)
   await expect.poll(() => page.evaluate(() => (
     window as typeof window & { __standardDiceTiming?: { settledAt: number } }
   ).__standardDiceTiming?.settledAt ?? 0)).toBeGreaterThan(0)

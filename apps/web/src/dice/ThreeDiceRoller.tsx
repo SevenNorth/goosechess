@@ -160,12 +160,31 @@ function tumbleEuler(profile: Pick<DieRollProfile, 'direction' | 'index' | 'spin
 
 function tumbleProgress(profile: Pick<DieRollProfile, 'spinEnd' | 'tumbleAmount'>, progress: number) {
   const normalized = THREE.MathUtils.clamp(progress / profile.spinEnd, 0, 1)
-  return Math.sin(normalized * Math.PI / 2) * profile.tumbleAmount
+  if (profile.tumbleAmount < 1) return Math.sin(normalized * Math.PI / 2) * profile.tumbleAmount
+
+  const flightEnd = 0.28
+  const cruiseEnd = 0.67
+  const minimumSpeed = 0.3
+  const maximumSpeed = 2.4
+  const acceleratedDistance = flightEnd * (minimumSpeed + maximumSpeed) / 2
+  if (progress <= flightEnd) {
+    const phase = progress / flightEnd
+    const smoothstepIntegral = phase ** 3 - 0.5 * phase ** 4
+    return flightEnd * (minimumSpeed * phase + (maximumSpeed - minimumSpeed) * smoothstepIntegral)
+  }
+
+  const cruiseDistance = (cruiseEnd - flightEnd) * maximumSpeed
+  if (progress <= cruiseEnd) return acceleratedDistance + (progress - flightEnd) * maximumSpeed
+
+  const decelerationDuration = profile.spinEnd - cruiseEnd
+  const phase = THREE.MathUtils.clamp((progress - cruiseEnd) / decelerationDuration, 0, 1)
+  const decelerationIntegral = phase - phase ** 3 + 0.5 * phase ** 4
+  return acceleratedDistance + cruiseDistance + decelerationDuration * maximumSpeed * decelerationIntegral
 }
 
 function createRollProfile(die: DieVisual, index: number, face: number, reduceMotion: boolean): DieRollProfile {
   const direction = index === 0 ? 1 : -1
-  const spinEnd = reduceMotion ? 0.76 : 0.78
+  const spinEnd = reduceMotion ? 0.76 : 0.8
   const tumbleAmount = reduceMotion ? 0.65 : 1
   const spinTurns: readonly [number, number, number] = reduceMotion ? [1.4, 1.8, 1.1] : [4.2, 5.2, 3.2]
   const profileBase = { direction, index, spinEnd, spinTurns, tumbleAmount }
@@ -367,7 +386,7 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
       if (animation) {
         const progress = Math.min(1, (now - animation.startedAt) / animation.duration)
         const rollProgress = Math.min(1, progress / 0.76)
-        const travel = easeOutCubic(Math.min(1, rollProgress / 0.34))
+        const travel = easeOutCubic(Math.min(1, rollProgress / 0.28))
         root.position.y = THREE.MathUtils.lerp(dockY(visuals), -0.18, travel)
         root.scale.setScalar(THREE.MathUtils.lerp(0.7, 1.08, easeOutCubic(travel)))
         visuals.dice.forEach((die, index) => {
