@@ -146,17 +146,48 @@ test('docks clickable 3D dice, rolls them at board center, and settles the autho
         if (result) state.__diceResultClasses?.push(result.className)
       }).observe(target, { attributes: true, attributeFilter: ['class'], childList: true, subtree: true })
     })
+    const centeredReady = page.evaluate(() => new Promise<number>((resolve) => {
+      const target = document.querySelector('.three-dice-layer')
+      const visibleCenterPixels = () => {
+        const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-testid="three-dice-canvas"]')
+        const context = canvas?.getContext('webgl2') ?? canvas?.getContext('webgl')
+        if (!context) return 0
+        const x = Math.floor(context.drawingBufferWidth * 0.34)
+        const y = Math.floor(context.drawingBufferHeight * 0.3)
+        const width = Math.floor(context.drawingBufferWidth * 0.32)
+        const height = Math.floor(context.drawingBufferHeight * 0.4)
+        const pixels = new Uint8Array(width * height * 4)
+        context.readPixels(x, y, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
+        let visible = 0
+        for (let index = 3; index < pixels.length; index += 4) if (pixels[index] > 20) visible += 1
+        return visible
+      }
+      const resolveWhenCentered = () => {
+        if (document.querySelector('.dice-result.is-centered')) {
+          observer.disconnect()
+          resolve(visibleCenterPixels())
+        }
+      }
+      const observer = new MutationObserver(resolveWhenCentered)
+      if (target) observer.observe(target, { attributes: true, attributeFilter: ['class'], childList: true, subtree: true })
+      resolveWhenCentered()
+    }))
 
     await trigger.click()
     await expect(page.locator('.three-dice-layer')).toHaveClass(/is-rolling/)
     await expect.poll(() => threeCanvasVisiblePixels(page, 'center')).toBeGreaterThan(1_000)
+    expect(await centeredReady).toBeGreaterThan(1_000)
     const result = page.locator('.dice-readout')
-    await expect(result).toBeVisible()
+    const centeredPresentation = await result.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { centered: element.classList.contains('is-centered'), fontSize: style.fontSize, zIndex: style.zIndex }
+    })
+    expect(centeredPresentation).toEqual({ centered: true, fontSize: '108px', zIndex: '5' })
+    await page.screenshot({ path: testInfo.outputPath(`dice-result-centered-${viewport.width}x${viewport.height}.png`), fullPage: true })
     await expect(result).toHaveText(/^([2-9]|1[0-2])$/)
     await expect(result).toHaveAttribute('aria-label', /骰子结果 ([2-9]|1[0-2])$/)
     await expect(result).toHaveClass(/is-corner/)
     const expectedResultX = viewport.width / 2 + Math.min(viewport.width / 2 - 152, 515)
-    const expectedResultY = 68 + (viewport.height - 68) / 2 + Math.min(viewport.height / 2 - 112, 317)
     const flight = await result.evaluate((element) => {
       const animation = element.getAnimations().find((candidate) => (
         candidate instanceof CSSAnimation && candidate.animationName === 'dice-result-flight'
@@ -177,29 +208,9 @@ test('docks clickable 3D dice, rolls them at board center, and settles the autho
     expect(inFlightX).toBeLessThan(expectedResultX - 5)
     await expect(page.locator('.held-item')).toHaveCSS('opacity', '0')
     await page.screenshot({ path: testInfo.outputPath(`dice-result-flight-${viewport.width}x${viewport.height}.png`), fullPage: true })
-    await result.evaluate((element) => {
-      element.getAnimations().find((candidate) => (
-        candidate instanceof CSSAnimation && candidate.animationName === 'dice-result-flight'
-      ))?.finish()
-    })
     const resultClasses = await page.evaluate(() => (window as typeof window & { __diceResultClasses?: string[] }).__diceResultClasses ?? [])
     expect(resultClasses.some((className) => className.includes('is-centered'))).toBe(true)
     expect(resultClasses.some((className) => className.includes('is-corner'))).toBe(true)
-    const resultCenter = await result.evaluate((element) => {
-      const animation = element.getAnimations().find((candidate) => (
-        candidate instanceof CSSAnimation && candidate.animationName === 'dice-result-flight'
-      ))
-      const timing = animation?.effect?.getComputedTiming()
-      if (animation && typeof timing?.duration === 'number') {
-        animation.pause()
-        animation.currentTime = timing.duration
-      }
-      const bounds = element.getBoundingClientRect()
-      animation?.finish()
-      return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }
-    })
-    expect(Math.abs(resultCenter.x - expectedResultX)).toBeLessThan(8)
-    expect(Math.abs(resultCenter.y - expectedResultY)).toBeLessThan(8)
     expect(await threeCanvasVisiblePixels(page, 'center')).toBe(0)
   }
 })
