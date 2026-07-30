@@ -78,6 +78,53 @@ interface EventOutcome {
   readonly passed: boolean | null
 }
 
+interface ItemGainConfirmation {
+  readonly itemId: string
+  readonly revision: number
+}
+
+interface CountdownConfirmButtonProps {
+  readonly label: string
+  readonly seconds: number
+  readonly className?: string
+  readonly disabled?: boolean
+  readonly onConfirm: () => void
+}
+
+function CountdownConfirmButton({ label, seconds, className, disabled, onConfirm }: CountdownConfirmButtonProps) {
+  const actionRef = useRef(onConfirm)
+  const firedRef = useRef(false)
+  const [remainingSeconds, setRemainingSeconds] = useState(seconds)
+
+  useEffect(() => {
+    actionRef.current = onConfirm
+  }, [onConfirm])
+
+  const confirm = useCallback(() => {
+    if (firedRef.current) return
+    firedRef.current = true
+    actionRef.current()
+  }, [])
+
+  useEffect(() => {
+    const deadline = Date.now() + seconds * 1_000
+    const interval = window.setInterval(() => {
+      setRemainingSeconds(Math.max(0, Math.ceil((deadline - Date.now()) / 1_000)))
+    }, 200)
+    const timeout = window.setTimeout(confirm, seconds * 1_000)
+    return () => {
+      window.clearInterval(interval)
+      window.clearTimeout(timeout)
+    }
+  }, [confirm, seconds])
+
+  return (
+    <button className={className} type="button" aria-label={label} disabled={disabled} onClick={confirm}>
+      <Check /> {label}<span className="confirm-countdown" aria-hidden="true">{remainingSeconds}秒</span>
+    </button>
+  )
+}
+
 interface GameSessionProps {
   readonly mode: OfflineMatchMode
   readonly seed: number
@@ -155,6 +202,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const [showLogs, setShowLogs] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [itemUsePresentation, setItemUsePresentation] = useState<ItemUsePresentationData | null>(null)
+  const [itemGainConfirmation, setItemGainConfirmation] = useState<ItemGainConfirmation | null>(null)
   const [logs, setLogs] = useState<LogEntry[]>([{ id: 1, text: '试航棋盘已经铺好。' }])
   const logId = useRef(2)
   const itemUseId = useRef(1)
@@ -220,6 +268,9 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
     setSnapshot(result.update.snapshot)
     addLogs(gameLogLines(result.update))
     const resolved = result.update.events.find((event) => event.type === 'event-resolved')
+    const directlyGainedLocalItem = resolved && actorIsLocal
+      ? result.update.events.find((event) => event.type === 'item-changed' && event.playerId === 'local-player' && event.itemId !== null)
+      : undefined
     const gameWon = result.update.events.some((event) => event.type === 'game-won')
     const orderDetermined = result.update.events.some((event) => event.type === 'turn-order-determined')
     if (board) {
@@ -241,6 +292,9 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
     if (actorIsLocal && resolved?.type === 'event-resolved') {
       const event = eventById(resolved.eventCardId)
       if (event) setEventOutcome({ event, passed: resolved.passed })
+      if (directlyGainedLocalItem?.type === 'item-changed' && directlyGainedLocalItem.itemId) {
+        setItemGainConfirmation({ itemId: directlyGainedLocalItem.itemId, revision: result.update.snapshot.revision })
+      }
     }
     if (gameWon) setShowWin(true)
     if (orderDetermined) setShowOrderResult(true)
@@ -281,6 +335,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
 
   const shouldDriveAi = snapshot.state.phase !== 'game-over'
     && !eventOutcome
+    && !itemGainConfirmation
     && !showOrderResult
     && snapshot.state.players.find((player) => player.playerId === snapshot.state.activePlayerId)?.controller === 'ai'
 
@@ -328,6 +383,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const canUseItem = localItem && localDecision.legalCommands.some((command) => command.type === 'use-item' && command.itemId === localItem.id)
   const offeredEvents = snapshot.state.pendingEventIds.map(eventById).filter((event) => event !== undefined)
   const pendingItem = itemById(snapshot.state.pendingItemId)
+  const gainedItem = itemById(itemGainConfirmation?.itemId ?? null)
   const activeSpace = GAME_DEFINITION.map.spaces.find((space) => space.index === activePlayer.spaceId)
   const activeLandmark = GAME_DEFINITION.map.landmarks.find((landmark) => landmark.id === activeSpace?.landmarkId)
   const finalSpaceId = GAME_DEFINITION.map.spaces.at(-1)?.index ?? 65
@@ -505,7 +561,19 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
               <button className={keepPendingItem ? '' : 'is-selected'} type="button" role="radio" aria-checked={!keepPendingItem} disabled={locked} onClick={() => setKeepPendingItem(false)}><span>当前</span><strong>{localItem?.title}</strong><small>{ITEM_COPY[localItem?.id ?? '']?.description}</small>{!keepPendingItem && <Check className="item-choice-check" />}</button>
               <button className={keepPendingItem ? 'is-selected' : ''} type="button" role="radio" aria-checked={keepPendingItem} disabled={locked} onClick={() => setKeepPendingItem(true)}><span>新道具</span><strong>{pendingItem.title}</strong><small>{ITEM_COPY[pendingItem.id]?.description}</small>{keepPendingItem && <Check className="item-choice-check" />}</button>
             </div>
-            <button className="primary-command item-choice-confirm" type="button" disabled={locked} onClick={() => { const itemId = keepPendingItem ? pendingItem.id : null; setKeepPendingItem(false); void submitLocal({ type: 'choose-item', itemId }) }}><Check /> 确认保留</button>
+            <CountdownConfirmButton key={pendingItem.id} className="primary-command item-choice-confirm" label="确认保留" seconds={5} disabled={locked} onConfirm={() => { const itemId = keepPendingItem ? pendingItem.id : null; setKeepPendingItem(false); void submitLocal({ type: 'choose-item', itemId }) }} />
+          </section>
+        </div>
+      )}
+
+      {!eventOutcome && itemGainConfirmation && gainedItem && (
+        <div className="overlay-stage item-compare-overlay">
+          <section className="item-compare-panel item-gain-panel" role="dialog" aria-modal="true" aria-labelledby="item-gain-title">
+            <div className="panel-kicker">获得新道具</div><h2 id="item-gain-title">确认收下道具</h2>
+            <div className="item-compare-grid is-single">
+              <article className="item-gain-card"><span>{gainedItem.mode}道具</span><strong>{gainedItem.title}</strong><small>{ITEM_COPY[gainedItem.id]?.description}</small><Check className="item-choice-check" /></article>
+            </div>
+            <CountdownConfirmButton key={itemGainConfirmation.revision} className="primary-command item-choice-confirm" label="确认收下" seconds={3} onConfirm={() => setItemGainConfirmation(null)} />
           </section>
         </div>
       )}

@@ -251,6 +251,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .item-compare-panel { width: 700px; }
 .item-compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 17px; margin-top: 23px; }
 .item-compare-grid button { position: relative; min-height: 220px; display: flex; flex-direction: column; padding: 24px; text-align: left; color: #353731; background: #ded8c4 url('/assets/sample/paper-board.png') center / cover; border: 3px solid #77786d; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.item-compare-grid.is-single { grid-template-columns: minmax(0, 320px); justify-content: center; }
+.item-gain-card { position: relative; min-height: 220px; display: flex; flex-direction: column; padding: 24px; text-align: left; color: #353731; background: #ded8c4 url('/assets/sample/paper-board.png') center / cover; border: 3px solid var(--pink); box-shadow: 0 0 0 3px rgba(232,47,115,.28), 7px 8px 0 rgba(0,0,0,.28); }
 .item-compare-grid button:hover, .item-compare-grid button.is-selected { border-color: var(--pink); transform: translateY(-4px); }
 .item-compare-grid button.is-selected { box-shadow: 0 0 0 3px rgba(232,47,115,.28), 7px 8px 0 rgba(0,0,0,.28); }
 .item-compare-grid span { align-self: flex-end; padding: 3px 7px; color: white; background: #55584f; font-size: 8px; }
@@ -258,6 +260,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .item-compare-grid small { margin-top: 10px; line-height: 1.7; }
 .item-choice-check { position: absolute; top: 16px; left: 17px; width: 25px; height: 25px; padding: 4px; color: white; background: var(--pink); }
 .item-choice-confirm { min-width: 190px; margin-top: 26px; }
+.confirm-countdown { min-width: 34px; margin-left: 5px; padding: 2px 5px; color: #242620; background: rgba(255,255,255,.78); font-size: 10px; font-weight: 900; text-align: center; }
 .final-ranking { display: grid; gap: 5px; margin: 0 0 22px; padding: 0; list-style: none; text-align: left; }
 .final-ranking li { min-height: 38px; display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(255,255,255,.055); }
 .final-ranking li > span { width: 24px; height: 24px; display: grid; place-items: center; color: #24261f; background: var(--gold); font-size: 11px; font-weight: 900; }

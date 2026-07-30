@@ -178,6 +178,7 @@ test('offers animation speed and camera motion settings', async ({ page }) => {
 })
 
 test('confirms item use in the center and highlights the retained item', async ({ page }) => {
+  test.setTimeout(90_000)
   await page.setViewportSize({ width: 1920, height: 1080 })
   await startGame(page, '1v1', 242, 20, /轻便靴子/)
   await page.locator('.held-item').click()
@@ -197,12 +198,39 @@ test('confirms item use in the center and highlights the retained item', async (
   const newItem = itemDialog.getByRole('radio', { name: /新道具/ })
   await expect(currentItem).toHaveAttribute('aria-checked', 'true')
   await expect(currentItem).toHaveClass(/is-selected/)
+  const countdownBeforeSelection = Number.parseInt((await itemDialog.locator('.confirm-countdown').textContent()) ?? '', 10)
   await newItem.click()
   await expect(currentItem).toHaveAttribute('aria-checked', 'false')
   await expect(newItem).toHaveAttribute('aria-checked', 'true')
   await expect(newItem).toHaveClass(/is-selected/)
-  await itemDialog.getByRole('button', { name: '确认保留' }).click()
-  await expect(itemDialog).toHaveCount(0)
+  const pendingItemName = await newItem.locator('strong').textContent()
+  const countdownAfterSelection = Number.parseInt((await itemDialog.locator('.confirm-countdown').textContent()) ?? '', 10)
+  expect(countdownBeforeSelection).toBeGreaterThan(0)
+  expect(countdownBeforeSelection).toBeLessThanOrEqual(5)
+  expect(countdownAfterSelection).toBeLessThanOrEqual(countdownBeforeSelection)
+  await expect(itemDialog).toHaveCount(0, { timeout: 6_000 })
+  await expect(page.locator('.held-item')).toContainText(pendingItemName!)
+})
+
+test('confirms a directly gained event item locally and closes after three seconds', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 1600, height: 900 })
+  await startGame(page, '1v1', 22, 20, /坏藤壶/)
+
+  await page.locator('.held-item').click()
+  await page.getByRole('dialog', { name: '使用坏藤壶' }).getByRole('button', { name: '确认使用' }).click()
+  await expect(page.getByRole('status', { name: '玩家使用坏藤壶' })).toHaveCount(0, { timeout: 5_000 })
+  await page.getByRole('button', { name: '投掷双骰' }).click()
+  await page.getByRole('button', { name: /走失的猫/ }).click()
+  await page.getByRole('button', { name: '继续' }).click()
+
+  const gainDialog = page.getByRole('dialog', { name: '确认收下道具' })
+  await expect(gainDialog).toBeVisible()
+  await expect(gainDialog.locator('.confirm-countdown')).toHaveText('3秒')
+  await expect(page.locator('.item-use-stage')).toHaveCount(0)
+  const gainedItemName = await gainDialog.locator('.item-gain-card strong').textContent()
+  await expect(gainDialog).toHaveCount(0, { timeout: 4_000 })
+  await expect(page.locator('.held-item')).toContainText(gainedItemName!)
 })
 
 test('keeps opponent items private and tears a used item card vertically', async ({ page }, testInfo) => {
