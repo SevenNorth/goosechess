@@ -3,9 +3,11 @@ import { Bot, Construction, Dices, Play, UsersRound } from 'lucide-react'
 import { Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { OFFLINE_MATCH_MODES, type OfflineMatchMode } from '@goose-chess/game-protocol'
 import App from './App'
+import { createMatchSeed, parseSeedParameter } from './match-seed'
 
 function PreparationPage() {
   const [selectedMode, setSelectedMode] = useState<OfflineMatchMode>('1v1')
+  const [matchSeed] = useState(createMatchSeed)
   const opponentCount = Number(selectedMode.at(-1))
 
   return (
@@ -48,7 +50,7 @@ function PreparationPage() {
             <div className="mode-icon"><UsersRound /></div>
             <div><strong>玩家 vs 电脑棋手</strong><small>1 名本地玩家 · {opponentCount} 名电脑棋手</small></div>
           </div>
-          <Link className="primary-button start-match-button" to={`/play?mode=${selectedMode}`}>
+          <Link className="primary-button start-match-button" to={`/play?mode=${selectedMode}&seed=${matchSeed}`}>
             <Play /> 开始对局
           </Link>
         </div>
@@ -82,15 +84,16 @@ function RoomUnavailablePage() {
 function PlayPage() {
   const navigate = useNavigate()
   const [parameters] = useSearchParams()
+  const [fallbackSeed] = useState(createMatchSeed)
   const requestedMode = parameters.get('mode')
   const mode: OfflineMatchMode = OFFLINE_MATCH_MODES.includes(requestedMode as OfflineMatchMode)
     ? requestedMode as OfflineMatchMode
     : '1v1'
-  const requestedSeed = Number(parameters.get('seed'))
+  const requestedSeed = parseSeedParameter(parameters.get('seed'))
   const requestedSpeed = Number(parameters.get('speed'))
   return <App
     mode={mode}
-    seed={Number.isInteger(requestedSeed) && requestedSeed >= 0 ? requestedSeed : undefined}
+    seed={requestedSeed ?? fallbackSeed}
     animationSpeed={Number.isFinite(requestedSpeed) && requestedSpeed >= 1 && requestedSpeed <= 20 ? requestedSpeed : undefined}
     onExit={() => navigate('/')}
   />
