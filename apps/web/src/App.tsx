@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bot,
   Check,
@@ -29,6 +29,9 @@ import {
 import { PixiBoard } from './scene/PixiBoard'
 import type { BoardSceneController } from './scene/BoardScene'
 import type { PresentationStage } from './game-client/machine/presentation-machine'
+import type { ThreeDiceRollerHandle } from './dice/ThreeDiceRoller'
+
+const ThreeDiceRoller = lazy(() => import('./dice/ThreeDiceRoller').then((module) => ({ default: module.ThreeDiceRoller })))
 
 const GAME_DEFINITION = DEFAULT_GAME_DEFINITION
 
@@ -128,6 +131,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const [match] = useState(() => createOfflineMatch({ mode, seed, gameId: `offline-${mode}-${seed}` }, GAME_DEFINITION))
   const [snapshot, setSnapshot] = useState(() => match.authority.getSnapshot())
   const [board, setBoard] = useState<BoardSceneController | null>(null)
+  const diceRef = useRef<ThreeDiceRollerHandle>(null)
   const [presentationStage, setPresentationStage] = useState<PresentationStage>('ready')
   const [locked, setLocked] = useState(false)
   const lockedRef = useRef(false)
@@ -179,6 +183,8 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
         onStageChange: (stage) => mountedRef.current && setPresentationStage(stage),
         speed: animationSpeed,
         cameraMotion,
+        playDice: (dice, speed) => diceRef.current?.roll(dice, speed) ?? Promise.resolve(),
+        cancelDice: () => diceRef.current?.cancel(),
       })
     }
     if (actorIsLocal && resolved?.type === 'event-resolved') {
@@ -267,8 +273,6 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const LocalItemIcon = localItem ? ITEM_COPY[localItem.id]?.icon ?? PackageOpen : PackageOpen
   const localDecision = match.authority.getDecisionView('local-player')
   const canRoll = !locked && !showOrderResult && board && snapshot.state.phase === 'awaiting-action' && snapshot.state.activePlayerId === 'local-player'
-  const showDiceReadout = snapshot.state.lastDice !== null
-    && (snapshot.state.phase !== 'awaiting-action' || presentationStage !== 'ready')
   const canUseItem = localItem && localDecision.legalCommands.some((command) => command.type === 'use-item' && command.itemId === localItem.id)
   const offeredEvents = snapshot.state.pendingEventIds.map(eventById).filter((event) => event !== undefined)
   const pendingItem = itemById(snapshot.state.pendingItemId)
@@ -298,6 +302,14 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   return (
     <main className="stage5-shell">
       <PixiBoard map={GAME_DEFINITION.map} snapshot={snapshot} onReady={(controller) => { controller.sync(snapshot); setBoard(controller) }} onDispose={() => setBoard(null)} />
+      <Suspense fallback={null}>
+        <ThreeDiceRoller
+          ref={diceRef}
+          canRoll={Boolean(canRoll)}
+          stage={presentationStage}
+          onRoll={() => void submitLocal({ type: 'request-roll' })}
+        />
+      </Suspense>
 
       <header className="stage5-topbar">
         <div className="stage5-brand"><span>鹅</span><div><strong>鹅了个棋</strong><small>奥普港 65 格竞速 · {mode}</small></div></div>
@@ -336,17 +348,6 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
       <section className="turn-banner" aria-live="polite">
         <span style={{ background: COLOR_HEX[activePlayer.colorId] }} />
         <div><small>当前行动</small><strong>{activePlayer.displayName}</strong></div>
-      </section>
-
-      <section className={showDiceReadout ? 'dice-console' : 'dice-console is-empty'} aria-label="双骰操作">
-        {showDiceReadout && <div className="dice-readout">
-          <span className="ui-die">{snapshot.state.lastDice?.faces[0] ?? '·'}</span>
-          <span className="ui-die is-dark">{snapshot.state.lastDice?.faces[1] ?? '·'}</span>
-          <div><small>合计</small><strong>{snapshot.state.lastDice?.total ?? '--'}</strong></div>
-        </div>}
-        <button className="primary-command" type="button" disabled={!canRoll} onClick={() => void submitLocal({ type: 'request-roll' })}>
-          <Dices /> 投掷双骰
-        </button>
       </section>
 
       <button className={localItem ? 'held-item has-item' : 'held-item'} type="button" onClick={() => localItem && setItemDetailsOpen(true)} disabled={!localItem || locked}>

@@ -120,14 +120,19 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .turn-banner small { color: #aeb4aa; font-size: 8px; font-weight: 800; }
 .turn-banner strong { font-size: 14px; }
 
-.dice-console { position: absolute; z-index: 16; bottom: 22px; left: 50%; width: 340px; display: grid; grid-template-columns: 1fr 142px; gap: 12px; padding: 12px; transform: translateX(-50%); background: rgba(26,29,24,.97); border: 1px solid rgba(255,255,255,.12); }
-.dice-console.is-empty { width: 168px; grid-template-columns: 142px; }
-.dice-readout { display: grid; grid-template-columns: 48px 48px 1fr; gap: 7px; align-items: center; }
-.ui-die { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 6px; color: #272a25; background: #eee9d9; box-shadow: inset -4px -5px 0 #c8c1ae; font-size: 22px; font-weight: 900; }
-.ui-die.is-dark { color: #f3f1e7; background: #343730; box-shadow: inset -4px -5px 0 #1d1f1b; }
-.dice-readout > div { display: flex; flex-direction: column; align-items: center; }
-.dice-readout small { color: #92988e; font-size: 8px; }
-.dice-readout strong { font-size: 20px; }
+.three-dice-layer { position: absolute; z-index: 17; inset: 68px 0 0; pointer-events: none; }
+.three-dice-host, .three-dice-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.three-dice-canvas { display: block; pointer-events: none; }
+.three-dice-trigger { position: absolute; z-index: 2; bottom: 17px; left: 50%; width: 174px; height: 88px; padding: 0; transform: translateX(-50%); border: 0; color: transparent; background: transparent; cursor: pointer; pointer-events: none; }
+.three-dice-layer.is-docked .three-dice-trigger, .three-dice-layer.is-pending .three-dice-trigger { pointer-events: auto; }
+.three-dice-trigger::after { content: ''; position: absolute; right: 12px; bottom: 5px; left: 12px; height: 15px; border-radius: 50%; background: rgba(0,0,0,.28); filter: blur(5px); opacity: .6; transition: opacity .14s ease, transform .14s ease; }
+.three-dice-trigger:hover::after, .three-dice-trigger:focus-visible::after { opacity: .95; transform: scaleX(1.08); }
+.three-dice-trigger:disabled { cursor: wait; }
+.three-dice-trigger:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.three-dice-layer .dice-readout { position: absolute; top: calc(50% + 66px); left: 50%; min-width: 148px; height: 34px; display: flex; align-items: center; justify-content: center; gap: 9px; transform: translateX(-50%); color: #f3f1e7; background: rgba(26,29,24,.94); border-bottom: 3px solid var(--gold); box-shadow: 4px 5px 0 rgba(0,0,0,.2); }
+.three-dice-layer .dice-readout span { font-size: 13px; font-weight: 800; }
+.three-dice-layer .dice-readout i { color: #8f968a; font-size: 10px; font-style: normal; }
+.three-dice-layer .dice-readout strong { color: var(--gold); font-size: 18px; }
 
 .held-item { position: absolute; z-index: 15; right: 24px; bottom: 24px; width: 224px; min-height: 132px; padding: 17px; transform: rotate(1.5deg); display: flex; flex-direction: column; align-items: flex-start; text-align: left; color: #858b80; background: rgba(31,34,28,.93); border: 1px dashed #686d62; cursor: default; }
 .held-item.has-item { color: #e9ece5; border: 1px solid #718079; border-top: 5px solid var(--teal); cursor: pointer; box-shadow: 8px 9px 0 rgba(0,0,0,.22); }

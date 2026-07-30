@@ -49,6 +49,29 @@ async function canvasPixelStats(page: Page) {
   return { opaque, varied }
 }
 
+async function threeCanvasVisiblePixels(page: Page, region: 'center' | 'bottom') {
+  return page.locator('canvas[data-testid="three-dice-canvas"]').evaluate((element, targetRegion) => {
+    const canvas = element as HTMLCanvasElement
+    const context = canvas.getContext('webgl2') ?? canvas.getContext('webgl')
+    if (!context) return 0
+    const x = Math.floor(context.drawingBufferWidth * 0.34)
+    const width = Math.floor(context.drawingBufferWidth * 0.32)
+    const y = targetRegion === 'center'
+      ? Math.floor(context.drawingBufferHeight * 0.3)
+      : 0
+    const height = targetRegion === 'center'
+      ? Math.floor(context.drawingBufferHeight * 0.4)
+      : Math.min(context.drawingBufferHeight, Math.floor(170 * window.devicePixelRatio))
+    const pixels = new Uint8Array(width * height * 4)
+    context.readPixels(x, y, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
+    let visible = 0
+    for (let index = 3; index < pixels.length; index += 4) {
+      if (pixels[index] > 20) visible += 1
+    }
+    return visible
+  }, region)
+}
+
 test('renders a nonblank complete board at all desktop targets', async ({ page }, testInfo) => {
   test.setTimeout(90_000)
   for (const viewport of [
@@ -87,6 +110,8 @@ test('plays route states in order before opening an event', async ({ page }) => 
   await expect(page.locator('.dice-readout')).toBeVisible()
   await expect(page.getByRole('heading', { name: '从三张牌中选择' })).toBeVisible()
   await expect(page.locator('.round-float span')).toHaveText('等待行动')
+  expect(await threeCanvasVisiblePixels(page, 'center')).toBe(0)
+  expect(await threeCanvasVisiblePixels(page, 'bottom')).toBe(0)
   const states = await page.evaluate(() => (window as typeof window & { __stage6States?: string[] }).__stage6States ?? [])
   const expected = ['骰子滚动', '路线预览', '目标锁定', '路线收起', '棋子移动', '等待行动']
   let cursor = -1
@@ -94,6 +119,31 @@ test('plays route states in order before opening an event', async ({ page }) => 
     const next = states.indexOf(state, cursor + 1)
     expect(next, `${state} missing from ${states.join(' > ')}`).toBeGreaterThan(cursor)
     cursor = next
+  }
+})
+
+test('docks clickable 3D dice, rolls them at board center, and settles the authority result', async ({ page }, testInfo) => {
+  test.setTimeout(90_000)
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 1920, height: 1080 }]) {
+    await page.setViewportSize(viewport)
+    await startGame(page, '1v1', 3, 0.75)
+    const trigger = page.getByRole('button', { name: '投掷双骰' })
+    const triggerBounds = await trigger.boundingBox()
+    expect(Math.abs((triggerBounds?.x ?? 0) + (triggerBounds?.width ?? 0) / 2 - viewport.width / 2)).toBeLessThan(2)
+    expect((triggerBounds?.y ?? 0) + (triggerBounds?.height ?? 0)).toBeGreaterThan(viewport.height - 30)
+    await expect(page.locator('canvas[data-testid="three-dice-canvas"]')).toHaveCount(1)
+    expect(await threeCanvasVisiblePixels(page, 'bottom')).toBeGreaterThan(1_000)
+    await page.screenshot({ path: testInfo.outputPath(`dice-docked-${viewport.width}x${viewport.height}.png`), fullPage: true })
+
+    await trigger.click()
+    await expect(page.locator('.three-dice-layer')).toHaveClass(/is-rolling/)
+    await page.waitForTimeout(480)
+    expect(await threeCanvasVisiblePixels(page, 'center')).toBeGreaterThan(1_000)
+
+    const result = page.locator('.dice-readout')
+    await expect(result).toBeVisible()
+    await expect(result).toHaveAttribute('aria-label', /骰子结果 [1-6] 加 [1-6] 等于 ([2-9]|1[0-2])$/)
+    await page.screenshot({ path: testInfo.outputPath(`dice-settled-${viewport.width}x${viewport.height}.png`), fullPage: true })
   }
 })
 

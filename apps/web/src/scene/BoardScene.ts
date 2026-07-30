@@ -39,6 +39,8 @@ export interface BoardPlaybackOptions {
   readonly onStageChange?: (stage: PresentationStage) => void
   readonly speed?: number
   readonly cameraMotion?: boolean
+  readonly playDice?: (dice: readonly [number, number], speed: number) => Promise<void>
+  readonly cancelDice?: () => void
 }
 
 export interface BoardSceneDiagnostics {
@@ -87,7 +89,6 @@ export class BoardScene implements BoardSceneController {
   private readonly resizeObserver: ResizeObserver
   private routeGraphic: Graphics | null = null
   private targetGraphic: Graphics | null = null
-  private diceContainer: Container | null = null
   private winGraphic: Graphics | null = null
   private playbackRevision = 0
   private activePlayerId = ''
@@ -454,29 +455,10 @@ export class BoardScene implements BoardSceneController {
     this.resizeWorld()
   }
 
-  private async playDice(cue: Extract<PresentationCue, { type: 'dice-roll' }>, speed: number) {
+  private async playDice(cue: Extract<PresentationCue, { type: 'dice-roll' }>, speed: number, options?: BoardPlaybackOptions) {
     this.audio.play('dice.roll')
-    this.diceContainer?.destroy({ children: true })
-    const container = new Container({ x: this.map.logicalSize.width - 195, y: this.map.logicalSize.height - 120 })
-    const values = [...cue.dice]
-    values.forEach((value, index) => {
-      const die = new Container({ x: index * 76 })
-      const face = new Graphics().roundRect(-28, -28, 56, 56, 8)
-        .fill({ color: index === 0 ? 0xeee9d9 : 0x343730 })
-        .stroke({ color: 0x242720, width: 3, alpha: 0.7 })
-      const label = new Text({ text: String(value), style: { fontFamily: 'Arial', fontSize: 30, fontWeight: '700', fill: index === 0 ? 0x292c27 : 0xf3f1e7 } })
-      label.anchor.set(0.5)
-      die.addChild(face, label)
-      container.addChild(die)
-    })
-    this.effectsLayer.addChild(container)
-    this.diceContainer = container
-    await this.animate(780 / speed, (progress) => {
-      container.children.forEach((child, index) => {
-        child.rotation = (1 - progress) * (index ? -5 : 4) * Math.PI
-        child.y = -Math.sin(progress * Math.PI * 3) * (1 - progress * 0.7) * 52
-      })
-    }, Easing.Cubic.Out)
+    if (options?.playDice) await options.playDice(cue.dice, speed)
+    else await this.animate(780 / speed, () => undefined, Easing.Cubic.Out)
   }
 
   private drawPartialRoute(points: readonly { x: number; y: number }[], progress: number, color: number) {
@@ -660,7 +642,8 @@ export class BoardScene implements BoardSceneController {
       if (cue.type === 'dice-roll') {
         this.machine.send({ type: 'ROLL_STARTED' })
         this.stage(options, 'rolling')
-        await this.playDice(cue, speed)
+        await this.playDice(cue, speed, options)
+        if (playbackRevision !== this.playbackRevision) return
         const hasRoute = update.cues.slice(index + 1).some((candidate) => candidate.type === 'route-preview')
         this.machine.send({ type: 'DICE_DONE', hasRoute })
         this.stage(options, hasRoute ? 'routePreview' : 'ready')
@@ -708,6 +691,7 @@ export class BoardScene implements BoardSceneController {
     })
     if (this.destroyed) return
     if (outcome !== 'complete') {
+      options?.cancelDice?.()
       this.playbackRevision += 1
       this.tweens.removeAll()
     }
