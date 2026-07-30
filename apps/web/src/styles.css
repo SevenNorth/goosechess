@@ -121,6 +121,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .turn-banner strong { font-size: 14px; }
 
 .dice-console { position: absolute; z-index: 16; bottom: 22px; left: 50%; width: 340px; display: grid; grid-template-columns: 1fr 142px; gap: 12px; padding: 12px; transform: translateX(-50%); background: rgba(26,29,24,.97); border: 1px solid rgba(255,255,255,.12); }
+.dice-console.is-empty { width: 168px; grid-template-columns: 142px; }
 .dice-readout { display: grid; grid-template-columns: 48px 48px 1fr; gap: 7px; align-items: center; }
 .ui-die { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 6px; color: #272a25; background: #eee9d9; box-shadow: inset -4px -5px 0 #c8c1ae; font-size: 22px; font-weight: 900; }
 .ui-die.is-dark { color: #f3f1e7; background: #343730; box-shadow: inset -4px -5px 0 #1d1f1b; }

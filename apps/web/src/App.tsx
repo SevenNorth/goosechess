@@ -267,6 +267,8 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const LocalItemIcon = localItem ? ITEM_COPY[localItem.id]?.icon ?? PackageOpen : PackageOpen
   const localDecision = match.authority.getDecisionView('local-player')
   const canRoll = !locked && !showOrderResult && board && snapshot.state.phase === 'awaiting-action' && snapshot.state.activePlayerId === 'local-player'
+  const showDiceReadout = snapshot.state.lastDice !== null
+    && (snapshot.state.phase !== 'awaiting-action' || presentationStage !== 'ready')
   const canUseItem = localItem && localDecision.legalCommands.some((command) => command.type === 'use-item' && command.itemId === localItem.id)
   const offeredEvents = snapshot.state.pendingEventIds.map(eventById).filter((event) => event !== undefined)
   const pendingItem = itemById(snapshot.state.pendingItemId)
@@ -336,12 +338,12 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
         <div><small>当前行动</small><strong>{activePlayer.displayName}</strong></div>
       </section>
 
-      <section className="dice-console" aria-label="双骰操作">
-        <div className="dice-readout">
+      <section className={showDiceReadout ? 'dice-console' : 'dice-console is-empty'} aria-label="双骰操作">
+        {showDiceReadout && <div className="dice-readout">
           <span className="ui-die">{snapshot.state.lastDice?.faces[0] ?? '·'}</span>
           <span className="ui-die is-dark">{snapshot.state.lastDice?.faces[1] ?? '·'}</span>
           <div><small>合计</small><strong>{snapshot.state.lastDice?.total ?? '--'}</strong></div>
-        </div>
+        </div>}
         <button className="primary-command" type="button" disabled={!canRoll} onClick={() => void submitLocal({ type: 'request-roll' })}>
           <Dices /> 投掷双骰
         </button>

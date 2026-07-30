@@ -76,11 +76,11 @@ describe('PixiJS 65 格完整对局', () => {
   it('通过 authority 投掷双骰并更新本地棋手位置', async () => {
     await startGame({ seed: 1 })
     const playerRegion = screen.getByRole('region', { name: '参赛棋手' })
+    expect(document.querySelector('.dice-readout')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '投掷双骰' }))
 
     await waitFor(() => expect(within(playerRegion).queryByText('0 / 65')).toBeNull())
-    expect(screen.getByText('合计').nextElementSibling?.textContent).not.toBe('--')
   })
 
   it('固定种子流程落到事件格后显示三张事件牌', async () => {
