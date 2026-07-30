@@ -158,14 +158,16 @@ test('docks clickable 3D dice, rolls them at board center, and settles the autho
     const resultClasses = await page.evaluate(() => (window as typeof window & { __diceResultClasses?: string[] }).__diceResultClasses ?? [])
     expect(resultClasses.some((className) => className.includes('is-centered'))).toBe(true)
     expect(resultClasses.some((className) => className.includes('is-corner'))).toBe(true)
+    const expectedResultX = viewport.width / 2 + Math.min(viewport.width / 2 - 152, 515)
+    const expectedResultY = 68 + (viewport.height - 68) / 2 + Math.min(viewport.height / 2 - 112, 317)
     await expect.poll(async () => {
       const bounds = await result.boundingBox()
-      return (bounds?.x ?? 0) + (bounds?.width ?? 0) / 2 > viewport.width - 130
-        && (bounds?.y ?? 0) + (bounds?.height ?? 0) / 2 > viewport.height - 130
+      return Math.abs((bounds?.x ?? 0) + (bounds?.width ?? 0) / 2 - expectedResultX) < 8
+        && Math.abs((bounds?.y ?? 0) + (bounds?.height ?? 0) / 2 - expectedResultY) < 8
     }).toBe(true)
     const resultBounds = await result.boundingBox()
-    expect((resultBounds?.x ?? 0) + (resultBounds?.width ?? 0) / 2).toBeGreaterThan(viewport.width - 130)
-    expect((resultBounds?.y ?? 0) + (resultBounds?.height ?? 0) / 2).toBeGreaterThan(viewport.height - 130)
+    expect(Math.abs((resultBounds?.x ?? 0) + (resultBounds?.width ?? 0) / 2 - expectedResultX)).toBeLessThan(8)
+    expect(Math.abs((resultBounds?.y ?? 0) + (resultBounds?.height ?? 0) / 2 - expectedResultY)).toBeLessThan(8)
     expect(await threeCanvasVisiblePixels(page, 'center')).toBe(0)
     await expect(page.locator('.held-item')).toHaveCSS('opacity', '0')
     await page.screenshot({ path: testInfo.outputPath(`dice-result-corner-${viewport.width}x${viewport.height}.png`), fullPage: true })

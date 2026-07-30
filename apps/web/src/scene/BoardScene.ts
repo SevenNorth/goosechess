@@ -489,7 +489,7 @@ export class BoardScene implements BoardSceneController {
     const points = [spacePoint(this.map, player.spaceId), ...cue.path.map((spaceId) => spacePoint(this.map, spaceId))]
     this.routeGraphic?.destroy()
     this.routeGraphic = null
-    await this.animate(390 / speed, (progress) => this.drawPartialRoute(points, progress, color), Easing.Quadratic.Out)
+    await this.animate(780 / speed, (progress) => this.drawPartialRoute(points, progress, color), Easing.Quadratic.Out)
   }
 
   private async emphasizeTarget(cue: Extract<PresentationCue, { type: 'target-highlight' }>, speed: number, cameraMotion: boolean) {
