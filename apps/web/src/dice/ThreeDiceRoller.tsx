@@ -158,7 +158,7 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
   const modeRef = useRef<DiceMode>('hidden')
   const [mode, setModeState] = useState<DiceMode>('hidden')
   const [result, setResult] = useState<DiceFaces | null>(null)
-  const [resultTravelMs, setResultTravelMs] = useState(780)
+  const [resultTravelMs, setResultTravelMs] = useState(1_200)
 
   const setMode = (next: DiceMode) => {
     modeRef.current = next
@@ -190,7 +190,7 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
     roll(faces, speed) {
       cancel()
       setResult(null)
-      setResultTravelMs(Math.max(180, 780 / speed))
+      setResultTravelMs(Math.max(240, 1_200 / speed))
       setMode('rolling')
       const visuals = visualsRef.current
       if (!visuals || import.meta.env.MODE === 'test') {
@@ -205,7 +205,7 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
       return new Promise<void>((resolve) => {
         animationRef.current = {
           startedAt: performance.now(),
-          duration: reduceMotion ? Math.max(80, 220 / speed) : Math.max(140, 2_000 / speed),
+          duration: reduceMotion ? Math.max(80, 220 / speed) : Math.max(180, 2_800 / speed),
           faces,
           resolve,
           revealed: false,

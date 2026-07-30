@@ -155,22 +155,52 @@ test('docks clickable 3D dice, rolls them at board center, and settles the autho
     await expect(result).toHaveText(/^([2-9]|1[0-2])$/)
     await expect(result).toHaveAttribute('aria-label', /骰子结果 ([2-9]|1[0-2])$/)
     await expect(result).toHaveClass(/is-corner/)
+    const expectedResultX = viewport.width / 2 + Math.min(viewport.width / 2 - 152, 515)
+    const expectedResultY = 68 + (viewport.height - 68) / 2 + Math.min(viewport.height / 2 - 112, 317)
+    const flight = await result.evaluate((element) => {
+      const animation = element.getAnimations().find((candidate) => (
+        candidate instanceof CSSAnimation && candidate.animationName === 'dice-result-flight'
+      ))
+      const timing = animation?.effect?.getComputedTiming()
+      const playState = animation?.playState ?? 'missing'
+      if (animation && typeof timing?.duration === 'number') {
+        animation.pause()
+        animation.currentTime = timing.duration * 0.38
+      }
+      return { duration: timing?.duration ?? 0, playState }
+    })
+    expect(flight.duration).toBeGreaterThanOrEqual(1_500)
+    expect(['running', 'finished']).toContain(flight.playState)
+    const inFlightBounds = await result.boundingBox()
+    const inFlightX = (inFlightBounds?.x ?? 0) + (inFlightBounds?.width ?? 0) / 2
+    expect(inFlightX).toBeGreaterThan(viewport.width / 2 + 20)
+    expect(inFlightX).toBeLessThan(expectedResultX - 5)
+    await expect(page.locator('.held-item')).toHaveCSS('opacity', '0')
+    await page.screenshot({ path: testInfo.outputPath(`dice-result-flight-${viewport.width}x${viewport.height}.png`), fullPage: true })
+    await result.evaluate((element) => {
+      element.getAnimations().find((candidate) => (
+        candidate instanceof CSSAnimation && candidate.animationName === 'dice-result-flight'
+      ))?.finish()
+    })
     const resultClasses = await page.evaluate(() => (window as typeof window & { __diceResultClasses?: string[] }).__diceResultClasses ?? [])
     expect(resultClasses.some((className) => className.includes('is-centered'))).toBe(true)
     expect(resultClasses.some((className) => className.includes('is-corner'))).toBe(true)
-    const expectedResultX = viewport.width / 2 + Math.min(viewport.width / 2 - 152, 515)
-    const expectedResultY = 68 + (viewport.height - 68) / 2 + Math.min(viewport.height / 2 - 112, 317)
-    await expect.poll(async () => {
-      const bounds = await result.boundingBox()
-      return Math.abs((bounds?.x ?? 0) + (bounds?.width ?? 0) / 2 - expectedResultX) < 8
-        && Math.abs((bounds?.y ?? 0) + (bounds?.height ?? 0) / 2 - expectedResultY) < 8
-    }).toBe(true)
-    const resultBounds = await result.boundingBox()
-    expect(Math.abs((resultBounds?.x ?? 0) + (resultBounds?.width ?? 0) / 2 - expectedResultX)).toBeLessThan(8)
-    expect(Math.abs((resultBounds?.y ?? 0) + (resultBounds?.height ?? 0) / 2 - expectedResultY)).toBeLessThan(8)
+    const resultCenter = await result.evaluate((element) => {
+      const animation = element.getAnimations().find((candidate) => (
+        candidate instanceof CSSAnimation && candidate.animationName === 'dice-result-flight'
+      ))
+      const timing = animation?.effect?.getComputedTiming()
+      if (animation && typeof timing?.duration === 'number') {
+        animation.pause()
+        animation.currentTime = timing.duration
+      }
+      const bounds = element.getBoundingClientRect()
+      animation?.finish()
+      return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }
+    })
+    expect(Math.abs(resultCenter.x - expectedResultX)).toBeLessThan(8)
+    expect(Math.abs(resultCenter.y - expectedResultY)).toBeLessThan(8)
     expect(await threeCanvasVisiblePixels(page, 'center')).toBe(0)
-    await expect(page.locator('.held-item')).toHaveCSS('opacity', '0')
-    await page.screenshot({ path: testInfo.outputPath(`dice-result-corner-${viewport.width}x${viewport.height}.png`), fullPage: true })
   }
 })
 
