@@ -57,15 +57,30 @@ describe('LocalAuthority', () => {
       participants,
       seed: 5,
     })
-    await uninterrupted.submit(command('setup-1', 'p0', 0, { type: 'choose-starting-item', itemId: 'clover' }))
-    await uninterrupted.submit(command('setup-2', 'p1', 1, { type: 'choose-starting-item', itemId: 'clover' }))
-    await uninterrupted.submit(command('order-1', 'p0', 2, { type: 'request-order-roll' }))
+    await uninterrupted.submit(command('order-1', 'p0', 0, { type: 'request-order-roll' }))
 
     const restored = LocalAuthority.restore({ definition: AUTHORITY_DEFINITION, snapshot: uninterrupted.getSnapshot() })
-    const next = command('order-2', 'p1', 3, { type: 'request-order-roll' })
+    const next = command('order-2', 'p1', 1, { type: 'request-order-roll' })
 
     expect(await restored.submit(next)).toEqual(await uninterrupted.submit(next))
     expect(restored.getSnapshot()).toEqual(uninterrupted.getSnapshot())
+  })
+
+  it('restores a participant-specific starting item offer', async () => {
+    const participants = AUTHORITY_PARTICIPANTS.map((participant) => ({ ...participant, startingItemId: undefined }))
+    const authority = LocalAuthority.create({ gameId: 'game-1', definition: AUTHORITY_DEFINITION, participants, seed: 5 })
+    for (let attempt = 0; attempt < 10 && authority.getSnapshot().state.phase === 'determining-order'; attempt += 1) {
+      const current = authority.getSnapshot()
+      await authority.submit(command(`order-${attempt}`, current.state.activePlayerId, current.revision, { type: 'request-order-roll' }))
+    }
+    const snapshot = authority.getSnapshot()
+    expect(snapshot.state.phase).toBe('choosing-starting-item')
+    expect(snapshot.state.startingItemOfferIds).toHaveLength(3)
+
+    const restored = LocalAuthority.restore({ definition: AUTHORITY_DEFINITION, snapshot })
+    const selected = snapshot.state.startingItemOfferIds[0]
+    const next = command('item-1', snapshot.state.activePlayerId, snapshot.revision, { type: 'choose-starting-item', itemId: selected })
+    expect(await restored.submit(next)).toEqual(await authority.submit(next))
   })
 
   it('rejects snapshots whose content references do not match the definition', () => {

@@ -21,6 +21,7 @@ type WorkingState = MutableStateFields & {
   turnOrderGroups: string[][]
   orderRollResults: Array<{ playerId: string; face: number }>
   orderRollHistory: Array<{ playerIds: string[]; results: Array<{ playerId: string; face: number }> }>
+  startingItemOfferIds: string[]
   pendingEventIds: string[]
   recentEventIds: string[]
 }
@@ -35,6 +36,7 @@ function cloneState(state: GameState): WorkingState {
       playerIds: [...round.playerIds],
       results: round.results.map((result) => ({ ...result })),
     })),
+    startingItemOfferIds: [...state.startingItemOfferIds],
     pendingEventIds: [...state.pendingEventIds],
     recentEventIds: [...state.recentEventIds],
     globalDieRule: state.globalDieRule ? { ...state.globalDieRule } : null,
@@ -61,15 +63,45 @@ function unresolvedOrderGroupIndex(state: WorkingState) {
   return state.turnOrderGroups.findIndex((group) => group.length > 1)
 }
 
-function beginOrderRolls(state: WorkingState) {
-  state.phase = 'determining-order'
-  state.orderRollResults = []
-  const groupIndex = unresolvedOrderGroupIndex(state)
-  if (groupIndex < 0) throw new Error('Turn order cannot begin without an unresolved group.')
-  state.activePlayerId = state.turnOrderGroups[groupIndex][0]
+function drawStartingItemOffers(definition: GameDefinition, random: RandomSource): [string, string, string] {
+  const blocked = new Set(definition.map.blockedItemIds ?? [])
+  const pool = definition.ruleset.itemPoolIds.filter((itemId) => !blocked.has(itemId))
+  if (pool.length < 3) throw new Error('At least three starting items must be available.')
+  const offers: string[] = []
+  while (offers.length < 3) {
+    offers.push(...pool.splice(random.nextInt(0, pool.length - 1), 1))
+  }
+  return offers as [string, string, string]
 }
 
-function submitOrderRoll(state: WorkingState, playerId: string, face: number, events: RuleEvent[]) {
+function beginStartingItemChoice(
+  state: WorkingState,
+  definition: GameDefinition,
+  random: RandomSource,
+  events: RuleEvent[],
+) {
+  const playerId = state.turnOrderGroups.flat().find((candidate) => playerOf(state, candidate)?.itemId === null)
+  if (!playerId) {
+    state.phase = 'awaiting-action'
+    state.activePlayerId = state.turnOrderGroups.flat()[0]
+    state.startingItemOfferIds = []
+    return
+  }
+  const itemIds = drawStartingItemOffers(definition, random)
+  state.phase = 'choosing-starting-item'
+  state.activePlayerId = playerId
+  state.startingItemOfferIds = [...itemIds]
+  events.push({ type: 'starting-items-offered', playerId, itemIds })
+}
+
+function submitOrderRoll(
+  state: WorkingState,
+  definition: GameDefinition,
+  random: RandomSource,
+  playerId: string,
+  face: number,
+  events: RuleEvent[],
+) {
   const groupIndex = unresolvedOrderGroupIndex(state)
   const group = state.turnOrderGroups[groupIndex]
   if (groupIndex < 0 || !group?.includes(playerId)) return false
@@ -100,9 +132,8 @@ function submitOrderRoll(state: WorkingState, playerId: string, face: number, ev
     state.activePlayerId = state.turnOrderGroups[nextGroupIndex][0]
   } else {
     const playerIds = state.turnOrderGroups.flat()
-    state.phase = 'awaiting-action'
-    state.activePlayerId = playerIds[0]
     events.push({ type: 'turn-order-determined', playerIds })
+    beginStartingItemChoice(state, definition, random, events)
   }
   return true
 }
@@ -478,25 +509,30 @@ export function reduceGameCommand(
 
   switch (command.type) {
     case 'select-skin': {
-      if (state.phase !== 'setup') return reject('illegal_command', 'Skins can only be selected during setup.')
+      const actorHasRolled = state.orderRollResults.some((result) => result.playerId === actorPlayerId)
+        || state.orderRollHistory.some((round) => round.results.some((result) => result.playerId === actorPlayerId))
+      if (state.phase !== 'determining-order' || actorHasRolled) return reject('illegal_command', 'Skins can only be selected before the participant rolls for turn order.')
       if (!definition.ruleset.skinIds.includes(command.skinId)) return reject('unknown_content', `Unknown skin id: ${command.skinId}.`)
       actor.skinId = command.skinId
       events.push({ type: 'skin-selected', playerId: actorPlayerId, skinId: command.skinId })
       break
     }
     case 'choose-starting-item': {
-      if (state.phase !== 'setup' || actor.itemId !== null) return reject('illegal_command', 'A starting item cannot be selected now.')
-      if (!definition.ruleset.itemPoolIds.includes(command.itemId)) return reject('unknown_content', `Unknown item id: ${command.itemId}.`)
+      if (state.phase !== 'choosing-starting-item' || state.activePlayerId !== actorPlayerId || actor.itemId !== null) {
+        return reject('illegal_command', 'A starting item cannot be selected now.')
+      }
+      if (!state.startingItemOfferIds.includes(command.itemId)) return reject('illegal_command', 'The requested starting item was not offered.')
       actor.itemId = command.itemId
       events.push({ type: 'starting-item-chosen', playerId: actorPlayerId, itemId: command.itemId })
-      if (state.players.every((player) => player.itemId !== null)) beginOrderRolls(state)
+      state.startingItemOfferIds = []
+      beginStartingItemChoice(state, definition, random, events)
       break
     }
     case 'request-order-roll': {
       if (state.phase !== 'determining-order' || state.activePlayerId !== actorPlayerId) {
         return reject('illegal_command', 'Only the current participant can roll for turn order.')
       }
-      if (!submitOrderRoll(state, actorPlayerId, random.nextInt(1, 6), events)) {
+      if (!submitOrderRoll(state, definition, random, actorPlayerId, random.nextInt(1, 6), events)) {
         return reject('illegal_command', 'The participant is not in the current order-roll group.')
       }
       break

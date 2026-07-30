@@ -24,14 +24,14 @@ describe('offline match composition', () => {
     const submit = vi.spyOn(match.authority, 'submit')
     const controller = new LocalGameController({ authority: match.authority, commandIdFactory: (_, sequence) => `command-${sequence}` })
 
-    await controller.submit('local-player', { type: 'choose-starting-item', itemId: 'clover' })
+    await controller.submit('local-player', { type: 'request-order-roll' })
 
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({
       gameId: 'game-controller',
       commandId: 'command-1',
       playerId: 'local-player',
       expectedRevision: 0,
-      command: { type: 'choose-starting-item', itemId: 'clover' },
+      command: { type: 'request-order-roll' },
     }))
   })
 })

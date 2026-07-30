@@ -1,21 +1,21 @@
 {
   "protocol": {
-    "version": 2,
+    "version": 3,
     "files": {
-      "packages/game-protocol/src/schemas.ts": "ce913871b5b1bd7580c52c7b4fcf7480171bdb8770cfd34fb64f2c22fb7de205"
+      "packages/game-protocol/src/schemas.ts": "b09d434ef72732a0318458f7a0fa1258c7783946839e80b07238282182361e56"
     }
   },
   "rules": {
-    "version": 3,
+    "version": 4,
     "files": {
-      "packages/game-core/src/rules.ts": "3c5d8911e44262a9be3d86cc2d1c12ea546033ce14f71876e32a49a73c188d05",
-      "packages/game-core/src/state.ts": "ed683acf2bfbd5f62b4477ef0918371eeffd844d378ccbaf4fcc295d2a21496b"
+      "packages/game-core/src/rules.ts": "458bad27c844c559813b59733e3c5870402cd9501f5dd8b7fcd3b2b27496f3c0",
+      "packages/game-core/src/state.ts": "14a77f9cef78aaca01deaef26ef8f2411e8cfc301d4ae6ac4c84985e3eed55cd"
     }
   },
   "content": {
-    "version": "2026.07.30.1",
+    "version": "2026.07.30.2",
     "files": {
-      "packages/game-content/src/default-content.ts": "e21730836aa855af1bf69b2f1f87610781573a8c9620e514532150e8c5d80270",
+      "packages/game-content/src/default-content.ts": "dcd1e9963231dfb761e84710d1264b5531c7ca44a4b5a183f7c4baea155cbf6e",
       "packages/game-content/src/legacy-content.ts": "43f28d6137ecaf88c6534da8ee190883356f2562e9485faf4ff1acb1f66a10ee"
     }
   }

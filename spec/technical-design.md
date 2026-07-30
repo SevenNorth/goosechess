@@ -126,10 +126,11 @@ Pixi Scene 不得自行修改参与者位置。它只根据已提交的状态快
 ```text
 setup.seats
   └─ setup.modeSelect
-    └─ setup.itemSelect
-      └─ setup.skinSelect
-        └─ setup.orderRoll
-          └─ turn.start
+    └─ setup.skinSelect
+      └─ setup.orderRoll
+        └─ setup.startingItemDraw
+          └─ setup.startingItemSelect
+            └─ turn.start
           ├─ turn.skipped
           └─ turn.itemWindow
             └─ turn.rolling
@@ -223,7 +224,9 @@ interface MapDefinition {
 
 事件与道具保留结构化配置，不包含可执行脚本。
 
-座次投掷属于权威规则状态。快照保存当前有序分组、当前小组已经公开的单骰结果和历史投掷轮次；权威端每次只接受当前待投参与者的 `request-order-roll` 命令。一个小组投完后按点数降序拆成若干子组，单人组视为已确定，同点子组继续进入下一轮。所有分组均为单人后，将扁平顺序锁定为本局行动顺序并进入第一回合。客户端不得自行打乱参与者数组或提交骰子点数。
+座次投掷属于权威规则状态。快照保存当前有序分组、当前小组已经公开的单骰结果和历史投掷轮次；权威端每次只接受当前待投参与者的 `request-order-roll` 命令。一个小组投完后按点数降序拆成若干子组，单人组视为已确定，同点子组继续进入下一轮。所有分组均为单人后，将扁平顺序锁定为本局行动顺序，然后按该顺序进入起始道具选择，而不是直接进入第一回合。客户端不得自行打乱参与者数组或提交骰子点数。
+
+起始道具候选同样属于权威规则状态。权威端轮到一名参与者时，从规则集道具池扣除地图禁用项后进行无放回抽样，将恰好三个 `startingItemOfferIds` 写入快照，并仅接受该参与者从候选集合中提交的 `choose-starting-item`。选择后清空当前候选并为下一名参与者独立抽样；不同参与者的候选不要求互斥。所有参与者选择完成后，才把 `activePlayerId` 重置为最终座次第一名并进入 `awaiting-action`。
 
 ```ts
 interface EventDefinition {
@@ -337,7 +340,7 @@ interface GameSnapshot {
 }
 ```
 
-- `GameCommand` 使用可穷举联合类型，包括选择起始道具、请求座次投掷、使用道具、请求移动投骰、选择事件和确认继续等意图；不包含随机结果。
+- `GameCommand` 使用可穷举联合类型，包括请求座次投掷、从权威候选中选择起始道具、使用道具、请求移动投骰、选择事件和确认继续等意图；不包含骰子点数或抽取结果。
 - 权威端校验 `playerId`、行动权和 `expectedRevision`，拒绝重复或过期命令。
 - 每次规则提交产生递增 `revision`、领域事件和新的快照；所有字段必须通过 JSON 往返测试。
 - 断线恢复使用“最近快照 + 之后的事件”，重新连接后客户端跳过已确认的表现提示。

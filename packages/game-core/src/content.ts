@@ -80,6 +80,9 @@ export function validateGameDefinition(definition: GameDefinition): string[] {
   if (!definition.ruleset.mapIds.includes(definition.map.id)) issues.push(`Ruleset ${definition.ruleset.id} does not allow map ${definition.map.id}.`)
   for (const eventId of definition.ruleset.eventPoolIds) if (!eventIds.has(eventId)) issues.push(`Ruleset references unknown event ${eventId}.`)
   for (const itemId of definition.ruleset.itemPoolIds) if (!itemIds.has(itemId)) issues.push(`Ruleset references unknown item ${itemId}.`)
+  const blockedItemIds = new Set(definition.map.blockedItemIds ?? [])
+  const startingItemPoolSize = definition.ruleset.itemPoolIds.filter((itemId) => itemIds.has(itemId) && !blockedItemIds.has(itemId)).length
+  if (startingItemPoolSize < 3) issues.push(`Ruleset ${definition.ruleset.id} must provide at least three starting items allowed by map ${definition.map.id}.`)
   for (const skinId of definition.ruleset.skinIds) if (!skinIds.has(skinId)) issues.push(`Ruleset references unknown skin ${skinId}.`)
   for (const event of definition.events) {
     if (event.kind === '骰子检定' && (!event.threshold || event.threshold < 2 || event.threshold > 12)) {

@@ -71,6 +71,7 @@ function toSnapshot(gameId: string, revision: number, definition: GameDefinition
         playerIds: [...round.playerIds],
         results: round.results.map((result) => ({ ...result })),
       })),
+      startingItemOfferIds: [...state.startingItemOfferIds],
       pendingEventIds: [...state.pendingEventIds],
       pendingItemId: state.pendingItemId,
       eventContinuation: state.eventContinuation,
@@ -95,6 +96,7 @@ function fromSnapshot(snapshot: GameSnapshot): GameState {
       playerIds: [...round.playerIds],
       results: round.results.map((result) => ({ ...result })),
     })),
+    startingItemOfferIds: [...snapshot.state.startingItemOfferIds],
     rng: { seed: snapshot.rngSeed, cursor: snapshot.rngCursor },
     pendingEventIds: [...snapshot.state.pendingEventIds],
     pendingItemId: snapshot.state.pendingItemId,
@@ -115,6 +117,7 @@ function assertSnapshotMatchesDefinition(snapshot: GameSnapshot, definition: Gam
 
   const playerIds = new Set(snapshot.state.players.map((player) => player.playerId))
   const itemIds = new Set(definition.items.map((item) => item.id))
+  const allowedStartingItemIds = new Set(definition.ruleset.itemPoolIds.filter((itemId) => !(definition.map.blockedItemIds ?? []).includes(itemId)))
   const skinIds = new Set(definition.skins.map((skin) => skin.id))
   const eventIds = new Set(definition.events.map((event) => event.id))
   const spaceIds = new Set(definition.map.spaces.map((space) => space.index))
@@ -123,6 +126,8 @@ function assertSnapshotMatchesDefinition(snapshot: GameSnapshot, definition: Gam
   if (orderIds.length !== playerIds.size || new Set(orderIds).size !== playerIds.size || orderIds.some((playerId) => !playerIds.has(playerId))) issues.push('turn order')
   if (snapshot.state.orderRollResults.some((result) => !playerIds.has(result.playerId))) issues.push('order roll results')
   if (snapshot.state.orderRollHistory.some((round) => round.playerIds.length !== round.results.length || round.results.some((result) => !round.playerIds.includes(result.playerId)))) issues.push('order roll history')
+  if (snapshot.state.startingItemOfferIds.some((itemId) => !allowedStartingItemIds.has(itemId)) || new Set(snapshot.state.startingItemOfferIds).size !== snapshot.state.startingItemOfferIds.length) issues.push('starting item offers')
+  if ((snapshot.state.phase === 'choosing-starting-item') !== (snapshot.state.startingItemOfferIds.length === 3)) issues.push('starting item phase')
   snapshot.state.players.forEach((player, index) => {
     if (player.seatIndex !== index || !spaceIds.has(player.spaceId) || !skinIds.has(player.skinId) || (player.itemId !== null && !itemIds.has(player.itemId))) {
       issues.push(`player ${player.playerId}`)
@@ -139,6 +144,7 @@ function assertSnapshotMatchesDefinition(snapshot: GameSnapshot, definition: Gam
 function decorateEvent(event: RuleEvent, revision: number, index: number): DomainEvent {
   const common = { eventId: `r${revision}-e${index}`, revision }
   switch (event.type) {
+    case 'starting-items-offered': return { ...common, ...event, itemIds: [...event.itemIds] as [string, string, string] }
     case 'starting-item-chosen': return { ...common, ...event }
     case 'skin-selected': return { ...common, ...event }
     case 'order-die-rolled': return { ...common, ...event }

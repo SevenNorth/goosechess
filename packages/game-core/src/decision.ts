@@ -45,6 +45,7 @@ export interface GameDecisionView {
   readonly map: PublicDecisionMap
   readonly dieRule: PublicDieRule
   readonly offeredEvents: readonly EventDefinition[]
+  readonly startingItemOffers: readonly ItemDefinition[]
   readonly relevantItems: readonly ItemDefinition[]
   readonly pendingItemId: string | null
   readonly legalCommands: readonly CoreGameCommand[]
@@ -73,16 +74,20 @@ export function getLegalCommands(
   const player = state.players.find((candidate) => candidate.playerId === playerId)
   if (!player || state.phase === 'game-over') return []
 
-  if (state.phase === 'setup') {
-    const commands: CoreGameCommand[] = definition.ruleset.skinIds.map((skinId) => ({ type: 'select-skin', skinId }))
-    if (player.itemId === null) {
-      commands.push(...definition.ruleset.itemPoolIds.map((itemId) => ({ type: 'choose-starting-item' as const, itemId })))
-    }
+  if (state.phase === 'determining-order') {
+    const hasRolled = state.orderRollResults.some((result) => result.playerId === playerId)
+      || state.orderRollHistory.some((round) => round.results.some((result) => result.playerId === playerId))
+    const commands: CoreGameCommand[] = hasRolled
+      ? []
+      : definition.ruleset.skinIds.map((skinId) => ({ type: 'select-skin', skinId }))
+    if (state.activePlayerId === playerId) commands.unshift({ type: 'request-order-roll' })
     return commands
   }
 
-  if (state.phase === 'determining-order') {
-    return state.activePlayerId === playerId ? [{ type: 'request-order-roll' }] : []
+  if (state.phase === 'choosing-starting-item') {
+    return state.activePlayerId === playerId
+      ? state.startingItemOfferIds.map((itemId) => ({ type: 'choose-starting-item' as const, itemId }))
+      : []
   }
 
   if (state.activePlayerId !== playerId) return []
@@ -125,6 +130,7 @@ export function createGameDecisionView(
     if (player.itemId) relevantItemIds.add(player.itemId)
   })
   if (state.pendingItemId) relevantItemIds.add(state.pendingItemId)
+  state.startingItemOfferIds.forEach((itemId) => relevantItemIds.add(itemId))
   legalCommands.forEach((command) => {
     if ('itemId' in command && command.itemId) relevantItemIds.add(command.itemId)
   })
@@ -163,6 +169,7 @@ export function createGameDecisionView(
       if (!event) throw new Error(`Unknown offered event: ${eventId}.`)
       return { ...event }
     }),
+    startingItemOffers: definition.items.filter((item) => state.startingItemOfferIds.includes(item.id)).map((item) => ({ ...item })),
     relevantItems: definition.items.filter((item) => relevantItemIds.has(item.id)).map((item) => ({ ...item })),
     pendingItemId: state.pendingItemId,
     legalCommands,

@@ -23,7 +23,7 @@ export const AUTHORITY_DEFINITION: GameDefinition = {
     playerCount: { min: 2, max: 4 },
     mapIds: ['authority-map'],
     eventPoolIds: ['event-a', 'event-b', 'event-c'],
-    itemPoolIds: ['clover', 'boots'],
+    itemPoolIds: ['clover', 'boots', 'cat'],
     skinIds: ['white', 'blue'],
   },
   events: [
@@ -34,6 +34,7 @@ export const AUTHORITY_DEFINITION: GameDefinition = {
   items: [
     { id: 'clover', title: 'Clover', mode: '被动', effect: 'check-pass' },
     { id: 'boots', title: 'Boots', mode: '主动', effect: 'move-plus-three' },
+    { id: 'cat', title: 'Cat', mode: '被动', effect: 'collision-shield' },
   ],
   skins: [
     { id: 'white', name: 'White', atlas: 'white.json', animations: { idle: 'idle', active: 'active', hop: 'hop', hit: 'hit' }, anchor: { x: 0.5, y: 0.9 }, shadowScale: 1 },

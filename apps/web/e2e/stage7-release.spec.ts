@@ -7,7 +7,7 @@ async function waitForBoard(page: Page) {
 
 async function completeOrderRolls(page: Page) {
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    const confirm = page.getByRole('button', { name: '进入第一回合' })
+    const confirm = page.getByRole('button', { name: '选择起始道具' })
     if (await confirm.isVisible()) {
       await confirm.click()
       return
@@ -19,11 +19,27 @@ async function completeOrderRolls(page: Page) {
   throw new Error('Turn-order rolls did not finish.')
 }
 
-async function startGame(page: Page, mode = '1v1', seed = 3, speed = 20) {
+async function completeStartingItemChoices(page: Page, preferredItem?: RegExp) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const roll = page.getByRole('button', { name: '投掷双骰' })
+    if (await roll.isEnabled()) return
+    const confirm = page.getByRole('button', { name: '确认选择' })
+    if (await confirm.isVisible()) {
+      if (preferredItem) {
+        const preferred = page.getByRole('radio', { name: preferredItem })
+        if (await preferred.isVisible()) await preferred.click()
+      }
+      if (await confirm.isEnabled()) await confirm.click()
+    } else await page.waitForTimeout(30)
+  }
+  throw new Error('Starting item choices did not finish.')
+}
+
+async function startGame(page: Page, mode = '1v1', seed = 3, speed = 20, preferredItem?: RegExp) {
   await page.goto(`/play?mode=${mode}&seed=${seed}&speed=${speed}`)
   await waitForBoard(page)
-  await page.getByRole('button', { name: '开始试航' }).click()
   await completeOrderRolls(page)
+  await completeStartingItemChoices(page, preferredItem)
   await expect(page.getByRole('button', { name: '投掷双骰' })).toBeEnabled()
 }
 
@@ -73,7 +89,7 @@ test('shows load progress and recovers from a failed board resource', async ({ p
   allowResource = true
   await page.getByRole('button', { name: '重新加载' }).click()
   await expect(page.locator('canvas[data-testid="pixi-canvas"]')).toHaveCount(1)
-  await expect(page.getByRole('button', { name: '开始试航' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: '投掷单骰' })).toBeEnabled()
 })
 
 test('starts every offline mode with mouse controls only', async ({ page }) => {
@@ -145,7 +161,7 @@ test('offers animation speed and camera motion settings', async ({ page }) => {
 
 test('confirms item use in the center and highlights the retained item', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
-  await startGame(page, '1v1', 89)
+  await startGame(page, '1v1', 242, 20, /轻便靴子/)
   await page.locator('.held-item').click()
   const useDialog = page.getByRole('dialog', { name: '使用轻便靴子' })
   await expect(useDialog).toBeVisible()

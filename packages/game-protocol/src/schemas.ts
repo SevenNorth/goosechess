@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const PROTOCOL_SCHEMA_VERSION = 2 as const
+export const PROTOCOL_SCHEMA_VERSION = 3 as const
 
 const IdSchema = z.string().trim().min(1).max(128)
 const RevisionSchema = z.number().int().nonnegative()
@@ -44,8 +44,8 @@ export const PlayerSnapshotSchema = z.object({
 
 export const SerializableGameStateSchema = z.object({
   phase: z.enum([
-    'setup',
     'determining-order',
+    'choosing-starting-item',
     'awaiting-action',
     'awaiting-event-choice',
     'awaiting-item-choice',
@@ -60,6 +60,7 @@ export const SerializableGameStateSchema = z.object({
     playerIds: z.array(IdSchema).min(2).max(4),
     results: z.array(z.object({ playerId: IdSchema, face: z.number().int().min(1).max(6) }).strict()).min(2).max(4),
   }).strict()),
+  startingItemOfferIds: z.array(IdSchema).max(3),
   pendingEventIds: z.array(IdSchema).max(3),
   pendingItemId: IdSchema.nullable(),
   eventContinuation: z.enum(['end-turn', 'awaiting-action']).nullable(),
@@ -92,6 +93,7 @@ export const GameSnapshotSchema = z.object({
 }).strict()
 
 export const DomainEventSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('starting-items-offered'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, itemIds: z.array(IdSchema).length(3) }).strict(),
   z.object({ type: z.literal('starting-item-chosen'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, itemId: IdSchema }).strict(),
   z.object({ type: z.literal('skin-selected'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, skinId: IdSchema }).strict(),
   z.object({ type: z.literal('order-die-rolled'), eventId: IdSchema, revision: RevisionSchema, playerId: IdSchema, face: z.number().int().min(1).max(6) }).strict(),

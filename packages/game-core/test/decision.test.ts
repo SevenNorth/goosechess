@@ -3,13 +3,16 @@ import { createGameDecisionView, createInitialGameState, getLegalCommands, reduc
 import { makeDefinition, makeParticipants } from './fixtures.js'
 
 describe('public game decision view', () => {
-  it('contains legal setup commands but no hidden RNG state or future events', () => {
+  it('offers turn-order commands before starting items without exposing hidden RNG state', () => {
     const definition = makeDefinition()
     const participants = makeParticipants(2).map((participant) => ({ ...participant, startingItemId: undefined }))
     const state = createInitialGameState({ definition, participants, seed: 42 })
     const view = createGameDecisionView(state, definition, { gameId: 'g1', revision: 0, playerId: 'p0' })
 
-    expect(view.legalCommands.some((command) => command.type === 'choose-starting-item')).toBe(true)
+    expect(view.phase).toBe('determining-order')
+    expect(view.legalCommands.some((command) => command.type === 'request-order-roll')).toBe(true)
+    expect(view.legalCommands.some((command) => command.type === 'choose-starting-item')).toBe(false)
+    expect(view.startingItemOffers).toEqual([])
     expect(view.offeredEvents).toEqual([])
     expect(JSON.stringify(view)).not.toContain('"rng"')
     expect(JSON.stringify(view)).not.toContain('"seed"')

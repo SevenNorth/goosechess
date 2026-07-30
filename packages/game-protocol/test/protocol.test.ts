@@ -3,6 +3,7 @@ import {
   CommandEnvelopeSchema,
   GameSnapshotSchema,
   PresentationCueSchema,
+  PROTOCOL_SCHEMA_VERSION,
   parseCommandEnvelope,
   parseGameSnapshot,
   validateCommandContext,
@@ -11,7 +12,7 @@ import {
 } from '../src/index.js'
 
 const envelope: CommandEnvelope = {
-  schemaVersion: 2,
+  schemaVersion: PROTOCOL_SCHEMA_VERSION,
   gameId: 'game-1',
   commandId: 'command-1',
   playerId: 'player-1',
@@ -20,7 +21,7 @@ const envelope: CommandEnvelope = {
 }
 
 const snapshot: GameSnapshot = {
-  schemaVersion: 2,
+  schemaVersion: PROTOCOL_SCHEMA_VERSION,
   gameId: 'game-1',
   revision: 4,
   rulesetId: 'classic-race',
@@ -40,6 +41,7 @@ const snapshot: GameSnapshot = {
     turnOrderGroups: [['player-1'], ['ai-1']],
     orderRollResults: [],
     orderRollHistory: [],
+    startingItemOfferIds: [],
     pendingEventIds: ['fishing', 'crab', 'quiet'],
     pendingItemId: null,
     eventContinuation: 'end-turn',

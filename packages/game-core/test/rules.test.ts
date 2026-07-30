@@ -42,12 +42,6 @@ describe('deterministic rule kernel', () => {
     const participants = makeParticipants(4).map((participant) => ({ ...participant, startingItemId: undefined }))
     let state = createInitialGameState({ definition, participants, seed: 25374 })
 
-    for (const participant of participants) {
-      const prepared = reduceGameCommand(state, definition, participant.playerId, { type: 'choose-starting-item', itemId: 'clover' })
-      expect(prepared.ok).toBe(true)
-      if (!prepared.ok) return
-      state = prepared.state
-    }
     expect(state).toMatchObject({ phase: 'determining-order', activePlayerId: 'p0' })
 
     for (const playerId of ['p0', 'p1', 'p2', 'p3', 'p1', 'p2']) {
@@ -57,7 +51,7 @@ describe('deterministic rule kernel', () => {
       state = rolled.state
     }
 
-    expect(state.phase).toBe('awaiting-action')
+    expect(state.phase).toBe('choosing-starting-item')
     expect(state.activePlayerId).toBe('p0')
     expect(state.turnOrderGroups).toEqual([['p0'], ['p2'], ['p1'], ['p3']])
     expect(state.orderRollHistory).toEqual([
@@ -78,7 +72,30 @@ describe('deterministic rule kernel', () => {
         ],
       },
     ])
-    expect(state.rng.cursor).toBe(6)
+    expect(state.startingItemOfferIds).toHaveLength(3)
+    expect(new Set(state.startingItemOfferIds).size).toBe(3)
+    expect(state.rng.cursor).toBe(9)
+
+    const offersByPlayer = new Map<string, readonly string[]>()
+    while (state.phase === 'choosing-starting-item') {
+      const playerId = state.activePlayerId
+      offersByPlayer.set(playerId, [...state.startingItemOfferIds])
+      const unavailableItemId = definition.ruleset.itemPoolIds.find((itemId) => !state.startingItemOfferIds.includes(itemId))!
+      const rejected = reduceGameCommand(state, definition, playerId, { type: 'choose-starting-item', itemId: unavailableItemId })
+      expect(rejected).toMatchObject({ ok: false, code: 'illegal_command' })
+
+      const selected = reduceGameCommand(state, definition, playerId, { type: 'choose-starting-item', itemId: state.startingItemOfferIds[0] })
+      expect(selected.ok).toBe(true)
+      if (!selected.ok) return
+      state = selected.state
+    }
+
+    expect([...offersByPlayer.keys()]).toEqual(['p0', 'p2', 'p1', 'p3'])
+    expect(new Set([...offersByPlayer.values()].map((itemIds) => itemIds.join(','))).size).toBeGreaterThan(1)
+    expect(state).toMatchObject({ phase: 'awaiting-action', activePlayerId: 'p0' })
+    expect(state.players.every((player) => player.itemId !== null)).toBe(true)
+    expect(state.startingItemOfferIds).toEqual([])
+    expect(state.rng.cursor).toBe(18)
   })
 
   it('uses map order for bounce paths and wins on final spaces 63, 64, or 65', () => {

@@ -1,5 +1,5 @@
 export type PlayerController = 'local' | 'ai' | 'remote'
-export type GamePhase = 'setup' | 'determining-order' | 'awaiting-action' | 'awaiting-event-choice' | 'awaiting-item-choice' | 'game-over'
+export type GamePhase = 'determining-order' | 'choosing-starting-item' | 'awaiting-action' | 'awaiting-event-choice' | 'awaiting-item-choice' | 'game-over'
 export type DicePair = readonly [number, number]
 
 export interface BoardSpace {
@@ -173,6 +173,7 @@ export interface GameState {
   readonly turnOrderGroups: readonly (readonly string[])[]
   readonly orderRollResults: readonly OrderRollResult[]
   readonly orderRollHistory: readonly OrderRollRound[]
+  readonly startingItemOfferIds: readonly string[]
   readonly rng: RngState
   readonly pendingEventIds: readonly string[]
   readonly pendingItemId: string | null
@@ -195,6 +196,7 @@ export type CoreGameCommand =
   | { readonly type: 'continue' }
 
 export type RuleEvent =
+  | { readonly type: 'starting-items-offered'; readonly playerId: string; readonly itemIds: readonly [string, string, string] }
   | { readonly type: 'starting-item-chosen'; readonly playerId: string; readonly itemId: string }
   | { readonly type: 'skin-selected'; readonly playerId: string; readonly skinId: string }
   | { readonly type: 'order-die-rolled'; readonly playerId: string; readonly face: number }

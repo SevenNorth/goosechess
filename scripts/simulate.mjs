@@ -43,9 +43,6 @@ function decisionRandom(matchSeed, view) {
 }
 
 function nextDecisionPlayer(snapshot) {
-  if (snapshot.state.phase === 'setup') {
-    return snapshot.state.players.find((player) => player.itemId === null)?.playerId ?? null
-  }
   return snapshot.state.phase === 'game-over' ? null : snapshot.state.activePlayerId
 }
 

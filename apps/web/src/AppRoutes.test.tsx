@@ -21,7 +21,7 @@ describe('客户端路由', () => {
   it('play 路由承载 PixiJS 65 格完整对局', () => {
     render(<MemoryRouter initialEntries={['/play']}><AppRoutes /></MemoryRouter>)
 
-    expect(screen.getByRole('heading', { name: '选择棋子与起始道具' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '投掷单骰决定顺序' })).toBeTruthy()
     expect(screen.getByLabelText('65 格 PixiJS 竞速棋盘')).toBeTruthy()
   })
 

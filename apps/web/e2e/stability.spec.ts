@@ -13,18 +13,18 @@ async function tryClick(locator: ReturnType<Page['locator']>) {
 }
 
 async function clickNextAction(page: Page) {
-  const setup = page.getByRole('button', { name: '开始试航' })
+  const startingItemConfirm = page.getByRole('button', { name: '确认选择' })
   const restart = page.getByRole('button', { name: '再来一局' })
   const outcome = page.getByRole('button', { name: '继续' })
   const event = page.locator('.event-choice').first()
   const item = page.locator('.item-compare-grid button').last()
   const itemConfirm = page.getByRole('button', { name: '确认保留' })
   const orderRoll = page.getByRole('button', { name: '投掷单骰' })
-  const orderConfirm = page.getByRole('button', { name: '进入第一回合' })
+  const orderConfirm = page.getByRole('button', { name: '选择起始道具' })
   const roll = page.getByRole('button', { name: '投掷双骰' })
-  if (await tryClick(setup)) return 'setup'
   if (await tryClick(orderRoll)) return 'order-roll'
   if (await tryClick(orderConfirm)) return 'order-confirm'
+  if (await tryClick(startingItemConfirm)) return 'starting-item'
   if (await tryClick(restart)) return 'restart'
   if (await tryClick(outcome)) return 'outcome'
   if (await tryClick(event)) return 'event'
@@ -55,7 +55,7 @@ test('keeps scene resources and memory bounded during continuous play', async ({
   }
   await expect(page.locator('canvas[data-testid="pixi-canvas"]')).toHaveCount(1, { timeout: 30_000 })
   await expect(page.getByText('正在铺设奥普港棋盘')).toHaveCount(0, { timeout: 30_000 })
-  await expect(page.getByRole('button', { name: '开始试航' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: '投掷单骰' })).toBeEnabled()
 
   const session = await context.newCDPSession(page)
   await session.send('HeapProfiler.collectGarbage')

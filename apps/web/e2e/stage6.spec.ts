@@ -3,7 +3,7 @@ import { PNG } from 'pngjs'
 
 async function completeOrderRolls(page: Page) {
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    const confirm = page.getByRole('button', { name: '进入第一回合' })
+    const confirm = page.getByRole('button', { name: '选择起始道具' })
     if (await confirm.isVisible()) {
       await confirm.click()
       return
@@ -15,14 +15,24 @@ async function completeOrderRolls(page: Page) {
   throw new Error('Turn-order rolls did not finish.')
 }
 
+async function completeStartingItemChoices(page: Page) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const roll = page.getByRole('button', { name: '投掷双骰' })
+    if (await roll.isEnabled()) return
+    const confirm = page.getByRole('button', { name: '确认选择' })
+    if (await confirm.isVisible() && await confirm.isEnabled()) await confirm.click()
+    else await page.waitForTimeout(30)
+  }
+  throw new Error('Starting item choices did not finish.')
+}
+
 async function startGame(page: Page, mode = '1v1', seed = 3, speed = 1) {
   await page.goto(`/play?mode=${mode}&seed=${seed}&speed=${speed}`)
-  await expect(page.getByRole('heading', { name: '选择棋子与起始道具' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '投掷单骰决定顺序' })).toBeVisible()
   await expect(page.locator('canvas[data-testid="pixi-canvas"]')).toHaveCount(1)
   await page.getByRole('radio', { name: '黄鹅' }).click()
-  await page.getByRole('button', { name: /四叶草/ }).click()
-  await page.getByRole('button', { name: '开始试航' }).click()
   await completeOrderRolls(page)
+  await completeStartingItemChoices(page)
   await expect(page.getByRole('button', { name: '投掷双骰' })).toBeEnabled()
 }
 
@@ -62,7 +72,7 @@ test('renders a nonblank complete board at all desktop targets', async ({ page }
 
 test('plays route states in order before opening an event', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 })
-  await startGame(page, '1v1', 6)
+  await startGame(page, '1v1', 3)
   await page.evaluate(() => {
     const target = document.querySelector('.round-float span')
     ;(window as typeof window & { __stage6States?: string[] }).__stage6States = target?.textContent ? [target.textContent] : []
@@ -87,7 +97,7 @@ test('plays route states in order before opening an event', async ({ page }) => 
 
 test('resolves a dice-check event and shows its outcome', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 })
-  await startGame(page, '1v1', 6)
+  await startGame(page, '1v1', 3)
   await page.getByRole('button', { name: '投掷双骰' }).click()
   await expect(page.getByRole('heading', { name: '从三张牌中选择' })).toBeVisible()
 
@@ -105,7 +115,7 @@ test('resolves a dice-check event and shows its outcome', async ({ page }) => {
 
 test('fast-forwards presentation to the authority snapshot after focus loss', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 })
-  await startGame(page, '1v1', 6)
+  await startGame(page, '1v1', 3)
   await page.getByRole('button', { name: '投掷双骰' }).click()
   await expect(page.locator('.round-float span')).toHaveText('骰子滚动')
 
@@ -122,7 +132,7 @@ test('recreates and disposes the Pixi application twenty times', async ({ page }
     await expect(page.locator('canvas[data-testid="pixi-canvas"]')).toHaveCount(1)
     await page.getByRole('button', { name: '重新开始' }).evaluate((button: HTMLButtonElement) => button.click())
     await expect(page.locator('canvas[data-testid="pixi-canvas"]')).toHaveCount(1)
-    await expect(page.getByRole('heading', { name: '选择棋子与起始道具' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '投掷单骰决定顺序' })).toBeVisible()
   }
   expect(await page.locator('canvas[data-testid="pixi-canvas"]').count()).toBe(1)
 })

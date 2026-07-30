@@ -23,7 +23,7 @@ function view(overrides: Partial<GameDecisionView> = {}): GameDecisionView {
       winningSpaceIds: [28, 29],
     },
     dieRule: { maxFace: 6, remainingRounds: null },
-    offeredEvents: [], relevantItems: ITEMS, pendingItemId: null,
+    offeredEvents: [], startingItemOffers: [], relevantItems: ITEMS, pendingItemId: null,
     legalCommands: [{ type: 'request-roll' }],
     ...overrides,
   }

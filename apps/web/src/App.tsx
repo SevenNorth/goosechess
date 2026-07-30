@@ -31,7 +31,6 @@ import type { BoardSceneController } from './scene/BoardScene'
 import type { PresentationStage } from './game-client/machine/presentation-machine'
 
 const GAME_DEFINITION = DEFAULT_GAME_DEFINITION
-const STARTING_ITEM_IDS = ['boots', 'clover', 'cat'] as const
 
 const STAGE_LABELS: Readonly<Record<PresentationStage, string>> = {
   ready: '等待行动',
@@ -116,6 +115,7 @@ function gameLogLines(update: AuthorityUpdate) {
     if (event.type === 'dice-rolled') lines.push(`${event.playerId} 掷出 ${event.dice[0] + event.dice[1]} 点。`)
     if (event.type === 'order-die-rolled') lines.push(`${event.playerId} 的座次骰为 ${event.face} 点。`)
     if (event.type === 'turn-order-determined') lines.push(`行动顺序已确定：${event.playerIds.join(' → ')}。`)
+    if (event.type === 'starting-item-chosen') lines.push(`${event.playerId} 已选择起始道具。`)
     if (event.type === 'collision-resolved') lines.push(event.blocked ? `${event.displacedPlayerId} 挡住了碰撞。` : `${event.displacedPlayerId} 被撞回。`)
     if (event.type === 'event-resolved') lines.push(`事件「${eventById(event.eventCardId)?.title ?? event.eventCardId}」已结算。`)
     if (event.type === 'item-changed') lines.push(`${event.playerId} 的道具已更新。`)
@@ -133,7 +133,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const lockedRef = useRef(false)
   const mountedRef = useRef(true)
   const [selectedSkin, setSelectedSkin] = useState('goose-white')
-  const [selectedStartingItem, setSelectedStartingItem] = useState<string>('boots')
+  const [selectedStartingItem, setSelectedStartingItem] = useState<string | null>(null)
   const [itemDetailsOpen, setItemDetailsOpen] = useState(false)
   const [keepPendingItem, setKeepPendingItem] = useState(false)
   const [eventOutcome, setEventOutcome] = useState<EventOutcome | null>(null)
@@ -202,31 +202,30 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
     return ok
   }, [match, presentResult])
 
-  const completeSetup = useCallback(async () => {
+  const rollForOrder = useCallback(async () => {
     if (lockedRef.current) return
     lockedRef.current = true
     setLocked(true)
     let previous = match.authority.getSnapshot()
-    let result = await match.controller.submit('local-player', { type: 'select-skin', skinId: selectedSkin })
-    if (!await presentResult(result, previous, true)) {
-      lockedRef.current = false
-      setLocked(false)
-      return
+    if (previous.state.players.find((player) => player.playerId === 'local-player')?.skinId !== selectedSkin) {
+      const skinResult = await match.controller.submit('local-player', { type: 'select-skin', skinId: selectedSkin })
+      if (!await presentResult(skinResult, previous, true)) {
+        lockedRef.current = false
+        setLocked(false)
+        return
+      }
+      previous = match.authority.getSnapshot()
     }
-    previous = match.authority.getSnapshot()
-    result = await match.controller.submit('local-player', { type: 'choose-starting-item', itemId: selectedStartingItem })
+    const result = await match.controller.submit('local-player', { type: 'request-order-roll' })
     await presentResult(result, previous, true)
     lockedRef.current = false
     if (mountedRef.current) setLocked(false)
-  }, [match, presentResult, selectedSkin, selectedStartingItem])
+  }, [match, presentResult, selectedSkin])
 
   const shouldDriveAi = snapshot.state.phase !== 'game-over'
     && !eventOutcome
     && !showOrderResult
-    && (snapshot.state.phase === 'setup'
-      ? snapshot.state.players.some((player) => player.controller === 'ai' && player.itemId === null)
-        && snapshot.state.players.find((player) => player.playerId === 'local-player')?.itemId !== null
-      : snapshot.state.players.find((player) => player.playerId === snapshot.state.activePlayerId)?.controller === 'ai')
+    && snapshot.state.players.find((player) => player.playerId === snapshot.state.activePlayerId)?.controller === 'ai'
 
   useEffect(() => {
     if (!shouldDriveAi || lockedRef.current) return
@@ -238,21 +237,19 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
         for (let step = 0; step < 8 && !cancelled; step += 1) {
           const current = match.authority.getSnapshot()
           if (current.state.phase === 'game-over') break
-          const playerId = current.state.phase === 'setup'
-            ? current.state.players.find((player) => player.controller === 'ai' && player.itemId === null)?.playerId
-            : current.state.activePlayerId
+          const playerId = current.state.activePlayerId
           const player = current.state.players.find((candidate) => candidate.playerId === playerId)
           if (!playerId || player?.controller !== 'ai') break
           const turn = await aiController.takeTurn(match.authority.getDecisionView(playerId))
           if (!turn || !await presentResult(turn.result, current, false)) break
           addLogs([`${player.displayName}：${turn.decision.reasonTag}`])
           if (turn.result.ok && turn.result.update.events.some((event) => event.type === 'turn-order-determined')) break
-          if (current.state.phase === 'determining-order' && import.meta.env.MODE !== 'test') {
+          if ((current.state.phase === 'determining-order' || current.state.phase === 'choosing-starting-item') && import.meta.env.MODE !== 'test') {
             await new Promise((resolve) => window.setTimeout(resolve, Math.max(140, 520 / animationSpeed)))
           }
           const next = match.authority.getSnapshot()
           const nextPlayer = next.state.players.find((candidate) => candidate.playerId === next.state.activePlayerId)
-          if (next.state.phase !== 'setup' && nextPlayer?.controller !== 'ai') break
+          if (nextPlayer?.controller !== 'ai') break
         }
         lockedRef.current = false
         if (mountedRef.current) setLocked(false)
@@ -284,6 +281,17 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
     for (const result of round.results) latestOrderFaces.set(result.playerId, result.face)
   }
   for (const result of snapshot.state.orderRollResults) latestOrderFaces.set(result.playerId, result.face)
+  const localHasOrderRoll = snapshot.state.orderRollResults.some((result) => result.playerId === 'local-player')
+    || snapshot.state.orderRollHistory.some((round) => round.results.some((result) => result.playerId === 'local-player'))
+  const startingItemOffers = snapshot.state.startingItemOfferIds.map(itemById).filter((item) => item !== undefined)
+  const startingItemChoiceIndex = provisionalOrder.findIndex((playerId) => playerId === snapshot.state.activePlayerId)
+
+  useEffect(() => {
+    if (snapshot.state.phase !== 'choosing-starting-item' || snapshot.state.activePlayerId !== 'local-player') return
+    setSelectedStartingItem((current) => snapshot.state.startingItemOfferIds.includes(current ?? '')
+      ? current
+      : snapshot.state.startingItemOfferIds[0] ?? null)
+  }, [snapshot.revision, snapshot.state.activePlayerId, snapshot.state.phase, snapshot.state.startingItemOfferIds])
 
   return (
     <main className="stage5-shell">
@@ -345,34 +353,16 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
         </> : <><PackageOpen /><strong>暂无道具</strong></>}
       </button>
 
-      {snapshot.state.phase === 'setup' && localPlayer.itemId === null && (
-        <div className="overlay-stage setup-overlay">
-          <section className="setup-panel" aria-labelledby="setup-title">
-            <div className="panel-kicker">试航准备</div><h1 id="setup-title">选择棋子与起始道具</h1>
-            <div className="skin-picker" role="radiogroup" aria-label="棋子皮肤">
-              {SKIN_SWATCHES.map((skin) => <button type="button" role="radio" aria-checked={selectedSkin === skin.id} className={selectedSkin === skin.id ? 'skin-choice is-selected' : 'skin-choice'} onClick={() => setSelectedSkin(skin.id)} key={skin.id}>
-                <i style={{ background: skin.color }} /><span>{skin.label}</span>
-              </button>)}
-            </div>
-            <div className="setup-item-grid">
-              {STARTING_ITEM_IDS.map((itemId) => {
-                const item = itemById(itemId)!
-                const Icon = ITEM_COPY[itemId]?.icon ?? PackageOpen
-                return <button type="button" className={selectedStartingItem === itemId ? 'setup-item is-selected' : 'setup-item'} onClick={() => setSelectedStartingItem(itemId)} key={itemId}>
-                  <Icon /><span>{item.mode}</span><strong>{item.title}</strong><small>{ITEM_COPY[itemId]?.description}</small>{selectedStartingItem === itemId && <Check />}
-                </button>
-              })}
-            </div>
-            <button className="primary-command setup-start" type="button" disabled={locked || !board} onClick={() => void completeSetup()}><Sparkles /> 开始试航</button>
-          </section>
-        </div>
-      )}
-
       {(snapshot.state.phase === 'determining-order' || showOrderResult) && (
         <div className="overlay-stage order-overlay">
           <section className="order-panel" role="dialog" aria-modal="true" aria-labelledby="order-title">
             <div className="panel-kicker">开局座次</div>
             <h2 id="order-title">{showOrderResult ? '行动顺序已确定' : unresolvedOrderGroup.length < snapshot.state.players.length ? '同点小组重新投掷' : '投掷单骰决定顺序'}</h2>
+            {!showOrderResult && !localHasOrderRoll && snapshot.state.activePlayerId === 'local-player' && <div className="skin-picker" role="radiogroup" aria-label="棋子皮肤">
+              {SKIN_SWATCHES.map((skin) => <button type="button" role="radio" aria-checked={selectedSkin === skin.id} className={selectedSkin === skin.id ? 'skin-choice is-selected' : 'skin-choice'} onClick={() => setSelectedSkin(skin.id)} key={skin.id}>
+                <i style={{ background: skin.color }} /><span>{skin.label}</span>
+              </button>)}
+            </div>}
             <ol className="order-list">
               {provisionalOrder.map((playerId, index) => {
                 const player = snapshot.state.players.find((candidate) => candidate.playerId === playerId)!
@@ -386,10 +376,30 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
               })}
             </ol>
             {showOrderResult
-              ? <button className="primary-command order-command" type="button" onClick={() => setShowOrderResult(false)}><Check /> 进入第一回合</button>
+              ? <button className="primary-command order-command" type="button" onClick={() => setShowOrderResult(false)}><Check /> 选择起始道具</button>
               : snapshot.state.activePlayerId === 'local-player'
-                ? <button className="primary-command order-command" type="button" disabled={locked} onClick={() => void submitLocal({ type: 'request-order-roll' })}><Dices /> 投掷单骰</button>
+                ? <button className="primary-command order-command" type="button" disabled={locked || !board} onClick={() => void rollForOrder()}><Dices /> 投掷单骰</button>
                 : <div className="order-wait" aria-live="polite"><Dices /> {activePlayer.displayName} 正在投掷</div>}
+          </section>
+        </div>
+      )}
+
+      {!showOrderResult && snapshot.state.phase === 'choosing-starting-item' && (
+        <div className="overlay-stage setup-overlay">
+          <section className="setup-panel" role="dialog" aria-modal="true" aria-labelledby="setup-title">
+            <div className="panel-kicker">起始道具 · {startingItemChoiceIndex + 1}/{snapshot.state.players.length}</div>
+            <h1 id="setup-title">{activePlayer.displayName} 选择起始道具</h1>
+            {snapshot.state.activePlayerId === 'local-player' ? <>
+              <div className="setup-item-grid" role="radiogroup" aria-label="抽取的起始道具">
+                {startingItemOffers.map((item) => {
+                  const Icon = ITEM_COPY[item.id]?.icon ?? PackageOpen
+                  return <button type="button" role="radio" aria-checked={selectedStartingItem === item.id} className={selectedStartingItem === item.id ? 'setup-item is-selected' : 'setup-item'} onClick={() => setSelectedStartingItem(item.id)} key={item.id}>
+                    <Icon /><span>{item.mode}</span><strong>{item.title}</strong><small>{ITEM_COPY[item.id]?.description}</small>{selectedStartingItem === item.id && <Check />}
+                  </button>
+                })}
+              </div>
+              <button className="primary-command setup-start" type="button" disabled={locked || !selectedStartingItem} onClick={() => selectedStartingItem && void submitLocal({ type: 'choose-starting-item', itemId: selectedStartingItem })}><Check /> 确认选择</button>
+            </> : <div className="order-wait" aria-live="polite"><PackageOpen /> {activePlayer.displayName} 正在选择</div>}
           </section>
         </div>
       )}
