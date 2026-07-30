@@ -36,6 +36,7 @@ interface RollAnimation {
   readonly startedAt: number
   readonly duration: number
   readonly faces: DiceFaces
+  readonly reduceMotion: boolean
   readonly resolve: () => void
   revealed: boolean
 }
@@ -158,7 +159,7 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
   const modeRef = useRef<DiceMode>('hidden')
   const [mode, setModeState] = useState<DiceMode>('hidden')
   const [result, setResult] = useState<DiceFaces | null>(null)
-  const [resultTravelMs, setResultTravelMs] = useState(1_200)
+  const [resultTravelMs, setResultTravelMs] = useState(1_400)
 
   const setMode = (next: DiceMode) => {
     modeRef.current = next
@@ -189,8 +190,9 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
   useImperativeHandle(ref, () => ({
     roll(faces, speed) {
       cancel()
+      const reduceMotion = reducedMotionRef.current
       setResult(null)
-      setResultTravelMs(Math.max(240, 1_200 / speed))
+      setResultTravelMs(reduceMotion ? Math.max(360, 1_000 / speed) : Math.max(280, 1_400 / speed))
       setMode('rolling')
       const visuals = visualsRef.current
       if (!visuals || import.meta.env.MODE === 'test') {
@@ -201,12 +203,12 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
       visuals.root.visible = true
       setPipOpacity(visuals.dice[0], 1)
       setPipOpacity(visuals.dice[1], 1)
-      const reduceMotion = reducedMotionRef.current
       return new Promise<void>((resolve) => {
         animationRef.current = {
           startedAt: performance.now(),
-          duration: reduceMotion ? Math.max(80, 220 / speed) : Math.max(180, 2_800 / speed),
+          duration: reduceMotion ? Math.max(600, 2_400 / speed) : Math.max(240, 3_600 / speed),
           faces,
+          reduceMotion,
           resolve,
           revealed: false,
         }
@@ -299,28 +301,32 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
       const animation = animationRef.current
       if (animation) {
         const progress = Math.min(1, (now - animation.startedAt) / animation.duration)
-        const rollProgress = Math.min(1, progress / 0.72)
-        const travel = easeInOutCubic(Math.min(1, rollProgress / 0.68))
+        const rollProgress = Math.min(1, progress / 0.76)
+        const travel = easeInOutCubic(Math.min(1, rollProgress / 0.78))
         root.position.y = THREE.MathUtils.lerp(dockY(visuals), -0.18, travel)
         root.scale.setScalar(THREE.MathUtils.lerp(0.7, 1.08, easeOutCubic(travel)))
         visuals.dice.forEach((die, index) => {
+          const direction = index === 0 ? 1 : -1
+          const spinEnd = animation.reduceMotion ? 0.7 : 0.68
+          const spinTurns = animation.reduceMotion ? [1.4, 1.8, 1.1] : [4.2, 5.2, 3.2]
+          const spinRotation = (spinProgress: number) => new THREE.Euler(
+            direction * spinProgress * Math.PI * spinTurns[0] + index * 0.4,
+            spinProgress * Math.PI * spinTurns[1] + index,
+            direction * spinProgress * Math.PI * spinTurns[2],
+          )
           die.root.position.x = index === 0 ? -0.62 : 0.62
-          die.root.position.y = Math.abs(Math.sin(rollProgress * Math.PI * 3.2 + index * 0.7)) * (1 - rollProgress) * 0.48
+          die.root.position.y = Math.abs(Math.sin(rollProgress * Math.PI * (animation.reduceMotion ? 1.6 : 2.8) + index * 0.7))
+            * (1 - rollProgress) * (animation.reduceMotion ? 0.14 : 0.48)
           const target = targetQuaternion(animation.faces[index])
-          if (rollProgress < 0.55) {
-            const direction = index === 0 ? 1 : -1
-            die.root.rotation.set(
-              direction * rollProgress * Math.PI * 7 + index * 0.4,
-              rollProgress * Math.PI * 9 + index,
-              direction * rollProgress * Math.PI * 5,
-            )
+          if (rollProgress < spinEnd) {
+            die.root.rotation.copy(spinRotation(rollProgress))
           } else {
-            const settle = easeOutCubic((rollProgress - 0.55) / 0.45)
-            die.root.quaternion.slerp(target, settle)
+            const settle = easeInOutCubic((rollProgress - spinEnd) / (1 - spinEnd))
+            die.root.quaternion.setFromEuler(spinRotation(spinEnd)).slerp(target, settle)
           }
           if (rollProgress === 1) die.root.quaternion.copy(target)
         })
-        if (progress >= 0.72 && !animation.revealed) {
+        if (progress >= 0.76 && !animation.revealed) {
           animation.revealed = true
           setResult(animation.faces)
           setMode('settled')

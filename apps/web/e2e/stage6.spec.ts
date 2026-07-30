@@ -204,6 +204,40 @@ test('docks clickable 3D dice, rolls them at board center, and settles the autho
   }
 })
 
+test('keeps the 1x dice result readable when reduced motion is enabled', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 1600, height: 900 })
+  await startGame(page, '1v1', 3, 1)
+  await page.evaluate(() => {
+    const target = document.querySelector('.three-dice-layer')
+    const state = window as typeof window & { __reducedDiceResultClasses?: string[] }
+    state.__reducedDiceResultClasses = []
+    if (target) new MutationObserver(() => {
+      const result = document.querySelector('.dice-result')
+      if (result) state.__reducedDiceResultClasses?.push(result.className)
+    }).observe(target, { attributes: true, attributeFilter: ['class'], childList: true, subtree: true })
+  })
+  const startedAt = Date.now()
+  await page.getByRole('button', { name: '投掷双骰' }).click()
+  const result = page.locator('.dice-readout')
+  await expect(result).toBeVisible()
+  expect(Date.now() - startedAt).toBeGreaterThanOrEqual(1_600)
+  await expect(result).toHaveClass(/is-corner/)
+  const resultClasses = await page.evaluate(() => (
+    window as typeof window & { __reducedDiceResultClasses?: string[] }
+  ).__reducedDiceResultClasses ?? [])
+  expect(resultClasses.some((className) => className.includes('is-centered'))).toBe(true)
+  const flight = await result.evaluate((element) => {
+    const animation = element.getAnimations().find((candidate) => candidate instanceof CSSAnimation)
+    return {
+      duration: animation?.effect?.getComputedTiming().duration ?? 0,
+      name: animation instanceof CSSAnimation ? animation.animationName : 'missing',
+    }
+  })
+  expect(flight.name).toBe('dice-result-flight-reduced')
+  expect(flight.duration).toBeGreaterThanOrEqual(900)
+})
+
 test('resolves a dice-check event and shows its outcome', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 })
   await startGame(page, '1v1', 3)
