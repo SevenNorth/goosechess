@@ -4,6 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 export interface ItemUsePresentationData {
   readonly id: number
   readonly playerName: string
+  readonly targetPlayerName?: string
   readonly playerColor: string
   readonly itemTitle: string
   readonly itemMode: '主动' | '被动'
@@ -51,7 +52,7 @@ export function ItemUsePresentation({ presentation, onComplete }: ItemUsePresent
       <div className="item-use-player">
         <i />
         <strong>{presentation.playerName}</strong>
-        <span>使用了{presentation.itemMode}道具</span>
+        <span>使用了{presentation.itemMode}道具{presentation.targetPlayerName ? ` · 作用于${presentation.targetPlayerName}` : ''}</span>
       </div>
       <div
         className={`item-use-flight is-${presentation.source}`}

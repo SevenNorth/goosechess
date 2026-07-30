@@ -57,10 +57,10 @@ const ITEM_COPY: Readonly<Record<string, { icon: typeof Footprints; description:
   boots: { icon: Footprints, description: '使用后，本次移动额外前进 3 格。' },
   clover: { icon: Sparkles, description: '下一次骰子检定必定成功。' },
   cat: { icon: Shield, description: '自动抵消下一次被撞回效果。' },
-  barnacle: { icon: PackageOpen, description: '让下一位对手立即后退 2 格。' },
+  barnacle: { icon: PackageOpen, description: '选择一名对手，使其立即后退 2 格。' },
   duckling: { icon: PackageOpen, description: '立即来到拾荒沙滩。' },
   compass: { icon: Dices, description: '本回合移动点数固定为 8。' },
-  tea: { icon: PackageOpen, description: '下一位对手每颗骰子最多为 3。' },
+  tea: { icon: PackageOpen, description: '选择一名对手，使其下一回合每颗骰子最多为 3。' },
   umbrella: { icon: Shield, description: '自动抵消下一次暂停回合效果。' },
   'lucky-coin': { icon: Sparkles, description: '下一次骰子检定必定成功。' },
   'spring-shoes': { icon: Footprints, description: '使用后，本次移动额外前进 3 格。' },
@@ -195,6 +195,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const [selectedSkin, setSelectedSkin] = useState('goose-white')
   const [selectedStartingItem, setSelectedStartingItem] = useState<string | null>(null)
   const [itemDetailsOpen, setItemDetailsOpen] = useState(false)
+  const [selectedItemTargetId, setSelectedItemTargetId] = useState<string | null>(null)
   const [keepPendingItem, setKeepPendingItem] = useState(false)
   const [eventOutcome, setEventOutcome] = useState<EventOutcome | null>(null)
   const [showOrderResult, setShowOrderResult] = useState(false)
@@ -230,8 +231,11 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
     resolve?.()
   }, [])
 
-  const presentItemUse = useCallback((playerId: string, itemId: string, sourceSnapshot: GameSnapshot, speed: number) => {
+  const presentItemUse = useCallback((playerId: string, itemId: string, targetPlayerId: string | undefined, sourceSnapshot: GameSnapshot, speed: number) => {
     const player = sourceSnapshot.state.players.find((candidate) => candidate.playerId === playerId)
+    const target = targetPlayerId
+      ? sourceSnapshot.state.players.find((candidate) => candidate.playerId === targetPlayerId)
+      : undefined
     const item = itemById(itemId)
     if (!player || !item || !mountedRef.current) return Promise.resolve()
     const copy = ITEM_COPY[item.id]
@@ -240,6 +244,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
       setItemUsePresentation({
         id: itemUseId.current++,
         playerName: player.displayName,
+        targetPlayerName: target?.displayName,
         playerColor: COLOR_HEX[player.colorId],
         itemTitle: item.title,
         itemMode: item.mode,
@@ -281,14 +286,14 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
         onStageChange: (stage) => mountedRef.current && setPresentationStage(stage),
         speed: animationSpeed,
         cameraMotion,
-        playDice: (dice, speed) => diceRef.current?.roll(dice, speed) ?? Promise.resolve(),
+        playDice: (cue, speed) => diceRef.current?.roll(cue, speed) ?? Promise.resolve(),
         cancelDice: () => diceRef.current?.cancel(),
-        playItemUse: (playerId, itemId, speed) => presentItemUse(playerId, itemId, previousSnapshot, speed),
+        playItemUse: (playerId, itemId, targetPlayerId, speed) => presentItemUse(playerId, itemId, targetPlayerId, previousSnapshot, speed),
         cancelItemUse: finishItemUse,
       })
     } else {
       for (const cue of result.update.cues) {
-        if (cue.type === 'item-use') await presentItemUse(cue.playerId, cue.itemId, previousSnapshot, animationSpeed)
+        if (cue.type === 'item-use') await presentItemUse(cue.playerId, cue.itemId, cue.targetPlayerId, previousSnapshot, animationSpeed)
       }
     }
     if (mountedRef.current) setPresentedActivePlayerId(result.update.snapshot.state.activePlayerId)
@@ -383,7 +388,19 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const LocalItemIcon = localItem ? ITEM_COPY[localItem.id]?.icon ?? PackageOpen : PackageOpen
   const localDecision = match.authority.getDecisionView('local-player')
   const canRoll = !locked && !showOrderResult && board && snapshot.state.phase === 'awaiting-action' && snapshot.state.activePlayerId === 'local-player'
-  const canUseItem = localItem && localDecision.legalCommands.some((command) => command.type === 'use-item' && command.itemId === localItem.id)
+  const itemUseCommands = localItem
+    ? localDecision.legalCommands.filter((command): command is Extract<CoreGameCommand, { type: 'use-item' }> => (
+      command.type === 'use-item' && command.itemId === localItem.id
+    ))
+    : []
+  const itemTargetCommands = itemUseCommands.filter((command) => command.targetPlayerId !== undefined)
+  const canUseItem = itemUseCommands.length > 0
+  const selectedItemCommand = itemTargetCommands.length
+    ? itemTargetCommands.find((command) => command.targetPlayerId === selectedItemTargetId)
+    : itemUseCommands[0]
+  const itemTargetPlayers = itemTargetCommands.map((command) => (
+    snapshot.state.players.find((player) => player.playerId === command.targetPlayerId)
+  )).filter((player) => player !== undefined)
   const offeredEvents = snapshot.state.pendingEventIds.map(eventById).filter((event) => event !== undefined)
   const pendingItem = itemById(snapshot.state.pendingItemId)
   const gainedItem = itemById(itemGainConfirmation?.itemId ?? null)
@@ -476,7 +493,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
         <div><small>当前行动</small><strong>{presentedActivePlayer.displayName}</strong></div>
       </section>
 
-      <button className={`${localItem ? 'held-item has-item' : 'held-item'}${presentationStage === 'ready' ? '' : ' is-obscured'}`} type="button" onClick={() => localItem && setItemDetailsOpen(true)} disabled={!localItem || locked}>
+      <button className={`${localItem ? 'held-item has-item' : 'held-item'}${presentationStage === 'ready' ? '' : ' is-obscured'}`} type="button" onClick={() => { if (localItem) { setSelectedItemTargetId(null); setItemDetailsOpen(true) } }} disabled={!localItem || locked}>
         {localItem ? <>
           <span>当前道具 · {localItem.mode}</span><strong>{localItem.title}</strong><small>{ITEM_COPY[localItem.id]?.description}</small>
         </> : <><PackageOpen /><strong>暂无道具</strong></>}
@@ -586,7 +603,22 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
           <section className="item-modal" role="dialog" aria-modal="true" aria-labelledby="item-modal-title" onClick={(event) => event.stopPropagation()}>
             <button className="drawer-close" type="button" title="关闭道具详情" aria-label="关闭道具详情" onClick={() => setItemDetailsOpen(false)}><X /></button>
             <div className="item-modal-icon"><LocalItemIcon /></div><span>{localItem.mode}道具</span><h2 id="item-modal-title">{canUseItem ? `使用${localItem.title}` : localItem.title}</h2><p>{ITEM_COPY[localItem.id]?.description}</p>
-            <div className="item-modal-actions"><button className="secondary-command" type="button" onClick={() => setItemDetailsOpen(false)}>取消</button>{canUseItem && <button className="primary-command" type="button" disabled={locked} onClick={() => { setItemDetailsOpen(false); void submitLocal({ type: 'use-item', itemId: localItem.id }) }}><Check /> 确认使用</button>}</div>
+            {itemTargetPlayers.length > 0 && <div className="item-target-picker" role="radiogroup" aria-label="选择道具目标">
+              <small>选择生效玩家</small>
+              {itemTargetPlayers.map((player) => <button
+                className={selectedItemTargetId === player.playerId ? 'is-selected' : ''}
+                type="button"
+                role="radio"
+                aria-checked={selectedItemTargetId === player.playerId}
+                onClick={() => setSelectedItemTargetId(player.playerId)}
+                key={player.playerId}
+                style={{ '--seat-color': COLOR_HEX[player.colorId] } as React.CSSProperties}
+              >
+                <i /><strong>{player.displayName}</strong><span>第 {player.spaceId} 格</span>
+                {selectedItemTargetId === player.playerId && <Check />}
+              </button>)}
+            </div>}
+            <div className="item-modal-actions"><button className="secondary-command" type="button" onClick={() => setItemDetailsOpen(false)}>取消</button>{canUseItem && <button className="primary-command" type="button" disabled={locked || !selectedItemCommand} onClick={() => { if (!selectedItemCommand) return; setItemDetailsOpen(false); void submitLocal(selectedItemCommand) }}><Check /> 确认使用</button>}</div>
           </section>
         </div>
       )}

@@ -160,9 +160,12 @@ function scoreRoll(view: GameDecisionView): ScoredCommand {
   return { command: { type: 'request-roll' }, score, reasonTag }
 }
 
-function scoreItemUse(view: GameDecisionView, itemId: string): ScoredCommand {
+function scoreItemUse(view: GameDecisionView, command: Extract<CoreGameCommand, { type: 'use-item' }>): ScoredCommand {
   const actor = playerOf(view)
-  const opponent = nextPlayer(view)
+  const opponent = command.targetPlayerId
+    ? view.players.find((player) => player.playerId === command.targetPlayerId)
+    : nextPlayer(view)
+  const itemId = command.itemId
   const behavior = itemBehavior(view, itemId)
   let score: number
   let reasonTag = 'item-improves-movement'
@@ -185,14 +188,14 @@ function scoreItemUse(view: GameDecisionView, itemId: string): ScoredCommand {
       break
     default: score = -Infinity
   }
-  return { command: { type: 'use-item', itemId }, score, reasonTag }
+  return { command, score, reasonTag }
 }
 
 function scoreCommand(view: GameDecisionView, command: CoreGameCommand): ScoredCommand {
   switch (command.type) {
     case 'request-order-roll': return { command, score: 0, reasonTag: 'roll-for-turn-order' }
     case 'request-roll': return scoreRoll(view)
-    case 'use-item': return scoreItemUse(view, command.itemId)
+    case 'use-item': return scoreItemUse(view, command)
     case 'choose-event': return scoreEvent(view, command.eventId)
     case 'choose-starting-item':
       return { command, score: itemValue(view, command.itemId), reasonTag: 'starting-item-utility' }

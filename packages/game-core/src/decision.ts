@@ -66,6 +66,12 @@ function canUseItem(state: GameState, definition: GameDefinition, playerId: stri
   return beach !== undefined && player.spaceId < beach
 }
 
+function itemTargetPlayerIds(state: GameState, definition: GameDefinition, playerId: string, itemId: string) {
+  const item = definition.items.find((candidate) => candidate.id === itemId)
+  if (item?.effect !== 'opponent-back-two' && item?.effect !== 'opponent-max-three') return null
+  return state.turnOrderGroups.flat().filter((candidate) => candidate !== playerId)
+}
+
 export function getLegalCommands(
   state: GameState,
   definition: GameDefinition,
@@ -94,7 +100,16 @@ export function getLegalCommands(
   if (state.phase === 'awaiting-action') {
     const commands: CoreGameCommand[] = [{ type: 'request-roll' }]
     if (player.itemId && canUseItem(state, definition, playerId, player.itemId)) {
-      commands.push({ type: 'use-item', itemId: player.itemId })
+      const targetPlayerIds = itemTargetPlayerIds(state, definition, playerId, player.itemId)
+      if (targetPlayerIds) {
+        commands.push(...targetPlayerIds.map((targetPlayerId) => ({
+          type: 'use-item' as const,
+          itemId: player.itemId!,
+          targetPlayerId,
+        })))
+      } else {
+        commands.push({ type: 'use-item', itemId: player.itemId })
+      }
     }
     return commands
   }

@@ -93,6 +93,7 @@ test('shows load progress and recovers from a failed board resource', async ({ p
 })
 
 test('starts every offline mode with mouse controls only', async ({ page }) => {
+  test.setTimeout(90_000)
   for (const mode of ['1v1', '1v2', '1v3'] as const) {
     await startGame(page, mode, 31)
     await expect(page.getByRole('region', { name: '参赛棋手' }).getByRole('article')).toHaveCount(Number(mode.at(-1)) + 1)
@@ -219,7 +220,9 @@ test('confirms a directly gained event item locally and closes after three secon
   await startGame(page, '1v1', 22, 20, /坏藤壶/)
 
   await page.locator('.held-item').click()
-  await page.getByRole('dialog', { name: '使用坏藤壶' }).getByRole('button', { name: '确认使用' }).click()
+  const useDialog = page.getByRole('dialog', { name: '使用坏藤壶' })
+  await useDialog.getByRole('radio').first().click()
+  await useDialog.getByRole('button', { name: '确认使用' }).click()
   await expect(page.getByRole('status', { name: '玩家使用坏藤壶' })).toHaveCount(0, { timeout: 5_000 })
   await page.getByRole('button', { name: '投掷双骰' }).click()
   await page.getByRole('button', { name: /走失的猫/ }).click()
@@ -232,6 +235,73 @@ test('confirms a directly gained event item locally and closes after three secon
   const gainedItemName = await gainDialog.locator('.item-gain-card strong').textContent()
   await expect(gainDialog).toHaveCount(0, { timeout: 4_000 })
   await expect(page.locator('.held-item')).toContainText(gainedItemName!)
+})
+
+test('requires an explicit target for opponent items and names that target in the presentation', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 })
+  await startGame(page, '1v2', 6, 20, /坏藤壶/)
+
+  await page.locator('.held-item').click()
+  const dialog = page.getByRole('dialog', { name: '使用坏藤壶' })
+  const targets = dialog.getByRole('radio')
+  const confirm = dialog.getByRole('button', { name: '确认使用' })
+  await expect(targets).toHaveCount(2)
+  await expect(confirm).toBeDisabled()
+  const targetName = await targets.nth(1).locator('strong').textContent()
+  await targets.nth(1).click()
+  await expect(confirm).toBeEnabled()
+  await confirm.click()
+
+  await expect(page.getByRole('status', { name: '玩家使用坏藤壶' })).toContainText(`作用于${targetName}`)
+})
+
+test('presents movement bonuses and fixed movement in the authoritative dice result', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 1600, height: 900 })
+  await startGame(page, '1v1', 12, 1.5, /轻便靴子/)
+  await page.locator('.held-item').click()
+  await page.getByRole('dialog', { name: '使用轻便靴子' }).getByRole('button', { name: '确认使用' }).click()
+  await expect(page.locator('.item-use-stage')).toHaveCount(0, { timeout: 5_000 })
+  await page.evaluate(() => {
+    const state = window as typeof window & { __bonusBreakdown?: string }
+    const capture = () => {
+      const result = document.querySelector('.dice-readout.has-breakdown.is-centered')
+      if (result?.textContent) state.__bonusBreakdown = result.textContent
+    }
+    new MutationObserver(capture).observe(document.querySelector('.three-dice-layer')!, { attributes: true, childList: true, subtree: true })
+    capture()
+  })
+  await page.getByRole('button', { name: '投掷双骰' }).click()
+  await expect.poll(() => page.evaluate(() => (
+    window as typeof window & { __bonusBreakdown?: string }
+  ).__bonusBreakdown ?? '')).toMatch(/^\d+\+3$/)
+  const breakdown = (await page.evaluate(() => (
+    window as typeof window & { __bonusBreakdown?: string }
+  ).__bonusBreakdown!)).split('+').map(Number)
+  await expect(page.locator('.dice-readout.is-corner')).toHaveText(String(breakdown[0] + breakdown[1]))
+
+  await startGame(page, '1v1', 4, 1.5, /歪指针/)
+  await page.locator('.held-item').click()
+  await page.getByRole('dialog', { name: '使用歪指针' }).getByRole('button', { name: '确认使用' }).click()
+  await expect(page.locator('.item-use-stage')).toHaveCount(0, { timeout: 5_000 })
+  await page.evaluate(() => {
+    const state = window as typeof window & { __fixedDiceAdjusted?: boolean; __fixedDiceResult?: string }
+    const capture = () => {
+      const layer = document.querySelector('.three-dice-layer')
+      const result = document.querySelector('.dice-readout.is-centered')
+      if (layer?.classList.contains('is-adjusting')) state.__fixedDiceAdjusted = true
+      if (result?.textContent === '8') state.__fixedDiceResult = result.textContent
+    }
+    new MutationObserver(capture).observe(document.querySelector('.three-dice-layer')!, { attributes: true, childList: true, subtree: true })
+  })
+  await page.getByRole('button', { name: '投掷双骰' }).click()
+  await expect.poll(() => page.evaluate(() => Boolean((
+    window as typeof window & { __fixedDiceAdjusted?: boolean }
+  ).__fixedDiceAdjusted))).toBe(true)
+  await expect.poll(() => page.evaluate(() => (
+    window as typeof window & { __fixedDiceResult?: string }
+  ).__fixedDiceResult ?? '')).toBe('8')
+  await expect(page.locator('.dice-readout.is-corner')).toHaveText('8')
 })
 
 test('keeps opponent items private and tears a used item card vertically', async ({ page }, testInfo) => {

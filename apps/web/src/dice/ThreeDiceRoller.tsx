@@ -1,13 +1,21 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type CSSProperties } from 'react'
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
+import type { PresentationCue } from '@goose-chess/game-protocol'
 import type { PresentationStage } from '../game-client/machine/presentation-machine'
 
 type DiceFaces = readonly [number, number]
-type DiceMode = 'hidden' | 'docked' | 'pending' | 'rolling' | 'settled'
+type DiceMode = 'hidden' | 'docked' | 'pending' | 'rolling' | 'adjusting' | 'settled'
+type DiceRollCue = Extract<PresentationCue, { type: 'dice-roll' }>
+
+interface DiceReadout {
+  readonly faces: DiceFaces
+  readonly movementTotal: number | null
+  readonly movementModifier: number
+}
 
 export interface ThreeDiceRollerHandle {
-  roll(faces: DiceFaces, speed: number): Promise<void>
+  roll(cue: DiceRollCue, speed: number): Promise<void>
   cancel(): void
 }
 
@@ -19,6 +27,7 @@ interface ThreeDiceRollerProps {
 
 interface DieVisual {
   readonly root: THREE.Group
+  readonly body: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>
   readonly pips: readonly THREE.Mesh[]
 }
 
@@ -45,6 +54,7 @@ interface DieRollProfile {
 }
 
 interface RollAnimation {
+  readonly kind: 'roll'
   readonly startedAt: number
   readonly duration: number
   readonly faces: DiceFaces
@@ -53,6 +63,25 @@ interface RollAnimation {
   readonly resolve: () => void
   revealed: boolean
 }
+
+interface FaceAdjustmentAnimation {
+  readonly kind: 'adjustment'
+  readonly startedAt: number
+  readonly duration: number
+  readonly die: DieVisual
+  readonly startQuaternion: THREE.Quaternion
+  readonly targetQuaternion: THREE.Quaternion
+  readonly resolve: () => void
+}
+
+interface PauseAnimation {
+  readonly kind: 'pause'
+  readonly startedAt: number
+  readonly duration: number
+  readonly resolve: () => void
+}
+
+type DiceAnimation = RollAnimation | FaceAdjustmentAnimation | PauseAnimation
 
 const FACE_NORMALS: Readonly<Record<number, THREE.Vector3>> = {
   1: new THREE.Vector3(0, 0, 1),
@@ -123,7 +152,7 @@ function createDie(bodyColor: number, pipColor: number) {
       pips.push(pip)
     }
   }
-  return { root, pips }
+  return { root, body, pips }
 }
 
 function dockY(visuals: DiceVisuals) {
@@ -232,12 +261,13 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
 ) {
   const hostRef = useRef<HTMLDivElement>(null)
   const visualsRef = useRef<DiceVisuals | null>(null)
-  const animationRef = useRef<RollAnimation | null>(null)
+  const animationRef = useRef<DiceAnimation | null>(null)
+  const sequenceRef = useRef(0)
   const frameRef = useRef(0)
   const reducedMotionRef = useRef(false)
   const modeRef = useRef<DiceMode>('hidden')
   const [mode, setModeState] = useState<DiceMode>('hidden')
-  const [result, setResult] = useState<DiceFaces | null>(null)
+  const [result, setResult] = useState<DiceReadout | null>(null)
   const [resultTravelMs, setResultTravelMs] = useState(1_400)
 
   const setMode = (next: DiceMode) => {
@@ -260,22 +290,44 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
   }
 
   const cancel = () => {
+    sequenceRef.current += 1
     const animation = animationRef.current
     if (!animation) return
     animationRef.current = null
+    if (animation.kind === 'adjustment') {
+      animation.die.body.material.emissiveIntensity = 0
+      animation.die.body.scale.setScalar(1)
+    }
     animation.resolve()
   }
 
+  const pause = (duration: number) => new Promise<void>((resolve) => {
+    animationRef.current = { kind: 'pause', startedAt: performance.now(), duration, resolve }
+  })
+
+  const adjustFace = (die: DieVisual, face: number, duration: number) => new Promise<void>((resolve) => {
+    animationRef.current = {
+      kind: 'adjustment',
+      startedAt: performance.now(),
+      duration,
+      die,
+      startQuaternion: die.root.quaternion.clone(),
+      targetQuaternion: targetQuaternion(face),
+      resolve,
+    }
+  })
+
   useImperativeHandle(ref, () => ({
-    roll(faces, speed) {
+    roll(cue, speed) {
       cancel()
+      const sequence = sequenceRef.current
       const reduceMotion = reducedMotionRef.current
       setResult(null)
       setResultTravelMs(reduceMotion ? Math.max(360, 1_000 / speed) : Math.max(280, 1_400 / speed))
       setMode('rolling')
       const visuals = visualsRef.current
       if (!visuals || import.meta.env.MODE === 'test') {
-        setResult(faces)
+        setResult({ faces: cue.dice, movementTotal: cue.movementTotal, movementModifier: cue.movementModifier })
         setMode('settled')
         return Promise.resolve()
       }
@@ -283,19 +335,36 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
       setPipOpacity(visuals.dice[0], 1)
       setPipOpacity(visuals.dice[1], 1)
       const profiles: readonly [DieRollProfile, DieRollProfile] = [
-        createRollProfile(visuals.dice[0], 0, faces[0], reduceMotion),
-        createRollProfile(visuals.dice[1], 1, faces[1], reduceMotion),
+        createRollProfile(visuals.dice[0], 0, cue.rawDice[0], reduceMotion),
+        createRollProfile(visuals.dice[1], 1, cue.rawDice[1], reduceMotion),
       ]
-      return new Promise<void>((resolve) => {
+      return new Promise<void>((resolveRoll) => {
         animationRef.current = {
+          kind: 'roll',
           startedAt: performance.now(),
           duration: Math.max(reduceMotion ? 600 : 240, 2_400 / speed),
-          faces,
+          faces: cue.rawDice,
           reduceMotion,
           profiles,
-          resolve,
+          resolve: resolveRoll,
           revealed: false,
         }
+      }).then(async () => {
+        if (sequence !== sequenceRef.current) return
+        await pause(Math.max(120, (reduceMotion ? 420 : 650) / speed))
+        if (sequence !== sequenceRef.current) return
+        const displayed: [number, number] = [...cue.rawDice]
+        for (const adjustment of cue.adjustments) {
+          setMode('adjusting')
+          await adjustFace(visuals.dice[adjustment.dieIndex], adjustment.toFace, Math.max(180, (reduceMotion ? 560 : 900) / speed))
+          if (sequence !== sequenceRef.current) return
+          displayed[adjustment.dieIndex] = adjustment.toFace
+          setResult({ faces: [...displayed], movementTotal: null, movementModifier: 0 })
+          setMode('settled')
+        }
+        setResult({ faces: cue.dice, movementTotal: cue.movementTotal, movementModifier: cue.movementModifier })
+        await pause(Math.max(150, (reduceMotion ? 420 : 650) / speed))
+        if (sequence === sequenceRef.current) setMode('settled')
       })
     },
     cancel,
@@ -383,7 +452,7 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
 
     const render = (now: number) => {
       const animation = animationRef.current
-      if (animation) {
+      if (animation?.kind === 'roll') {
         const progress = Math.min(1, (now - animation.startedAt) / animation.duration)
         const rollProgress = Math.min(1, progress / 0.76)
         const travel = easeOutCubic(Math.min(1, rollProgress / 0.28))
@@ -412,10 +481,37 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
         })
         if (progress >= 0.76 && !animation.revealed) {
           animation.revealed = true
-          setResult(animation.faces)
+          setResult({ faces: animation.faces, movementTotal: null, movementModifier: 0 })
           setMode('settled')
         }
         if (progress === 1) {
+          animationRef.current = null
+          animation.resolve()
+        }
+      } else if (animation?.kind === 'adjustment') {
+        const progress = Math.min(1, (now - animation.startedAt) / animation.duration)
+        const flashEnd = 0.42
+        const flashProgress = Math.min(1, progress / flashEnd)
+        animation.die.body.material.emissive.setHex(0xf4c85b)
+        animation.die.body.material.emissiveIntensity = progress <= flashEnd
+          ? Math.sin(flashProgress * Math.PI) * 1.8
+          : (1 - progress) * 0.25
+        const rotationProgress = THREE.MathUtils.clamp((progress - 0.3) / 0.7, 0, 1)
+        animation.die.root.quaternion.copy(animation.startQuaternion).slerp(
+          animation.targetQuaternion,
+          easeInOutCubic(rotationProgress),
+        )
+        const pulse = Math.sin(Math.min(1, progress / 0.55) * Math.PI)
+        animation.die.body.scale.setScalar(1 + pulse * (reducedMotionRef.current ? 0.035 : 0.09))
+        if (progress === 1) {
+          animation.die.root.quaternion.copy(animation.targetQuaternion)
+          animation.die.body.material.emissiveIntensity = 0
+          animation.die.body.scale.setScalar(1)
+          animationRef.current = null
+          animation.resolve()
+        }
+      } else if (animation?.kind === 'pause') {
+        if (now - animation.startedAt >= animation.duration) {
           animationRef.current = null
           animation.resolve()
         }
@@ -455,14 +551,20 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
         disabled={!canRoll}
         onClick={handleClick}
       />
-      {result && mode === 'settled' && (
+      {result && (mode === 'settled' || mode === 'adjusting') && (
         <div
-          className={`dice-readout dice-result ${stage === 'rolling' ? 'is-centered' : 'is-corner'}`}
+          className={`dice-readout dice-result ${result.movementModifier !== 0 ? 'has-breakdown' : ''} ${stage === 'rolling' ? 'is-centered' : 'is-corner'}`}
           role="status"
-          aria-label={`骰子结果 ${result[0] + result[1]}`}
+          aria-label={`骰子结果 ${result.movementTotal ?? result.faces[0] + result.faces[1]}`}
+          data-dice-faces={result.faces.join('+')}
+          data-movement-result={result.movementTotal ?? undefined}
           style={{ '--dice-result-travel-ms': `${resultTravelMs}ms` } as CSSProperties}
         >
-          <strong>{result[0] + result[1]}</strong>
+          {stage === 'rolling' && result.movementModifier !== 0 ? <>
+            <strong>{result.faces[0] + result.faces[1]}</strong>
+            <span>{result.movementModifier > 0 ? '+' : '-'}</span>
+            <strong>{Math.abs(result.movementModifier)}</strong>
+          </> : <strong>{result.movementTotal ?? result.faces[0] + result.faces[1]}</strong>}
         </div>
       )}
     </section>

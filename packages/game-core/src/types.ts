@@ -145,6 +145,13 @@ export interface LastDiceResult {
   readonly total: number
 }
 
+export interface DiceAdjustment {
+  readonly dieIndex: 0 | 1
+  readonly fromFace: number
+  readonly toFace: number
+  readonly reason: 'max-face' | 'min-face' | 'fixed-total'
+}
+
 export interface GlobalDieRule {
   readonly maxFace: number
   readonly remainingRounds: number
@@ -189,7 +196,7 @@ export type CoreGameCommand =
   | { readonly type: 'select-skin'; readonly skinId: string }
   | { readonly type: 'choose-starting-item'; readonly itemId: string }
   | { readonly type: 'request-order-roll' }
-  | { readonly type: 'use-item'; readonly itemId: string }
+  | { readonly type: 'use-item'; readonly itemId: string; readonly targetPlayerId?: string }
   | { readonly type: 'request-roll' }
   | { readonly type: 'choose-event'; readonly eventId: string }
   | { readonly type: 'choose-item'; readonly itemId: string | null }
@@ -214,8 +221,16 @@ export type RuleEvent =
   | { readonly type: 'game-won'; readonly playerId: string; readonly spaceId: number }
 
 export type RuleCue =
-  | { readonly type: 'item-use'; readonly playerId: string; readonly itemId: string }
-  | { readonly type: 'dice-roll'; readonly playerId: string; readonly dice: DicePair }
+  | { readonly type: 'item-use'; readonly playerId: string; readonly itemId: string; readonly targetPlayerId?: string }
+  | {
+    readonly type: 'dice-roll'
+    readonly playerId: string
+    readonly rawDice: DicePair
+    readonly dice: DicePair
+    readonly movementTotal: number | null
+    readonly movementModifier: number
+    readonly adjustments: readonly DiceAdjustment[]
+  }
   | { readonly type: 'route-preview'; readonly playerId: string; readonly path: readonly number[]; readonly targetSpaceId: number }
   | { readonly type: 'target-highlight'; readonly spaceId: number }
   | { readonly type: 'token-hop'; readonly playerId: string; readonly path: readonly number[] }

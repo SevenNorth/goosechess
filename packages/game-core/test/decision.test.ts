@@ -47,4 +47,18 @@ describe('public game decision view', () => {
 
     expect(getLegalCommands(used.state, definition, 'p0')).toEqual([{ type: 'request-roll' }])
   })
+
+  it('enumerates one legal command per valid target for opponent items', () => {
+    const definition = makeDefinition()
+    const initial = createInitialGameState({ definition, participants: makeParticipants(3), seed: 8 })
+    const state = {
+      ...initial,
+      players: initial.players.map((player) => player.playerId === 'p0' ? { ...player, itemId: 'tea' } : player),
+    }
+
+    expect(getLegalCommands(state, definition, 'p0').filter((command) => command.type === 'use-item')).toEqual([
+      { type: 'use-item', itemId: 'tea', targetPlayerId: 'p1' },
+      { type: 'use-item', itemId: 'tea', targetPlayerId: 'p2' },
+    ])
+  })
 })

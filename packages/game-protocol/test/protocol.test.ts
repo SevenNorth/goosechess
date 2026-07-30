@@ -113,6 +113,32 @@ describe('game protocol', () => {
     })).toMatchObject({ code: 'stale_revision', retryable: true })
   })
 
+  it('serializes explicit item targets and authoritative dice adjustments', () => {
+    expect(parseCommandEnvelope({
+      ...envelope,
+      command: { type: 'use-item', itemId: 'clover', targetPlayerId: 'ai-1' },
+    })).toMatchObject({
+      ok: true,
+      value: { command: { type: 'use-item', itemId: 'clover', targetPlayerId: 'ai-1' } },
+    })
+    expect(parseCommandEnvelope({
+      ...envelope,
+      command: { type: 'use-item', itemId: 'clover', targetPlayerId: '' },
+    })).toMatchObject({ ok: false, error: { code: 'invalid_envelope' } })
+
+    expect(PresentationCueSchema.parse({
+      type: 'dice-roll', cueId: 'r4-c3', sequence: 403, playerId: 'player-1',
+      rawDice: [2, 5], dice: [2, 3], movementTotal: 8, movementModifier: 3,
+      adjustments: [{ dieIndex: 1, fromFace: 5, toFace: 3, reason: 'max-face' }],
+    })).toMatchObject({
+      type: 'dice-roll', rawDice: [2, 5], dice: [2, 3], movementTotal: 8, movementModifier: 3,
+    })
+    expect(PresentationCueSchema.parse({
+      type: 'dice-roll', cueId: 'r4-c4', sequence: 404, playerId: 'player-1',
+      rawDice: [1, 1], dice: [1, 1], movementTotal: -1, movementModifier: -3, adjustments: [],
+    }).movementTotal).toBe(-1)
+  })
+
   it('serializes collision and swap relocation cues', () => {
     expect(PresentationCueSchema.parse({
       type: 'item-use', cueId: 'r4-c1', sequence: 401, playerId: 'player-1', itemId: 'clover',

@@ -2,6 +2,7 @@ import { calculateMovementPath, isWinningSpace } from './map.js'
 import { DeterministicRandom, rollDice, type RandomSource } from './random.js'
 import type {
   CoreGameCommand,
+  DiceAdjustment,
   EventDefinition,
   GameDefinition,
   GameEffect,
@@ -453,6 +454,7 @@ function useActiveItem(
   random: RandomSource,
   playerId: string,
   itemId: string,
+  targetPlayerId: string | undefined,
   events: RuleEvent[],
   cues: RuleCue[],
 ): RuleCommandResult | null {
@@ -460,16 +462,24 @@ function useActiveItem(
   const item = definition.items.find((candidate) => candidate.id === itemId)
   if (!item) return reject('unknown_content', `Unknown item id: ${itemId}.`)
   if (!player || player.itemId !== itemId || item.mode !== '主动') return reject('illegal_command', 'The requested item cannot be used now.')
+  const targetsOpponent = item.effect === 'opponent-back-two' || item.effect === 'opponent-max-three'
+  const target = targetPlayerId ? playerOf(state, targetPlayerId) : undefined
+  if (targetsOpponent && (!target || target.playerId === playerId)) {
+    return reject('illegal_command', 'This item requires a valid opponent target.')
+  }
+  if (!targetsOpponent && targetPlayerId !== undefined) {
+    return reject('illegal_command', 'This item does not accept a player target.')
+  }
   player.itemId = null
   events.push({ type: 'item-changed', playerId, itemId: null })
-  cues.push({ type: 'item-use', playerId, itemId })
+  cues.push({ type: 'item-use', playerId, itemId, ...(target ? { targetPlayerId: target.playerId } : {}) })
 
   switch (item.effect) {
     case 'move-plus-three':
       player.nextMoveBonus += 3
       break
     case 'opponent-back-two':
-      applyMovementEffect(state, definition, nextPlayer(state, playerId).playerId, -2, events, cues)
+      applyMovementEffect(state, definition, target!.playerId, -2, events, cues)
       break
     case 'teleport-beach': {
       const beach = definition.map.landmarks.find((landmark) => landmark.id === 'scavenger-beach')?.spaceIds[0]
@@ -483,7 +493,7 @@ function useActiveItem(
       player.nextFixedMoveTotal = 8
       break
     case 'opponent-max-three':
-      nextPlayer(state, playerId).nextMaxDie = 3
+      target!.nextMaxDie = 3
       break
     case 'check-pass':
     case 'skip-shield':
@@ -495,6 +505,41 @@ function useActiveItem(
     }
   }
   return null
+}
+
+function rollMovementDice(random: RandomSource, maxFace: number, fixedTotal: number | null) {
+  let rawDice = rollDice(random, 6)
+  const adjustments: DiceAdjustment[] = []
+
+  if (fixedTotal !== null) {
+    let eligibleIndices: Array<0 | 1> = []
+    for (let attempt = 0; attempt < 32; attempt += 1) {
+      eligibleIndices = ([0, 1] as const).filter((dieIndex) => {
+        const otherFace = rawDice[dieIndex === 0 ? 1 : 0]
+        const requiredFace = fixedTotal - otherFace
+        return requiredFace >= 1 && requiredFace <= 6 && requiredFace !== rawDice[dieIndex]
+      })
+      if (eligibleIndices.length) break
+      rawDice = rollDice(random, 6)
+    }
+    if (!eligibleIndices.length) {
+      throw new Error(`Fixed movement total ${fixedTotal} cannot be represented by changing one die.`)
+    }
+    const dieIndex = eligibleIndices[random.nextInt(0, eligibleIndices.length - 1)]
+    const finalDice: [number, number] = [...rawDice]
+    const toFace = fixedTotal - rawDice[dieIndex === 0 ? 1 : 0]
+    finalDice[dieIndex] = toFace
+    adjustments.push({ dieIndex, fromFace: rawDice[dieIndex], toFace, reason: 'fixed-total' })
+    return { rawDice, dice: finalDice as readonly [number, number], adjustments }
+  }
+
+  const dice: [number, number] = [...rawDice]
+  for (const dieIndex of [0, 1] as const) {
+    if (dice[dieIndex] <= maxFace) continue
+    adjustments.push({ dieIndex, fromFace: dice[dieIndex], toFace: maxFace, reason: 'max-face' })
+    dice[dieIndex] = maxFace
+  }
+  return { rawDice, dice: dice as readonly [number, number], adjustments }
 }
 
 export function reduceGameCommand(
@@ -543,22 +588,23 @@ export function reduceGameCommand(
     }
     case 'use-item': {
       if (state.phase !== 'awaiting-action' || state.activePlayerId !== actorPlayerId) return reject('illegal_command', 'An item can only be used by the active player before rolling.')
-      const rejection = useActiveItem(state, definition, random, actorPlayerId, command.itemId, events, cues)
+      const rejection = useActiveItem(state, definition, random, actorPlayerId, command.itemId, command.targetPlayerId, events, cues)
       if (rejection) return rejection
       break
     }
     case 'request-roll': {
       if (state.phase !== 'awaiting-action' || state.activePlayerId !== actorPlayerId) return reject('illegal_command', 'Only the active player can request a roll.')
       const maxFace = Math.min(state.globalDieRule?.maxFace ?? 6, actor.nextMaxDie ?? 6)
-      const dice = rollDice(random, maxFace)
-      const rawTotal = dice[0] + dice[1]
-      const movementTotal = (actor.nextFixedMoveTotal ?? rawTotal) + actor.nextMoveBonus
+      const movementModifier = actor.nextMoveBonus
+      const { rawDice, dice, adjustments } = rollMovementDice(random, maxFace, actor.nextFixedMoveTotal)
+      const diceTotal = dice[0] + dice[1]
+      const movementTotal = diceTotal + movementModifier
       actor.nextMoveBonus = 0
       actor.nextMaxDie = null
       actor.nextFixedMoveTotal = null
-      state.lastDice = { playerId: actorPlayerId, purpose: 'move', faces: dice, total: rawTotal }
+      state.lastDice = { playerId: actorPlayerId, purpose: 'move', faces: dice, total: diceTotal }
       events.push({ type: 'dice-rolled', playerId: actorPlayerId, purpose: 'move', dice })
-      cues.push({ type: 'dice-roll', playerId: actorPlayerId, dice })
+      cues.push({ type: 'dice-roll', playerId: actorPlayerId, rawDice, dice, movementTotal, movementModifier, adjustments })
       const settlement = settleMovement(state, definition, actorPlayerId, movementTotal)
       mergeSettlement(state, settlement, events, cues)
       if (state.winnerPlayerId === null) {
@@ -590,7 +636,7 @@ export function reduceGameCommand(
         }
         state.lastDice = { playerId: actorPlayerId, purpose: 'check', faces: dice, total }
         events.push({ type: 'dice-rolled', playerId: actorPlayerId, purpose: 'check', dice })
-        cues.push({ type: 'dice-roll', playerId: actorPlayerId, dice })
+        cues.push({ type: 'dice-roll', playerId: actorPlayerId, rawDice: dice, dice, movementTotal: null, movementModifier: 0, adjustments: [] })
         effects = passed ? event.success ?? [] : event.failure ?? []
       }
       const continuation = state.eventContinuation ?? 'end-turn'

@@ -39,9 +39,9 @@ export interface BoardPlaybackOptions {
   readonly onStageChange?: (stage: PresentationStage) => void
   readonly speed?: number
   readonly cameraMotion?: boolean
-  readonly playDice?: (dice: readonly [number, number], speed: number) => Promise<void>
+  readonly playDice?: (cue: Extract<PresentationCue, { type: 'dice-roll' }>, speed: number) => Promise<void>
   readonly cancelDice?: () => void
-  readonly playItemUse?: (playerId: string, itemId: string, speed: number) => Promise<void>
+  readonly playItemUse?: (playerId: string, itemId: string, targetPlayerId: string | undefined, speed: number) => Promise<void>
   readonly cancelItemUse?: () => void
 }
 
@@ -459,7 +459,7 @@ export class BoardScene implements BoardSceneController {
 
   private async playDice(cue: Extract<PresentationCue, { type: 'dice-roll' }>, speed: number, options?: BoardPlaybackOptions) {
     this.audio.play('dice.roll')
-    if (options?.playDice) await options.playDice(cue.dice, speed)
+    if (options?.playDice) await options.playDice(cue, speed)
     else await this.animate(780 / speed, () => undefined, Easing.Cubic.Out)
   }
 
@@ -642,7 +642,7 @@ export class BoardScene implements BoardSceneController {
       if (playbackRevision !== this.playbackRevision) return
       const cue = update.cues[index]
       if (cue.type === 'item-use') {
-        await options?.playItemUse?.(cue.playerId, cue.itemId, speed)
+        await options?.playItemUse?.(cue.playerId, cue.itemId, cue.targetPlayerId, speed)
       } else if (cue.type === 'dice-roll') {
         this.machine.send({ type: 'ROLL_STARTED' })
         this.stage(options, 'rolling')

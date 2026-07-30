@@ -41,7 +41,11 @@ function toCoreCommand(command: GameCommand): CoreGameCommand {
     case 'select-skin': return { type: command.type, skinId: command.skinId }
     case 'choose-starting-item': return { type: command.type, itemId: command.itemId }
     case 'request-order-roll': return { type: command.type }
-    case 'use-item': return { type: command.type, itemId: command.itemId }
+    case 'use-item': return {
+      type: command.type,
+      itemId: command.itemId,
+      ...(command.targetPlayerId ? { targetPlayerId: command.targetPlayerId } : {}),
+    }
     case 'request-roll': return { type: command.type }
     case 'choose-event': return { type: command.type, eventId: command.eventId }
     case 'choose-item': return { type: command.type, itemId: command.itemId }
@@ -167,7 +171,13 @@ function decorateCue(cue: RuleCue, revision: number, index: number): Presentatio
   const common = { cueId: `r${revision}-c${index}`, sequence: revision * 100 + index }
   switch (cue.type) {
     case 'item-use': return { ...common, ...cue }
-    case 'dice-roll': return { ...common, ...cue, dice: [...cue.dice] as [number, number] }
+    case 'dice-roll': return {
+      ...common,
+      ...cue,
+      rawDice: [...cue.rawDice] as [number, number],
+      dice: [...cue.dice] as [number, number],
+      adjustments: cue.adjustments.map((adjustment) => ({ ...adjustment })),
+    }
     case 'route-preview': return { ...common, ...cue, path: [...cue.path] }
     case 'target-highlight': return { ...common, ...cue }
     case 'token-hop': return { ...common, ...cue, path: [...cue.path] }

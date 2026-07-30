@@ -15,10 +15,10 @@ function createTestController(): BoardSceneController {
     async playUpdate(update: AuthorityUpdate, _previous: GameSnapshot, options?: BoardPlaybackOptions) {
       for (const cue of update.cues) {
         if (cue.type === 'item-use') {
-          await options?.playItemUse?.(cue.playerId, cue.itemId, options.speed ?? 1)
+          await options?.playItemUse?.(cue.playerId, cue.itemId, cue.targetPlayerId, options.speed ?? 1)
         } else if (cue.type === 'dice-roll') {
           options?.onStageChange?.('rolling')
-          await options?.playDice?.(cue.dice, options.speed ?? 1)
+          await options?.playDice?.(cue, options.speed ?? 1)
         }
       }
       if (update.cues.some((cue) => cue.type === 'route-preview')) {

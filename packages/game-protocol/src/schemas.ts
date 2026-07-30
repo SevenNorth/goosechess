@@ -1,17 +1,23 @@
 import { z } from 'zod'
 
-export const PROTOCOL_SCHEMA_VERSION = 4 as const
+export const PROTOCOL_SCHEMA_VERSION = 5 as const
 
 const IdSchema = z.string().trim().min(1).max(128)
 const RevisionSchema = z.number().int().nonnegative()
 const SpaceIdSchema = z.number().int().nonnegative()
 const DicePairSchema = z.tuple([z.number().int().min(1).max(6), z.number().int().min(1).max(6)])
+const DiceAdjustmentSchema = z.object({
+  dieIndex: z.union([z.literal(0), z.literal(1)]),
+  fromFace: z.number().int().min(1).max(6),
+  toFace: z.number().int().min(1).max(6),
+  reason: z.enum(['max-face', 'min-face', 'fixed-total']),
+}).strict()
 
 export const GameCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('select-skin'), skinId: IdSchema }).strict(),
   z.object({ type: z.literal('choose-starting-item'), itemId: IdSchema }).strict(),
   z.object({ type: z.literal('request-order-roll') }).strict(),
-  z.object({ type: z.literal('use-item'), itemId: IdSchema }).strict(),
+  z.object({ type: z.literal('use-item'), itemId: IdSchema, targetPlayerId: IdSchema.optional() }).strict(),
   z.object({ type: z.literal('request-roll') }).strict(),
   z.object({ type: z.literal('choose-event'), eventId: IdSchema }).strict(),
   z.object({ type: z.literal('choose-item'), itemId: IdSchema.nullable() }).strict(),
@@ -112,8 +118,15 @@ export const DomainEventSchema = z.discriminatedUnion('type', [
 ])
 
 export const PresentationCueSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('item-use'), cueId: IdSchema, sequence: RevisionSchema, playerId: IdSchema, itemId: IdSchema }).strict(),
-  z.object({ type: z.literal('dice-roll'), cueId: IdSchema, sequence: RevisionSchema, playerId: IdSchema, dice: DicePairSchema }).strict(),
+  z.object({
+    type: z.literal('item-use'), cueId: IdSchema, sequence: RevisionSchema, playerId: IdSchema,
+    itemId: IdSchema, targetPlayerId: IdSchema.optional(),
+  }).strict(),
+  z.object({
+    type: z.literal('dice-roll'), cueId: IdSchema, sequence: RevisionSchema, playerId: IdSchema,
+    rawDice: DicePairSchema, dice: DicePairSchema, movementTotal: z.number().int().nullable(),
+    movementModifier: z.number().int(), adjustments: z.array(DiceAdjustmentSchema).max(2),
+  }).strict(),
   z.object({ type: z.literal('route-preview'), cueId: IdSchema, sequence: RevisionSchema, playerId: IdSchema, path: z.array(SpaceIdSchema).min(1), targetSpaceId: SpaceIdSchema }).strict(),
   z.object({ type: z.literal('target-highlight'), cueId: IdSchema, sequence: RevisionSchema, spaceId: SpaceIdSchema }).strict(),
   z.object({ type: z.literal('token-hop'), cueId: IdSchema, sequence: RevisionSchema, playerId: IdSchema, path: z.array(SpaceIdSchema).min(1) }).strict(),

@@ -40,7 +40,7 @@ export const SKINS = [
 
 export const DEFAULT_RULESET = {
   id: 'classic-race',
-  version: 5,
+  version: 6,
   playerCount: { min: 2, max: 4 },
   mapIds: [DEFAULT_MAP_CONTENT.id],
   eventPoolIds: EVENTS.map((event) => event.id),

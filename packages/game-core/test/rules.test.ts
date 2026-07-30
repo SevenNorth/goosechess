@@ -271,7 +271,65 @@ describe('deterministic rule kernel', () => {
     if (rolled.ok) {
       const rawTotal = rolled.state.lastDice?.total ?? 0
       expect(rolled.state.players[0].spaceId).toBe(rawTotal + 3)
+      expect(rolled.cues.find((cue) => cue.type === 'dice-roll')).toMatchObject({
+        movementModifier: 3,
+        movementTotal: rawTotal + 3,
+        adjustments: [],
+      })
     }
+  })
+
+  it('requires an explicit valid opponent and applies the item to the selected player', () => {
+    const definition = makeDefinition(makeMap(100, [99]))
+    const initial = createInitialGameState({ definition, participants: makeParticipants(3, [10, 5, 20]), seed: 45 })
+    const equipped = {
+      ...initial,
+      players: initial.players.map((player) => player.playerId === 'p0' ? { ...player, itemId: 'barnacle' } : player),
+    }
+
+    expect(reduceGameCommand(equipped, definition, 'p0', { type: 'use-item', itemId: 'barnacle' })).toMatchObject({ ok: false, code: 'illegal_command' })
+    expect(reduceGameCommand(equipped, definition, 'p0', { type: 'use-item', itemId: 'barnacle', targetPlayerId: 'p0' })).toMatchObject({ ok: false, code: 'illegal_command' })
+    expect(reduceGameCommand(equipped, definition, 'p0', { type: 'use-item', itemId: 'barnacle', targetPlayerId: 'missing' })).toMatchObject({ ok: false, code: 'illegal_command' })
+
+    const used = reduceGameCommand(equipped, definition, 'p0', { type: 'use-item', itemId: 'barnacle', targetPlayerId: 'p2' })
+    expect(used.ok).toBe(true)
+    if (!used.ok) return
+    expect(used.state.players.map((player) => player.spaceId)).toEqual([10, 5, 18])
+    expect(used.cues[0]).toEqual({ type: 'item-use', playerId: 'p0', itemId: 'barnacle', targetPlayerId: 'p2' })
+  })
+
+  it('records raw and adjusted dice for face caps and fixed movement', () => {
+    const definition = makeDefinition(makeMap(100, [99]))
+    const initial = createInitialGameState({ definition, participants: makeParticipants(2), seed: 1 })
+    const cappedState = {
+      ...initial,
+      players: initial.players.map((player) => player.playerId === 'p0' ? { ...player, nextMaxDie: 3 } : player),
+    }
+    const capped = reduceGameCommand(cappedState, definition, 'p0', { type: 'request-roll' })
+    expect(capped.ok).toBe(true)
+    if (!capped.ok) return
+    expect(capped.cues.find((cue) => cue.type === 'dice-roll')).toMatchObject({
+      rawDice: [4, 1],
+      dice: [3, 1],
+      movementTotal: 4,
+      adjustments: [{ dieIndex: 0, fromFace: 4, toFace: 3, reason: 'max-face' }],
+    })
+
+    const fixedState = {
+      ...initial,
+      players: initial.players.map((player) => player.playerId === 'p0' ? { ...player, itemId: 'compass' } : player),
+    }
+    const fixedItem = reduceGameCommand(fixedState, definition, 'p0', { type: 'use-item', itemId: 'compass' })
+    expect(fixedItem.ok).toBe(true)
+    if (!fixedItem.ok) return
+    const fixed = reduceGameCommand(fixedItem.state, definition, 'p0', { type: 'request-roll' })
+    expect(fixed.ok).toBe(true)
+    if (!fixed.ok) return
+    const fixedCue = fixed.cues.find((cue) => cue.type === 'dice-roll')
+    expect(fixedCue).toMatchObject({ movementTotal: 8, movementModifier: 0 })
+    expect(fixedCue?.adjustments).toHaveLength(1)
+    expect((fixedCue?.dice[0] ?? 0) + (fixedCue?.dice[1] ?? 0)).toBe(8)
+    expect(fixed.state.players[0].spaceId).toBe(8)
   })
 
   it('applies swap effects without depending on player control type', () => {

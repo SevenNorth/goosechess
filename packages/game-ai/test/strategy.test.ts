@@ -6,6 +6,7 @@ const ITEMS: ItemDefinition[] = [
   { id: 'boots', title: 'Boots', mode: '主动', effect: 'move-plus-three' },
   { id: 'clover', title: 'Clover', mode: '被动', effect: 'check-pass' },
   { id: 'cat', title: 'Cat', mode: '被动', effect: 'collision-shield' },
+  { id: 'tea', title: 'Tea', mode: '主动', effect: 'opponent-max-three' },
 ]
 
 function view(overrides: Partial<GameDecisionView> = {}): GameDecisionView {
@@ -54,6 +55,21 @@ describe('explainable Goose AI', () => {
     expect(createGooseAiStrategy().decide(decisionView, new DeterministicRandom({ seed: 2, cursor: 0 }))).toMatchObject({
       command: { type: 'use-item', itemId: 'boots' },
       reasonTag: 'item-improves-movement',
+    })
+  })
+
+  it('keeps the selected target in targetable item decisions', () => {
+    const decisionView = view({
+      players: view().players.map((player) => player.playerId === 'ai-1' ? { ...player, itemId: 'tea' } : player),
+      legalCommands: [
+        { type: 'request-roll' },
+        { type: 'use-item', itemId: 'tea', targetPlayerId: 'local' },
+      ],
+    })
+
+    expect(createGooseAiStrategy().decide(decisionView, new DeterministicRandom({ seed: 5, cursor: 0 }))).toMatchObject({
+      command: { type: 'use-item', itemId: 'tea', targetPlayerId: 'local' },
+      reasonTag: 'item-disrupts-leader',
     })
   })
 

@@ -134,4 +134,23 @@ describe('PixiJS 65 格完整对局', () => {
     fireEvent.animationEnd(itemUse.querySelector('.item-use-flight')!)
     await waitFor(() => expect(screen.getByRole('button', { name: /暂无道具/ })).toBeTruthy())
   })
+
+  it('对手道具要求手动选择生效玩家', async () => {
+    await startGame({ mode: '1v2', seed: 6, startingItem: /坏藤壶/ })
+
+    fireEvent.click(screen.getByRole('button', { name: /当前道具.*坏藤壶/ }))
+    const dialog = screen.getByRole('dialog', { name: '使用坏藤壶' })
+    const confirm = within(dialog).getByRole('button', { name: '确认使用' })
+    const targets = within(dialog).getAllByRole('radio')
+
+    expect(targets).toHaveLength(2)
+    expect(confirm.hasAttribute('disabled')).toBe(true)
+    const selectedName = targets[1].querySelector('strong')?.textContent
+    fireEvent.click(targets[1])
+    expect(confirm.hasAttribute('disabled')).toBe(false)
+    fireEvent.click(confirm)
+
+    const itemUse = await screen.findByRole('status', { name: '玩家使用坏藤壶' })
+    expect(itemUse.textContent).toContain(`作用于${selectedName}`)
+  })
 })
