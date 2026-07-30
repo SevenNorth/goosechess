@@ -129,19 +129,19 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .three-dice-trigger:hover::after, .three-dice-trigger:focus-visible::after { opacity: .95; transform: scaleX(1.08); }
 .three-dice-trigger:disabled { cursor: wait; }
 .three-dice-trigger:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
-.three-dice-layer .dice-result { --dice-result-start-top: calc(50% + 10px); --dice-result-start-left: 50%; --dice-result-target-top: calc(50% + min(calc(50vh - 112px), 317px)); --dice-result-target-left: calc(50% + min(calc(50vw - 152px), 515px)); position: absolute; z-index: 5; top: var(--dice-result-start-top); left: var(--dice-result-start-left); width: 140px; height: 140px; display: grid; place-items: center; transform: translate(-50%, -50%) scale(1); color: #c85f4c; font-family: 'Arial Black', 'Microsoft YaHei', sans-serif; font-size: 108px; font-weight: 900; line-height: 1; -webkit-text-stroke: 3px #f2ead5; paint-order: stroke fill; text-shadow: 0 5px 0 #743b32, 5px 8px 0 rgba(31,33,27,.28); animation: dice-result-pop .22s cubic-bezier(.2,.85,.25,1); will-change: top, left, transform, filter; }
-.three-dice-layer .dice-result.is-corner { top: var(--dice-result-target-top); left: var(--dice-result-target-left); transform: translate(-50%, -50%) scale(.62) rotate(-3deg); animation: dice-result-flight var(--dice-result-travel-ms, 1400ms) cubic-bezier(.42,0,.25,1) both; }
+.three-dice-layer .dice-result { --dice-result-start-top: calc(50% + 10px); --dice-result-start-left: 50%; --dice-result-target-top: calc(50% + min(calc(50vh - 112px), 317px)); --dice-result-target-left: calc(50% + min(calc(50vw - 152px), 515px)); position: absolute; z-index: 5; top: var(--dice-result-start-top); left: var(--dice-result-start-left); width: 280px; height: 280px; display: grid; place-items: center; transform: translate(-50%, -50%) scale(1); color: #c85f4c; font-family: 'Arial Black', 'Microsoft YaHei', sans-serif; font-size: 216px; font-weight: 900; line-height: 1; -webkit-text-stroke: 5px #f2ead5; paint-order: stroke fill; text-shadow: 0 9px 0 #743b32, 9px 14px 0 rgba(31,33,27,.28); animation: dice-result-pop .22s cubic-bezier(.2,.85,.25,1); will-change: top, left, transform, filter; }
+.three-dice-layer .dice-result.is-corner { top: var(--dice-result-target-top); left: var(--dice-result-target-left); transform: translate(-50%, -50%) scale(.31) rotate(-3deg); animation: dice-result-flight var(--dice-result-travel-ms, 1400ms) cubic-bezier(.42,0,.25,1) both; }
 .three-dice-layer .dice-result strong { font: inherit; color: inherit; }
 @keyframes dice-result-pop { from { opacity: 0; transform: translate(-50%, -50%) scale(.62); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 @keyframes dice-result-flight {
   0% { top: var(--dice-result-start-top); left: var(--dice-result-start-left); transform: translate(-50%, -50%) scale(1) rotate(0); filter: blur(0); }
-  42% { transform: translate(-50%, -50%) translateY(-58px) scale(1.08) rotate(-8deg); filter: drop-shadow(-18px 14px 2px rgba(200,95,76,.32)); }
-  76% { transform: translate(-50%, -50%) translateY(-18px) scale(.88) rotate(2deg); filter: drop-shadow(-9px 7px 1px rgba(200,95,76,.18)); }
-  100% { top: var(--dice-result-target-top); left: var(--dice-result-target-left); transform: translate(-50%, -50%) scale(.62) rotate(-3deg); filter: none; }
+  42% { transform: translate(-50%, -50%) translateY(-58px) scale(.82) rotate(-8deg); filter: drop-shadow(-18px 14px 2px rgba(200,95,76,.32)); }
+  76% { transform: translate(-50%, -50%) translateY(-18px) scale(.45) rotate(2deg); filter: drop-shadow(-9px 7px 1px rgba(200,95,76,.18)); }
+  100% { top: var(--dice-result-target-top); left: var(--dice-result-target-left); transform: translate(-50%, -50%) scale(.31) rotate(-3deg); filter: none; }
 }
 @keyframes dice-result-flight-reduced {
   0% { top: var(--dice-result-start-top); left: var(--dice-result-start-left); transform: translate(-50%, -50%) scale(1); opacity: 1; }
-  100% { top: var(--dice-result-target-top); left: var(--dice-result-target-left); transform: translate(-50%, -50%) scale(.62); opacity: 1; }
+  100% { top: var(--dice-result-target-top); left: var(--dice-result-target-left); transform: translate(-50%, -50%) scale(.31); opacity: 1; }
 }
 
 .held-item { position: absolute; z-index: 15; right: 24px; bottom: 24px; width: 224px; min-height: 132px; padding: 17px; transform: rotate(1.5deg); display: flex; flex-direction: column; align-items: flex-start; text-align: left; color: #858b80; background: rgba(31,34,28,.93); border: 1px dashed #686d62; cursor: default; transition: opacity .16s ease, transform .16s ease; }

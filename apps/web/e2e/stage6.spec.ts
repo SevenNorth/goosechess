@@ -72,6 +72,30 @@ async function threeCanvasVisiblePixels(page: Page, region: 'center' | 'bottom')
   }, region)
 }
 
+async function threeCanvasCenterSignature(page: Page) {
+  return page.locator('canvas[data-testid="three-dice-canvas"]').evaluate((element) => {
+    const canvas = element as HTMLCanvasElement
+    const context = canvas.getContext('webgl2') ?? canvas.getContext('webgl')
+    if (!context) return { hash: 0, visible: 0 }
+    const x = Math.floor(context.drawingBufferWidth * 0.34)
+    const y = Math.floor(context.drawingBufferHeight * 0.3)
+    const width = Math.floor(context.drawingBufferWidth * 0.32)
+    const height = Math.floor(context.drawingBufferHeight * 0.4)
+    const pixels = new Uint8Array(width * height * 4)
+    context.readPixels(x, y, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels)
+    let hash = 2_166_136_261
+    let visible = 0
+    for (let index = 0; index < pixels.length; index += 16) {
+      if (pixels[index + 3] > 20) visible += 4
+      hash = Math.imul(hash ^ pixels[index], 16_777_619)
+      hash = Math.imul(hash ^ pixels[index + 1], 16_777_619)
+      hash = Math.imul(hash ^ pixels[index + 2], 16_777_619)
+      hash = Math.imul(hash ^ pixels[index + 3], 16_777_619)
+    }
+    return { hash: hash >>> 0, visible }
+  })
+}
+
 test('renders a nonblank complete board at all desktop targets', async ({ page }, testInfo) => {
   test.setTimeout(90_000)
   for (const viewport of [
@@ -180,9 +204,15 @@ test('docks clickable 3D dice, rolls them at board center, and settles the autho
     const result = page.locator('.dice-readout')
     const centeredPresentation = await result.evaluate((element) => {
       const style = getComputedStyle(element)
-      return { centered: element.classList.contains('is-centered'), fontSize: style.fontSize, zIndex: style.zIndex }
+      return {
+        centered: element.classList.contains('is-centered'),
+        fontSize: style.fontSize,
+        height: style.height,
+        width: style.width,
+        zIndex: style.zIndex,
+      }
     })
-    expect(centeredPresentation).toEqual({ centered: true, fontSize: '108px', zIndex: '5' })
+    expect(centeredPresentation).toEqual({ centered: true, fontSize: '216px', height: '280px', width: '280px', zIndex: '5' })
     await page.screenshot({ path: testInfo.outputPath(`dice-result-centered-${viewport.width}x${viewport.height}.png`), fullPage: true })
     await expect(result).toHaveText(/^([2-9]|1[0-2])$/)
     await expect(result).toHaveAttribute('aria-label', /骰子结果 ([2-9]|1[0-2])$/)
@@ -267,6 +297,13 @@ test('reveals the standard 1x result on the 2.4 second dice timeline', async ({ 
     }).observe(layer, { attributes: true, attributeFilter: ['class'] })
   })
   await page.getByRole('button', { name: '投掷双骰' }).click()
+  await page.waitForTimeout(700)
+  const earlyCenterFrame = await threeCanvasCenterSignature(page)
+  expect(earlyCenterFrame.visible).toBeGreaterThan(1_000)
+  await page.waitForTimeout(400)
+  const continuingCenterFrame = await threeCanvasCenterSignature(page)
+  expect(continuingCenterFrame.visible).toBeGreaterThan(1_000)
+  expect(continuingCenterFrame.hash).not.toBe(earlyCenterFrame.hash)
   await expect.poll(() => page.evaluate(() => (
     window as typeof window & { __standardDiceTiming?: { settledAt: number } }
   ).__standardDiceTiming?.settledAt ?? 0)).toBeGreaterThan(0)

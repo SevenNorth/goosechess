@@ -36,6 +36,7 @@ interface DieRollProfile {
   readonly direction: number
   readonly index: number
   readonly spinEnd: number
+  readonly tumbleAmount: number
   readonly spinTurns: readonly [number, number, number]
   readonly startQuaternion: THREE.Quaternion
   readonly settleQuaternion: THREE.Quaternion
@@ -157,20 +158,25 @@ function tumbleEuler(profile: Pick<DieRollProfile, 'direction' | 'index' | 'spin
   )
 }
 
+function tumbleProgress(profile: Pick<DieRollProfile, 'spinEnd' | 'tumbleAmount'>, progress: number) {
+  const normalized = THREE.MathUtils.clamp(progress / profile.spinEnd, 0, 1)
+  return Math.sin(normalized * Math.PI / 2) * profile.tumbleAmount
+}
+
 function createRollProfile(die: DieVisual, index: number, face: number, reduceMotion: boolean): DieRollProfile {
   const direction = index === 0 ? 1 : -1
-  const spinEnd = reduceMotion ? 0.7 : 0.68
+  const spinEnd = reduceMotion ? 0.76 : 0.78
+  const tumbleAmount = reduceMotion ? 0.65 : 1
   const spinTurns: readonly [number, number, number] = reduceMotion ? [1.4, 1.8, 1.1] : [4.2, 5.2, 3.2]
-  const profileBase = { direction, index, spinTurns }
+  const profileBase = { direction, index, spinEnd, spinTurns, tumbleAmount }
   const startQuaternion = die.root.quaternion.clone()
   const settleQuaternion = startQuaternion.clone().multiply(
-    new THREE.Quaternion().setFromEuler(tumbleEuler(profileBase, spinEnd)),
+    new THREE.Quaternion().setFromEuler(tumbleEuler(profileBase, tumbleProgress(profileBase, spinEnd))),
   )
   const faceQuaternion = targetQuaternion(face)
   const finalTilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), direction * 0.07)
   return {
     ...profileBase,
-    spinEnd,
     startQuaternion,
     settleQuaternion,
     targetQuaternion: finalTilt.multiply(faceQuaternion),
@@ -181,8 +187,8 @@ function createRollProfile(die: DieVisual, index: number, face: number, reduceMo
 function bounceHeight(progress: number, index: number, reduceMotion: boolean) {
   const delayedProgress = THREE.MathUtils.clamp((progress - index * 0.025) / (1 - index * 0.025), 0, 1)
   const arcs = reduceMotion
-    ? [[0, 0.7, 0.18], [0.7, 0.92, 0.05]] as const
-    : [[0, 0.58, 0.62], [0.58, 0.82, 0.22], [0.82, 0.95, 0.075]] as const
+    ? [[0, 0.55, 0.18], [0.55, 0.78, 0.05]] as const
+    : [[0, 0.5, 0.62], [0.5, 0.7, 0.22], [0.7, 0.84, 0.075]] as const
   for (const [start, end, height] of arcs) {
     if (delayedProgress >= start && delayedProgress < end) {
       return Math.sin(((delayedProgress - start) / (end - start)) * Math.PI) * height
@@ -361,18 +367,18 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
       if (animation) {
         const progress = Math.min(1, (now - animation.startedAt) / animation.duration)
         const rollProgress = Math.min(1, progress / 0.76)
-        const travel = easeInOutCubic(Math.min(1, rollProgress / 0.62))
+        const travel = easeOutCubic(Math.min(1, rollProgress / 0.34))
         root.position.y = THREE.MathUtils.lerp(dockY(visuals), -0.18, travel)
         root.scale.setScalar(THREE.MathUtils.lerp(0.7, 1.08, easeOutCubic(travel)))
         visuals.dice.forEach((die, index) => {
           const profile = animation.profiles[index]
-          const spread = Math.sin(Math.min(1, rollProgress / 0.9) * Math.PI) * (animation.reduceMotion ? 0.06 : 0.2)
+          const spread = Math.sin(Math.min(1, rollProgress / 0.82) * Math.PI) * (animation.reduceMotion ? 0.06 : 0.2)
           die.root.position.x = (index === 0 ? -0.62 : 0.62) + profile.direction * spread
           die.root.position.y = bounceHeight(rollProgress, index, animation.reduceMotion)
-          die.root.position.z = Math.sin(Math.min(1, rollProgress / 0.7) * Math.PI) * (animation.reduceMotion ? 0.04 : 0.24)
+          die.root.position.z = Math.sin(Math.min(1, rollProgress / 0.62) * Math.PI) * (animation.reduceMotion ? 0.04 : 0.24)
           if (rollProgress < profile.spinEnd) {
             die.root.quaternion.copy(profile.startQuaternion).multiply(
-              new THREE.Quaternion().setFromEuler(tumbleEuler(profile, rollProgress)),
+              new THREE.Quaternion().setFromEuler(tumbleEuler(profile, tumbleProgress(profile, rollProgress))),
             )
           } else {
             const settleProgress = (rollProgress - profile.spinEnd) / (1 - profile.spinEnd)
