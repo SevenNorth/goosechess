@@ -350,7 +350,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
         <div><small>当前行动</small><strong>{activePlayer.displayName}</strong></div>
       </section>
 
-      <button className={localItem ? 'held-item has-item' : 'held-item'} type="button" onClick={() => localItem && setItemDetailsOpen(true)} disabled={!localItem || locked}>
+      <button className={`${localItem ? 'held-item has-item' : 'held-item'}${presentationStage === 'ready' ? '' : ' is-obscured'}`} type="button" onClick={() => localItem && setItemDetailsOpen(true)} disabled={!localItem || locked}>
         {localItem ? <>
           <span>当前道具 · {localItem.mode}</span><strong>{localItem.title}</strong><small>{ITEM_COPY[localItem.id]?.description}</small>
         </> : <><PackageOpen /><strong>暂无道具</strong></>}

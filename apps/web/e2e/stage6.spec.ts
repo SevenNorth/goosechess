@@ -107,9 +107,12 @@ test('plays route states in order before opening an event', async ({ page }) => 
   await expect(page.locator('.dice-readout')).toHaveCount(0)
   await page.getByRole('button', { name: '投掷双骰' }).click()
   await expect(page.locator('.round-float span')).toHaveText('骰子滚动')
-  await expect(page.locator('.dice-readout')).toBeVisible()
+  await expect(page.locator('.dice-readout')).toHaveText(/^\d+$/)
+  await expect(page.locator('.dice-readout')).not.toContainText(/[+=]/)
   await expect(page.getByRole('heading', { name: '从三张牌中选择' })).toBeVisible()
   await expect(page.locator('.round-float span')).toHaveText('等待行动')
+  await expect(page.locator('.dice-readout')).toHaveCount(0)
+  await expect(page.locator('.held-item')).toHaveCSS('opacity', '1')
   expect(await threeCanvasVisiblePixels(page, 'center')).toBe(0)
   expect(await threeCanvasVisiblePixels(page, 'bottom')).toBe(0)
   const states = await page.evaluate(() => (window as typeof window & { __stage6States?: string[] }).__stage6States ?? [])
@@ -134,16 +137,38 @@ test('docks clickable 3D dice, rolls them at board center, and settles the autho
     await expect(page.locator('canvas[data-testid="three-dice-canvas"]')).toHaveCount(1)
     expect(await threeCanvasVisiblePixels(page, 'bottom')).toBeGreaterThan(1_000)
     await page.screenshot({ path: testInfo.outputPath(`dice-docked-${viewport.width}x${viewport.height}.png`), fullPage: true })
+    await page.evaluate(() => {
+      const target = document.querySelector('.three-dice-layer')
+      const state = window as typeof window & { __diceResultClasses?: string[] }
+      state.__diceResultClasses = []
+      if (target) new MutationObserver(() => {
+        const result = document.querySelector('.dice-result')
+        if (result) state.__diceResultClasses?.push(result.className)
+      }).observe(target, { attributes: true, attributeFilter: ['class'], childList: true, subtree: true })
+    })
 
     await trigger.click()
     await expect(page.locator('.three-dice-layer')).toHaveClass(/is-rolling/)
-    await page.waitForTimeout(480)
-    expect(await threeCanvasVisiblePixels(page, 'center')).toBeGreaterThan(1_000)
-
+    await expect.poll(() => threeCanvasVisiblePixels(page, 'center')).toBeGreaterThan(1_000)
     const result = page.locator('.dice-readout')
     await expect(result).toBeVisible()
-    await expect(result).toHaveAttribute('aria-label', /骰子结果 [1-6] 加 [1-6] 等于 ([2-9]|1[0-2])$/)
-    await page.screenshot({ path: testInfo.outputPath(`dice-settled-${viewport.width}x${viewport.height}.png`), fullPage: true })
+    await expect(result).toHaveText(/^([2-9]|1[0-2])$/)
+    await expect(result).toHaveAttribute('aria-label', /骰子结果 ([2-9]|1[0-2])$/)
+    await expect(result).toHaveClass(/is-corner/)
+    const resultClasses = await page.evaluate(() => (window as typeof window & { __diceResultClasses?: string[] }).__diceResultClasses ?? [])
+    expect(resultClasses.some((className) => className.includes('is-centered'))).toBe(true)
+    expect(resultClasses.some((className) => className.includes('is-corner'))).toBe(true)
+    await expect.poll(async () => {
+      const bounds = await result.boundingBox()
+      return (bounds?.x ?? 0) + (bounds?.width ?? 0) / 2 > viewport.width - 130
+        && (bounds?.y ?? 0) + (bounds?.height ?? 0) / 2 > viewport.height - 130
+    }).toBe(true)
+    const resultBounds = await result.boundingBox()
+    expect((resultBounds?.x ?? 0) + (resultBounds?.width ?? 0) / 2).toBeGreaterThan(viewport.width - 130)
+    expect((resultBounds?.y ?? 0) + (resultBounds?.height ?? 0) / 2).toBeGreaterThan(viewport.height - 130)
+    expect(await threeCanvasVisiblePixels(page, 'center')).toBe(0)
+    await expect(page.locator('.held-item')).toHaveCSS('opacity', '0')
+    await page.screenshot({ path: testInfo.outputPath(`dice-result-corner-${viewport.width}x${viewport.height}.png`), fullPage: true })
   }
 })
 

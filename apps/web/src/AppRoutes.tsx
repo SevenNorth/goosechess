@@ -94,7 +94,7 @@ function PlayPage() {
   return <App
     mode={mode}
     seed={requestedSeed ?? fallbackSeed}
-    animationSpeed={Number.isFinite(requestedSpeed) && requestedSpeed >= 1 && requestedSpeed <= 20 ? requestedSpeed : undefined}
+    animationSpeed={Number.isFinite(requestedSpeed) && requestedSpeed >= 0.75 && requestedSpeed <= 20 ? requestedSpeed : undefined}
     onExit={() => navigate('/')}
   />
 }

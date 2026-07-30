@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type CSSProperties } from 'react'
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import type { PresentationStage } from '../game-client/machine/presentation-machine'
@@ -37,6 +37,7 @@ interface RollAnimation {
   readonly duration: number
   readonly faces: DiceFaces
   readonly resolve: () => void
+  revealed: boolean
 }
 
 const FACE_NORMALS: Readonly<Record<number, THREE.Vector3>> = {
@@ -157,6 +158,7 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
   const modeRef = useRef<DiceMode>('hidden')
   const [mode, setModeState] = useState<DiceMode>('hidden')
   const [result, setResult] = useState<DiceFaces | null>(null)
+  const [resultTravelMs, setResultTravelMs] = useState(390)
 
   const setMode = (next: DiceMode) => {
     modeRef.current = next
@@ -188,6 +190,7 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
     roll(faces, speed) {
       cancel()
       setResult(null)
+      setResultTravelMs(Math.max(90, 390 / speed))
       setMode('rolling')
       const visuals = visualsRef.current
       if (!visuals || import.meta.env.MODE === 'test') {
@@ -205,6 +208,7 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
           duration: reduceMotion ? Math.max(60, 220 / speed) : Math.max(80, 900 / speed),
           faces,
           resolve,
+          revealed: false,
         }
       })
     },
@@ -226,6 +230,12 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
       visualsRef.current.renderer.clear()
     }
   }, [canRoll, stage])
+
+  useEffect(() => {
+    if (stage === 'ready' || stage === 'rolling' || !visualsRef.current) return
+    visualsRef.current.root.visible = false
+    visualsRef.current.renderer.clear()
+  }, [stage])
 
   useEffect(() => {
     const host = hostRef.current
@@ -296,7 +306,7 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
           die.root.position.x = index === 0 ? -0.62 : 0.62
           die.root.position.y = Math.abs(Math.sin(progress * Math.PI * 3.2 + index * 0.7)) * (1 - progress) * 0.48
           const target = targetQuaternion(animation.faces[index])
-          if (progress < 0.72) {
+          if (progress < 0.55) {
             const direction = index === 0 ? 1 : -1
             die.root.rotation.set(
               direction * progress * Math.PI * 7 + index * 0.4,
@@ -304,21 +314,24 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
               direction * progress * Math.PI * 5,
             )
           } else {
-            const settle = easeOutCubic((progress - 0.72) / 0.28)
+            const settle = easeOutCubic((progress - 0.55) / 0.45)
             die.root.quaternion.slerp(target, settle)
           }
           if (progress === 1) die.root.quaternion.copy(target)
         })
-        if (progress === 1) {
-          animationRef.current = null
+        if (progress >= 0.75 && !animation.revealed) {
+          animation.revealed = true
           setResult(animation.faces)
           setMode('settled')
+        }
+        if (progress === 1) {
+          animationRef.current = null
           animation.resolve()
         }
       } else if ((modeRef.current === 'docked' || modeRef.current === 'pending') && !reducedMotionRef.current) {
         root.position.y = dockY(visuals) + Math.sin(now / 420) * 0.018
       }
-      if (modeRef.current !== 'hidden') renderer.render(scene, camera)
+      if (modeRef.current !== 'hidden' && root.visible) renderer.render(scene, camera)
       frameRef.current = window.requestAnimationFrame(render)
     }
     frameRef.current = window.requestAnimationFrame(render)
@@ -352,8 +365,13 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
         onClick={handleClick}
       />
       {result && mode === 'settled' && (
-        <div className="dice-readout" role="status" aria-label={`骰子结果 ${result[0]} 加 ${result[1]} 等于 ${result[0] + result[1]}`}>
-          <span>{result[0]}</span><i>+</i><span>{result[1]}</span><i>=</i><strong>{result[0] + result[1]}</strong>
+        <div
+          className={`dice-readout dice-result ${stage === 'rolling' ? 'is-centered' : 'is-corner'}`}
+          role="status"
+          aria-label={`骰子结果 ${result[0] + result[1]}`}
+          style={{ '--dice-result-travel-ms': `${resultTravelMs}ms` } as CSSProperties}
+        >
+          <strong>{result[0] + result[1]}</strong>
         </div>
       )}
     </section>
