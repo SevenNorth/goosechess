@@ -13,10 +13,13 @@ interface PixiBoardProps {
 function createTestController(): BoardSceneController {
   return {
     async playUpdate(update: AuthorityUpdate, _previous: GameSnapshot, options?: BoardPlaybackOptions) {
-      const diceCue = update.cues.find((cue) => cue.type === 'dice-roll')
-      if (diceCue?.type === 'dice-roll') {
-        options?.onStageChange?.('rolling')
-        await options?.playDice?.(diceCue.dice, options.speed ?? 1)
+      for (const cue of update.cues) {
+        if (cue.type === 'item-use') {
+          await options?.playItemUse?.(cue.playerId, cue.itemId, options.speed ?? 1)
+        } else if (cue.type === 'dice-roll') {
+          options?.onStageChange?.('rolling')
+          await options?.playDice?.(cue.dice, options.speed ?? 1)
+        }
       }
       if (update.cues.some((cue) => cue.type === 'route-preview')) {
         options?.onStageChange?.('routePreview')

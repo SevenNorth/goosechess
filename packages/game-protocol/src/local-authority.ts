@@ -166,6 +166,7 @@ function decorateEvent(event: RuleEvent, revision: number, index: number): Domai
 function decorateCue(cue: RuleCue, revision: number, index: number): PresentationCue {
   const common = { cueId: `r${revision}-c${index}`, sequence: revision * 100 + index }
   switch (cue.type) {
+    case 'item-use': return { ...common, ...cue }
     case 'dice-roll': return { ...common, ...cue, dice: [...cue.dice] as [number, number] }
     case 'route-preview': return { ...common, ...cue, path: [...cue.path] }
     case 'target-highlight': return { ...common, ...cue }

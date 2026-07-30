@@ -50,6 +50,8 @@ describe('PixiJS 65 格完整对局', () => {
     await startGame({ mode: '1v3', seed: 1 })
 
     expect(within(screen.getByRole('region', { name: '参赛棋手' })).getAllByRole('article')).toHaveLength(4)
+    const playerCards = within(screen.getByRole('region', { name: '参赛棋手' })).getAllByRole('article')
+    for (const opponentCard of playerCards.slice(1)) expect(within(opponentCard).getByText('道具保密')).toBeTruthy()
     expect(screen.queryByRole('heading', { name: /选择起始道具/ })).toBeNull()
     expect(screen.getByRole('button', { name: /当前道具/ })).toBeTruthy()
   })
@@ -124,6 +126,10 @@ describe('PixiJS 65 格完整对局', () => {
 
     expect(within(dialog).getByRole('button', { name: '取消' })).toBeTruthy()
     fireEvent.click(within(dialog).getByRole('button', { name: '确认使用' }))
+    const itemUse = await screen.findByRole('status', { name: '玩家使用轻便靴子' })
+    expect(itemUse.querySelector('.item-use-flight.is-local')).toBeTruthy()
+    expect(itemUse.querySelectorAll('.item-use-card-half')).toHaveLength(2)
+    fireEvent.animationEnd(itemUse.querySelector('.item-use-flight')!)
     await waitFor(() => expect(screen.getByRole('button', { name: /暂无道具/ })).toBeTruthy())
   })
 })

@@ -163,6 +163,7 @@ describe('deterministic rule kernel', () => {
     ])
     expect(result.state.players.map((player) => player.spaceId)).toEqual([4, 6])
     expect(result.state.players[1].itemId).toBeNull()
+    expect(result.cues.some((cue) => cue.type === 'item-use' && cue.playerId === 'p1' && cue.itemId === 'cat')).toBe(true)
   })
 
   it.each([2, 3, 4])('advances a full %i-player round without hardcoded identities', (playerCount) => {
@@ -238,6 +239,7 @@ describe('deterministic rule kernel', () => {
     expect(checked.state.lastDice?.purpose).toBe('check')
     expect(checked.state.players[0].itemId).toBeNull()
     expect(checked.events.some((event) => event.type === 'dice-rolled' && event.purpose === 'check')).toBe(true)
+    expect(checked.cues.slice(0, 2).map((cue) => cue.type)).toEqual(['item-use', 'dice-roll'])
 
     const slowState = { ...initial, phase: 'awaiting-event-choice' as const, pendingEventIds: ['slow'], eventContinuation: 'end-turn' as const }
     const slowed = reduceGameCommand(slowState, definition, 'p0', { type: 'choose-event', eventId: 'slow' })
@@ -260,6 +262,7 @@ describe('deterministic rule kernel', () => {
     expect(used.ok).toBe(true)
     if (!used.ok) return
     expect(used.state.players[0]).toMatchObject({ itemId: null, nextMoveBonus: 3 })
+    expect(used.cues).toContainEqual({ type: 'item-use', playerId: 'p0', itemId: 'boots' })
     const rolled = reduceGameCommand(used.state, definition, 'p0', { type: 'request-roll' })
     expect(rolled.ok).toBe(true)
     if (rolled.ok) {

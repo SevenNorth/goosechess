@@ -152,6 +152,41 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .held-item strong { margin-top: 6px; font-size: 18px; }
 .held-item small { margin-top: 8px; color: #bec4ba; font-size: 10px; line-height: 1.55; }
 
+.item-use-stage { position: fixed; z-index: 80; inset: 68px 0 0; overflow: hidden; pointer-events: none; background: rgba(12,13,11,.56); animation: item-use-backdrop var(--item-use-duration) ease both; }
+.item-use-player { position: absolute; z-index: 3; top: calc(50% - 228px); left: 50%; min-width: 260px; display: grid; grid-template-columns: 8px 1fr; column-gap: 10px; padding: 10px 14px; transform: translateX(-50%); color: #f3f1e8; background: rgba(31,34,28,.96); box-shadow: 6px 7px 0 rgba(0,0,0,.24); animation: item-use-player-name var(--item-use-duration) ease both; }
+.item-use-player i { grid-row: 1 / span 2; width: 8px; background: var(--item-use-color); }
+.item-use-player strong { font-size: 15px; }
+.item-use-player span { color: #bfc5ba; font-size: 9px; }
+.item-use-flight { position: absolute; z-index: 2; top: 50%; left: 50%; width: 280px; height: 330px; will-change: transform, opacity; }
+.item-use-flight.is-local { animation: item-card-arrive-local var(--item-use-duration) cubic-bezier(.2,.75,.2,1) both; }
+.item-use-flight.is-remote { animation: item-card-arrive-remote var(--item-use-duration) cubic-bezier(.2,.75,.2,1) both; }
+.item-use-card-half { position: absolute; inset: 0; overflow: hidden; filter: drop-shadow(10px 13px 0 rgba(0,0,0,.3)); will-change: transform, opacity; }
+.item-use-card-half.is-left { clip-path: polygon(0 0, 52% 0, 48% 10%, 52% 20%, 48% 30%, 52% 40%, 48% 50%, 52% 60%, 48% 70%, 52% 80%, 48% 90%, 50% 100%, 0 100%); animation: item-card-tear-left var(--item-use-duration) cubic-bezier(.4,0,.6,1) both; }
+.item-use-card-half.is-right { clip-path: polygon(52% 0, 100% 0, 100% 100%, 50% 100%, 48% 90%, 52% 80%, 48% 70%, 52% 60%, 48% 50%, 52% 40%, 48% 30%, 52% 20%, 48% 10%); animation: item-card-tear-right var(--item-use-duration) cubic-bezier(.4,0,.6,1) both; }
+.item-use-card-face { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding: 24px; color: #383a34; text-align: center; background: #ded8c4 url('/assets/sample/paper-board.png') center / cover; border: 3px solid #74766d; border-top: 8px solid var(--item-use-color); }
+.item-use-card-face > span { align-self: flex-end; padding: 4px 8px; color: white; background: #51554c; font-size: 9px; font-weight: 900; }
+.item-use-card-face > svg { width: 52px; height: 52px; margin: 42px 0 23px; padding: 10px; color: #f6f2e5; background: var(--item-use-color); transform: rotate(-4deg); }
+.item-use-card-face > strong { font-size: 24px; }
+.item-use-card-face > small { margin-top: 13px; color: #5c6057; font-size: 11px; line-height: 1.65; }
+.item-use-tear { position: absolute; z-index: 4; top: 0; left: calc(50% - 3px); width: 7px; height: 100%; opacity: 0; background: #f5efdc; clip-path: polygon(50% 0, 100% 9%, 20% 18%, 90% 28%, 10% 39%, 85% 50%, 12% 61%, 92% 72%, 15% 83%, 80% 92%, 50% 100%, 0 92%, 70% 82%, 5% 72%, 74% 61%, 7% 50%, 76% 39%, 8% 28%, 75% 18%, 0 9%); filter: drop-shadow(0 0 7px rgba(255,246,214,.9)); animation: item-card-tear-seam var(--item-use-duration) ease both; }
+@keyframes item-use-backdrop { 0% { opacity: 0; } 12%, 76% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes item-use-player-name { 0%, 24% { opacity: 0; transform: translate(-50%, -8px); } 34%, 72% { opacity: 1; transform: translate(-50%, 0); } 88%, 100% { opacity: 0; transform: translate(-50%, 5px); } }
+@keyframes item-card-arrive-local {
+  0% { opacity: 0; transform: translate(calc(-50% + 50vw - 145px), calc(-50% + 50vh - 126px)) scale(.42) rotate(5deg); }
+  8% { opacity: 1; }
+  31%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(-1deg); }
+}
+@keyframes item-card-arrive-remote {
+  0% { opacity: 0; transform: translate(-50%, calc(-50% - 50vh + 82px)) scale(.5) rotate(-5deg); }
+  8% { opacity: 1; }
+  31%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(1deg); }
+}
+@keyframes item-card-tear-left { 0%, 63% { opacity: 1; transform: translate(0, 0) rotate(0); } 70% { transform: translate(-8px, 0) rotate(-1deg); } 100% { opacity: 0; transform: translate(-180px, 34px) rotate(-14deg); } }
+@keyframes item-card-tear-right { 0%, 63% { opacity: 1; transform: translate(0, 0) rotate(0); } 70% { transform: translate(8px, 0) rotate(1deg); } 100% { opacity: 0; transform: translate(180px, 34px) rotate(14deg); } }
+@keyframes item-card-tear-seam { 0%, 56% { opacity: 0; transform: scaleY(0); } 62%, 71% { opacity: 1; transform: scaleY(1); } 86%, 100% { opacity: 0; transform: scaleY(1); } }
+@keyframes item-card-use-reduced { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.96); } 15%, 85% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1); } }
+@keyframes item-use-player-reduced { 0%, 12% { opacity: 0; transform: translate(-50%, -4px); } 22%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, 0); } }
+
 .overlay-stage { position: fixed; z-index: 50; inset: 68px 0 0; display: grid; place-items: center; padding: 28px; background: rgba(12,13,11,.86); }
 .panel-kicker { margin-bottom: 5px; color: var(--pink); font-size: 10px; font-weight: 900; }
 .setup-panel, .order-panel, .event-panel, .outcome-panel, .item-compare-panel, .win-panel { color: #eff0e9; text-align: center; }
@@ -277,6 +312,11 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .three-dice-layer .dice-result.is-corner { animation-name: dice-result-flight-reduced; animation-duration: var(--dice-result-travel-ms, 1000ms) !important; }
+  .item-use-stage { animation-duration: 700ms !important; }
+  .item-use-player { animation-name: item-use-player-reduced; animation-duration: 700ms !important; }
+  .item-use-flight.is-local, .item-use-flight.is-remote { animation-name: item-card-use-reduced; animation-duration: 700ms !important; }
+  .item-use-card-half { animation: none !important; opacity: 1; transform: none; }
+  .item-use-tear { display: none; }
 }
 
 @media (max-width: 1179px), (max-height: 679px), (orientation: portrait) {

@@ -8,7 +8,7 @@ import type {
   SkinContentDefinition,
 } from './types.js'
 
-export const CONTENT_VERSION = '2026.07.30.2'
+export const CONTENT_VERSION = '2026.07.30.3'
 
 export const LANDMARK_DEFINITIONS = [
   { id: 'repair-room', title: '维修室', spaceIds: [0] },
@@ -40,7 +40,7 @@ export const SKINS = [
 
 export const DEFAULT_RULESET = {
   id: 'classic-race',
-  version: 4,
+  version: 5,
   playerCount: { min: 2, max: 4 },
   mapIds: [DEFAULT_MAP_CONTENT.id],
   eventPoolIds: EVENTS.map((event) => event.id),

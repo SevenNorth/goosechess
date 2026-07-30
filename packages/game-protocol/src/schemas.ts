@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const PROTOCOL_SCHEMA_VERSION = 3 as const
+export const PROTOCOL_SCHEMA_VERSION = 4 as const
 
 const IdSchema = z.string().trim().min(1).max(128)
 const RevisionSchema = z.number().int().nonnegative()
@@ -112,6 +112,7 @@ export const DomainEventSchema = z.discriminatedUnion('type', [
 ])
 
 export const PresentationCueSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('item-use'), cueId: IdSchema, sequence: RevisionSchema, playerId: IdSchema, itemId: IdSchema }).strict(),
   z.object({ type: z.literal('dice-roll'), cueId: IdSchema, sequence: RevisionSchema, playerId: IdSchema, dice: DicePairSchema }).strict(),
   z.object({ type: z.literal('route-preview'), cueId: IdSchema, sequence: RevisionSchema, playerId: IdSchema, path: z.array(SpaceIdSchema).min(1), targetSpaceId: SpaceIdSchema }).strict(),
   z.object({ type: z.literal('target-highlight'), cueId: IdSchema, sequence: RevisionSchema, spaceId: SpaceIdSchema }).strict(),

@@ -214,6 +214,7 @@ export type RuleEvent =
   | { readonly type: 'game-won'; readonly playerId: string; readonly spaceId: number }
 
 export type RuleCue =
+  | { readonly type: 'item-use'; readonly playerId: string; readonly itemId: string }
   | { readonly type: 'dice-roll'; readonly playerId: string; readonly dice: DicePair }
   | { readonly type: 'route-preview'; readonly playerId: string; readonly path: readonly number[]; readonly targetSpaceId: number }
   | { readonly type: 'target-highlight'; readonly spaceId: number }

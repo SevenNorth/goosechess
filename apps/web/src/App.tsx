@@ -30,6 +30,7 @@ import { PixiBoard } from './scene/PixiBoard'
 import type { BoardSceneController } from './scene/BoardScene'
 import type { PresentationStage } from './game-client/machine/presentation-machine'
 import type { ThreeDiceRollerHandle } from './dice/ThreeDiceRoller'
+import { ItemUsePresentation, type ItemUsePresentationData } from './items/ItemUsePresentation'
 
 const ThreeDiceRoller = lazy(() => import('./dice/ThreeDiceRoller').then((module) => ({ default: module.ThreeDiceRoller })))
 
@@ -114,6 +115,13 @@ function itemById(itemId: string | null) {
 
 function gameLogLines(update: AuthorityUpdate) {
   const lines: string[] = []
+  const usedItems = new Set(update.cues.filter((cue) => cue.type === 'item-use').map((cue) => cue.playerId))
+  for (const cue of update.cues) {
+    if (cue.type !== 'item-use') continue
+    const player = update.snapshot.state.players.find((candidate) => candidate.playerId === cue.playerId)
+    const item = itemById(cue.itemId)
+    lines.push(`${player?.displayName ?? cue.playerId} 使用了「${item?.title ?? cue.itemId}」。`)
+  }
   for (const event of update.events) {
     if (event.type === 'dice-rolled') lines.push(`${event.playerId} 掷出 ${event.dice[0] + event.dice[1]} 点。`)
     if (event.type === 'order-die-rolled') lines.push(`${event.playerId} 的座次骰为 ${event.face} 点。`)
@@ -121,7 +129,7 @@ function gameLogLines(update: AuthorityUpdate) {
     if (event.type === 'starting-item-chosen') lines.push(`${event.playerId} 已选择起始道具。`)
     if (event.type === 'collision-resolved') lines.push(event.blocked ? `${event.displacedPlayerId} 挡住了碰撞。` : `${event.displacedPlayerId} 被撞回。`)
     if (event.type === 'event-resolved') lines.push(`事件「${eventById(event.eventCardId)?.title ?? event.eventCardId}」已结算。`)
-    if (event.type === 'item-changed') lines.push(`${event.playerId} 的道具已更新。`)
+    if (event.type === 'item-changed' && (event.itemId !== null || !usedItems.has(event.playerId))) lines.push(`${event.playerId} 的道具已更新。`)
     if (event.type === 'game-won') lines.push(`${event.playerId} 抵达试航终点。`)
   }
   return lines
@@ -145,8 +153,11 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const [showWin, setShowWin] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [itemUsePresentation, setItemUsePresentation] = useState<ItemUsePresentationData | null>(null)
   const [logs, setLogs] = useState<LogEntry[]>([{ id: 1, text: '试航棋盘已经铺好。' }])
   const logId = useRef(2)
+  const itemUseId = useRef(1)
+  const itemUseResolver = useRef<(() => void) | null>(null)
 
   const aiController = useMemo(() => new AiTurnController(
     createGooseAiStrategy(),
@@ -156,7 +167,39 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
 
   useEffect(() => {
     mountedRef.current = true
-    return () => { mountedRef.current = false }
+    return () => {
+      mountedRef.current = false
+      itemUseResolver.current?.()
+      itemUseResolver.current = null
+    }
+  }, [])
+
+  const finishItemUse = useCallback(() => {
+    const resolve = itemUseResolver.current
+    itemUseResolver.current = null
+    setItemUsePresentation(null)
+    resolve?.()
+  }, [])
+
+  const presentItemUse = useCallback((playerId: string, itemId: string, sourceSnapshot: GameSnapshot, speed: number) => {
+    const player = sourceSnapshot.state.players.find((candidate) => candidate.playerId === playerId)
+    const item = itemById(itemId)
+    if (!player || !item || !mountedRef.current) return Promise.resolve()
+    const copy = ITEM_COPY[item.id]
+    return new Promise<void>((resolve) => {
+      itemUseResolver.current = resolve
+      setItemUsePresentation({
+        id: itemUseId.current++,
+        playerName: player.displayName,
+        playerColor: COLOR_HEX[player.colorId],
+        itemTitle: item.title,
+        itemMode: item.mode,
+        description: copy?.description ?? item.description,
+        source: playerId === 'local-player' ? 'local' : 'remote',
+        durationMs: import.meta.env.MODE === 'test' ? 500 : Math.max(700, 2_100 / speed),
+        Icon: copy?.icon ?? PackageOpen,
+      })
+    })
   }, [])
 
   const addLogs = useCallback((lines: readonly string[]) => {
@@ -185,7 +228,13 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
         cameraMotion,
         playDice: (dice, speed) => diceRef.current?.roll(dice, speed) ?? Promise.resolve(),
         cancelDice: () => diceRef.current?.cancel(),
+        playItemUse: (playerId, itemId, speed) => presentItemUse(playerId, itemId, previousSnapshot, speed),
+        cancelItemUse: finishItemUse,
       })
+    } else {
+      for (const cue of result.update.cues) {
+        if (cue.type === 'item-use') await presentItemUse(cue.playerId, cue.itemId, previousSnapshot, animationSpeed)
+      }
     }
     if (actorIsLocal && resolved?.type === 'event-resolved') {
       const event = eventById(resolved.eventCardId)
@@ -194,7 +243,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
     if (gameWon) setShowWin(true)
     if (orderDetermined) setShowOrderResult(true)
     return true
-  }, [addLogs, animationSpeed, board, cameraMotion])
+  }, [addLogs, animationSpeed, board, cameraMotion, finishItemUse, presentItemUse])
 
   const submitLocal = useCallback(async (command: CoreGameCommand) => {
     if (lockedRef.current) return false
@@ -310,6 +359,9 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
           onRoll={() => void submitLocal({ type: 'request-roll' })}
         />
       </Suspense>
+      {itemUsePresentation && (
+        <ItemUsePresentation key={itemUsePresentation.id} presentation={itemUsePresentation} onComplete={finishItemUse} />
+      )}
 
       <header className="stage5-topbar">
         <div className="stage5-brand"><span>鹅</span><div><strong>鹅了个棋</strong><small>奥普港 65 格竞速 · {mode}</small></div></div>
@@ -324,7 +376,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
 
       <section className="floating-players" aria-label="参赛棋手">
         {snapshot.state.players.map((player) => {
-          const item = itemById(player.itemId)
+          const itemLabel = player.playerId === 'local-player' ? itemById(player.itemId)?.title ?? '无道具' : '道具保密'
           const progress = Math.round(player.spaceId / finalSpaceId * 100)
           return (
             <article className={player.playerId === snapshot.state.activePlayerId ? 'hud-player is-active' : 'hud-player'} key={player.playerId} style={{ '--seat-color': COLOR_HEX[player.colorId] } as React.CSSProperties}>
@@ -332,7 +384,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
               <div className="hud-player-copy">
                 <div><strong title={player.displayName}>{player.displayName}</strong><span>{player.spaceId} / {finalSpaceId}</span></div>
                 <div className="hud-progress"><i style={{ width: `${progress}%` }} /></div>
-                <small>{item?.title ?? '无道具'}{player.skipTurns ? ` · 暂停 ${player.skipTurns}` : ''}</small>
+                <small>{itemLabel}{player.skipTurns ? ` · 暂停 ${player.skipTurns}` : ''}</small>
               </div>
             </article>
           )

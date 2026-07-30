@@ -41,6 +41,8 @@ export interface BoardPlaybackOptions {
   readonly cameraMotion?: boolean
   readonly playDice?: (dice: readonly [number, number], speed: number) => Promise<void>
   readonly cancelDice?: () => void
+  readonly playItemUse?: (playerId: string, itemId: string, speed: number) => Promise<void>
+  readonly cancelItemUse?: () => void
 }
 
 export interface BoardSceneDiagnostics {
@@ -639,7 +641,9 @@ export class BoardScene implements BoardSceneController {
     for (let index = 0; index < update.cues.length; index += 1) {
       if (playbackRevision !== this.playbackRevision) return
       const cue = update.cues[index]
-      if (cue.type === 'dice-roll') {
+      if (cue.type === 'item-use') {
+        await options?.playItemUse?.(cue.playerId, cue.itemId, speed)
+      } else if (cue.type === 'dice-roll') {
         this.machine.send({ type: 'ROLL_STARTED' })
         this.stage(options, 'rolling')
         await this.playDice(cue, speed, options)
@@ -692,6 +696,7 @@ export class BoardScene implements BoardSceneController {
     if (this.destroyed) return
     if (outcome !== 'complete') {
       options?.cancelDice?.()
+      options?.cancelItemUse?.()
       this.playbackRevision += 1
       this.tweens.removeAll()
     }

@@ -204,9 +204,12 @@ export function settleMovement(
     for (const occupant of occupants) {
       const blocked = itemBehavior(definition, occupant.itemId) === 'collision-shield'
       if (blocked) {
+        const itemId = occupant.itemId
+        if (!itemId) throw new Error('A collision shield must reference a held item.')
         occupant.itemId = null
         movingPlayer.spaceId = movement.fromSpaceId
         events.push({ type: 'item-changed', playerId: occupant.playerId, itemId: null })
+        cues.push({ type: 'item-use', playerId: occupant.playerId, itemId })
       } else {
         occupant.spaceId = movement.fromSpaceId
       }
@@ -401,8 +404,11 @@ function applyEffects(
         break
       case 'skip':
         if (itemBehavior(definition, actor.itemId) === 'skip-shield') {
+          const itemId = actor.itemId
+          if (!itemId) throw new Error('A skip shield must reference a held item.')
           actor.itemId = null
           events.push({ type: 'item-changed', playerId: actorPlayerId, itemId: null })
+          cues.push({ type: 'item-use', playerId: actorPlayerId, itemId })
         } else {
           actor.skipTurns += effect.turns
         }
@@ -459,6 +465,7 @@ function useActiveItem(
   if (!player || player.itemId !== itemId || item.mode !== '主动') return reject('illegal_command', 'The requested item cannot be used now.')
   player.itemId = null
   events.push({ type: 'item-changed', playerId, itemId: null })
+  cues.push({ type: 'item-use', playerId, itemId })
 
   switch (item.effect) {
     case 'move-plus-three':
@@ -578,8 +585,11 @@ export function reduceGameCommand(
         const guaranteed = itemBehavior(definition, actor.itemId) === 'check-pass'
         passed = guaranteed || total >= event.threshold
         if (guaranteed) {
+          const itemId = actor.itemId
+          if (!itemId) throw new Error('A guaranteed check must reference a held item.')
           actor.itemId = null
           events.push({ type: 'item-changed', playerId: actorPlayerId, itemId: null })
+          cues.push({ type: 'item-use', playerId: actorPlayerId, itemId })
         }
         state.lastDice = { playerId: actorPlayerId, purpose: 'check', faces: dice, total }
         events.push({ type: 'dice-rolled', playerId: actorPlayerId, purpose: 'check', dice })

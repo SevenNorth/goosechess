@@ -187,6 +187,44 @@ test('confirms item use in the center and highlights the retained item', async (
   await expect(itemDialog).toHaveCount(0)
 })
 
+test('keeps opponent items private and tears a used item card vertically', async ({ page }, testInfo) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 1600, height: 900 })
+  await startGame(page, '1v1', 12, 1, /轻便靴子/)
+
+  const opponents = page.locator('.hud-player').filter({ hasText: '电脑' })
+  await expect(opponents).toHaveCount(1)
+  await expect(opponents).toContainText('道具保密')
+  await expect(opponents).not.toContainText(/轻便靴子|四叶草|漂流木盾/)
+
+  await page.locator('.held-item').click()
+  await page.getByRole('dialog', { name: '使用轻便靴子' }).getByRole('button', { name: '确认使用' }).click()
+  const usePresentation = page.getByRole('status', { name: '玩家使用轻便靴子' })
+  await expect(usePresentation).toBeVisible()
+  await expect(usePresentation.locator('.item-use-flight')).toHaveClass(/is-local/)
+  await expect(usePresentation).toContainText('玩家')
+  await expect(usePresentation).toContainText('使用了主动道具')
+
+  const tear = await usePresentation.evaluate((element) => {
+    const animations = element.getAnimations({ subtree: true })
+    for (const animation of animations) {
+      const duration = animation.effect?.getComputedTiming().duration
+      if (typeof duration === 'number') animation.currentTime = duration * 0.72
+      animation.pause()
+    }
+    const left = getComputedStyle(element.querySelector('.item-use-card-half.is-left')!)
+    const right = getComputedStyle(element.querySelector('.item-use-card-half.is-right')!)
+    return { leftClip: left.clipPath, rightClip: right.clipPath, leftTransform: left.transform, rightTransform: right.transform }
+  })
+  expect(tear.leftClip).toContain('polygon')
+  expect(tear.rightClip).toContain('polygon')
+  expect(tear.leftTransform).not.toBe(tear.rightTransform)
+  await page.screenshot({ path: testInfo.outputPath('item-card-vertical-tear-1600x900.png'), fullPage: true })
+  await usePresentation.evaluate((element) => element.getAnimations({ subtree: true }).forEach((animation) => animation.play()))
+  await expect(usePresentation).toHaveCount(0, { timeout: 5_000 })
+  await expect(page.getByRole('button', { name: /暂无道具/ })).toBeVisible()
+})
+
 test('shows a clear warning below the supported landscape size', async ({ page }) => {
   await page.setViewportSize({ width: 1000, height: 700 })
   await page.goto('/')
