@@ -100,6 +100,24 @@ test('starts every offline mode with mouse controls only', async ({ page }) => {
   }
 })
 
+test('lists the in-game player HUD in final action order', async ({ page }) => {
+  await page.goto('/play?mode=1v3&seed=17&speed=20')
+  await waitForBoard(page)
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const confirm = page.getByRole('button', { name: '选择起始道具' })
+    if (await confirm.isVisible()) break
+    const roll = page.getByRole('button', { name: '投掷单骰' })
+    if (await roll.count() > 0 && await roll.isEnabled()) await roll.click()
+    else await page.waitForTimeout(30)
+  }
+  const orderNames = await page.locator('.order-player strong').allTextContents()
+  expect(orderNames).toHaveLength(4)
+  await page.getByRole('button', { name: '选择起始道具' }).click()
+  await completeStartingItemChoices(page)
+  await expect(page.getByRole('button', { name: '投掷双骰' })).toBeEnabled()
+  await expect(page.locator('.hud-player-copy > div:first-child > strong')).toHaveText(orderNames)
+})
+
 test('returns from a selected match to the preparation page', async ({ page }) => {
   await page.goto('/play?mode=1v2&seed=31')
   await waitForBoard(page)
@@ -194,7 +212,7 @@ test('keeps opponent items private and tears a used item card vertically', async
 
   const opponents = page.locator('.hud-player').filter({ hasText: '电脑' })
   await expect(opponents).toHaveCount(1)
-  await expect(opponents).toContainText('道具保密')
+  await expect(opponents.locator('.hud-player-copy > small')).toHaveCount(0)
   await expect(opponents).not.toContainText(/轻便靴子|四叶草|漂流木盾/)
 
   await page.locator('.held-item').click()
@@ -223,6 +241,18 @@ test('keeps opponent items private and tears a used item card vertically', async
   await usePresentation.evaluate((element) => element.getAnimations({ subtree: true }).forEach((animation) => animation.play()))
   await expect(usePresentation).toHaveCount(0, { timeout: 5_000 })
   await expect(page.getByRole('button', { name: /暂无道具/ })).toBeVisible()
+})
+
+test('keeps the current player highlighted until their move presentation finishes', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 1600, height: 900 })
+  await startGame(page, '1v1', 1, 1)
+  const activePlayerName = page.locator('.hud-player.is-active .hud-player-copy strong')
+  await expect(activePlayerName).toHaveText('玩家')
+  await page.getByRole('button', { name: '投掷双骰' }).click()
+  await expect(page.locator('.three-dice-layer')).toHaveClass(/is-rolling/)
+  await expect(activePlayerName).toHaveText('玩家')
+  await expect(activePlayerName).toHaveText('电脑 1', { timeout: 20_000 })
 })
 
 test('shows a clear warning below the supported landscape size', async ({ page }) => {

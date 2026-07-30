@@ -141,6 +141,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const [board, setBoard] = useState<BoardSceneController | null>(null)
   const diceRef = useRef<ThreeDiceRollerHandle>(null)
   const [presentationStage, setPresentationStage] = useState<PresentationStage>('ready')
+  const [presentedActivePlayerId, setPresentedActivePlayerId] = useState(snapshot.state.activePlayerId)
   const [locked, setLocked] = useState(false)
   const lockedRef = useRef(false)
   const mountedRef = useRef(true)
@@ -236,6 +237,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
         if (cue.type === 'item-use') await presentItemUse(cue.playerId, cue.itemId, previousSnapshot, animationSpeed)
       }
     }
+    if (mountedRef.current) setPresentedActivePlayerId(result.update.snapshot.state.activePlayerId)
     if (actorIsLocal && resolved?.type === 'event-resolved') {
       const event = eventById(resolved.eventCardId)
       if (event) setEventOutcome({ event, passed: resolved.passed })
@@ -318,6 +320,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
 
   const localPlayer = snapshot.state.players.find((player) => player.playerId === 'local-player')!
   const activePlayer = snapshot.state.players.find((player) => player.playerId === snapshot.state.activePlayerId)!
+  const presentedActivePlayer = snapshot.state.players.find((player) => player.playerId === presentedActivePlayerId) ?? activePlayer
   const localItem = itemById(localPlayer.itemId)
   const LocalItemIcon = localItem ? ITEM_COPY[localItem.id]?.icon ?? PackageOpen : PackageOpen
   const localDecision = match.authority.getDecisionView('local-player')
@@ -330,6 +333,15 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const finalSpaceId = GAME_DEFINITION.map.spaces.at(-1)?.index ?? 65
   const standings = [...snapshot.state.players].sort((left, right) => right.spaceId - left.spaceId || left.seatIndex - right.seatIndex)
   const provisionalOrder = snapshot.state.turnOrderGroups.flat()
+  const actionOrder = new Map(provisionalOrder.map((playerId, index) => [playerId, index]))
+  const hudPlayers = [...snapshot.state.players].sort((left, right) => {
+    const leftIndex = actionOrder.get(left.playerId)
+    const rightIndex = actionOrder.get(right.playerId)
+    if (leftIndex !== undefined && rightIndex !== undefined) return leftIndex - rightIndex
+    if (leftIndex !== undefined) return -1
+    if (rightIndex !== undefined) return 1
+    return left.seatIndex - right.seatIndex
+  })
   const unresolvedOrderGroup = snapshot.state.turnOrderGroups.find((group) => group.length > 1) ?? []
   const latestOrderFaces = new Map<string, number>()
   for (const round of snapshot.state.orderRollHistory) {
@@ -375,16 +387,19 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
       </header>
 
       <section className="floating-players" aria-label="参赛棋手">
-        {snapshot.state.players.map((player) => {
-          const itemLabel = player.playerId === 'local-player' ? itemById(player.itemId)?.title ?? '无道具' : '道具保密'
+        {hudPlayers.map((player) => {
+          const playerStatus = [
+            player.playerId === 'local-player' ? itemById(player.itemId)?.title ?? '无道具' : null,
+            player.skipTurns ? `暂停 ${player.skipTurns}` : null,
+          ].filter((value) => value !== null).join(' · ')
           const progress = Math.round(player.spaceId / finalSpaceId * 100)
           return (
-            <article className={player.playerId === snapshot.state.activePlayerId ? 'hud-player is-active' : 'hud-player'} key={player.playerId} style={{ '--seat-color': COLOR_HEX[player.colorId] } as React.CSSProperties}>
+            <article className={player.playerId === presentedActivePlayerId ? 'hud-player is-active' : 'hud-player'} key={player.playerId} style={{ '--seat-color': COLOR_HEX[player.colorId] } as React.CSSProperties}>
               <span className="hud-avatar">{player.controller === 'local' ? <UserRound /> : <Bot />}</span>
               <div className="hud-player-copy">
                 <div><strong title={player.displayName}>{player.displayName}</strong><span>{player.spaceId} / {finalSpaceId}</span></div>
                 <div className="hud-progress"><i style={{ width: `${progress}%` }} /></div>
-                <small>{itemLabel}{player.skipTurns ? ` · 暂停 ${player.skipTurns}` : ''}</small>
+                {playerStatus && <small>{playerStatus}</small>}
               </div>
             </article>
           )
@@ -398,8 +413,8 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
       {snapshot.state.globalDieRule && <aside className="world-rule-float"><Dices /><div><small>全局骰子规则</small><strong>单骰最多 {snapshot.state.globalDieRule.maxFace} 点</strong><span>剩余 {snapshot.state.globalDieRule.remainingRounds} 轮</span></div></aside>}
 
       <section className="turn-banner" aria-live="polite">
-        <span style={{ background: COLOR_HEX[activePlayer.colorId] }} />
-        <div><small>当前行动</small><strong>{activePlayer.displayName}</strong></div>
+        <span style={{ background: COLOR_HEX[presentedActivePlayer.colorId] }} />
+        <div><small>当前行动</small><strong>{presentedActivePlayer.displayName}</strong></div>
       </section>
 
       <button className={`${localItem ? 'held-item has-item' : 'held-item'}${presentationStage === 'ready' ? '' : ' is-obscured'}`} type="button" onClick={() => localItem && setItemDetailsOpen(true)} disabled={!localItem || locked}>
