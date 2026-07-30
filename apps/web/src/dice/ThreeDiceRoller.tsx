@@ -206,7 +206,7 @@ export const ThreeDiceRoller = forwardRef<ThreeDiceRollerHandle, ThreeDiceRoller
       return new Promise<void>((resolve) => {
         animationRef.current = {
           startedAt: performance.now(),
-          duration: reduceMotion ? Math.max(600, 2_400 / speed) : Math.max(240, 3_600 / speed),
+          duration: Math.max(reduceMotion ? 600 : 240, 2_400 / speed),
           faces,
           reduceMotion,
           resolve,

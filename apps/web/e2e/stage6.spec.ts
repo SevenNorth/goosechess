@@ -238,6 +238,37 @@ test('keeps the 1x dice result readable when reduced motion is enabled', async (
   expect(flight.duration).toBeGreaterThanOrEqual(900)
 })
 
+test('reveals the standard 1x result on the 2.4 second dice timeline', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 })
+  await startGame(page, '1v1', 3, 1)
+  await page.evaluate(() => {
+    const layer = document.querySelector('.three-dice-layer')
+    const trigger = document.querySelector<HTMLButtonElement>('.three-dice-trigger')
+    const state = window as typeof window & { __standardDiceTiming?: { startedAt: number; settledAt: number } }
+    state.__standardDiceTiming = { startedAt: 0, settledAt: 0 }
+    trigger?.addEventListener('click', () => {
+      if (state.__standardDiceTiming) state.__standardDiceTiming.startedAt = performance.now()
+    }, { once: true })
+    if (layer) new MutationObserver(() => {
+      if (layer.classList.contains('is-settled') && state.__standardDiceTiming && !state.__standardDiceTiming.settledAt) {
+        state.__standardDiceTiming.settledAt = performance.now()
+      }
+    }).observe(layer, { attributes: true, attributeFilter: ['class'] })
+  })
+  await page.getByRole('button', { name: '投掷双骰' }).click()
+  await expect.poll(() => page.evaluate(() => (
+    window as typeof window & { __standardDiceTiming?: { settledAt: number } }
+  ).__standardDiceTiming?.settledAt ?? 0)).toBeGreaterThan(0)
+  const elapsed = await page.evaluate(() => {
+    const timing = (window as typeof window & {
+      __standardDiceTiming?: { startedAt: number; settledAt: number }
+    }).__standardDiceTiming
+    return timing ? timing.settledAt - timing.startedAt : 0
+  })
+  expect(elapsed).toBeGreaterThanOrEqual(1_600)
+  expect(elapsed).toBeLessThan(2_300)
+})
+
 test('resolves a dice-check event and shows its outcome', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 })
   await startGame(page, '1v1', 3)
