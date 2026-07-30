@@ -268,9 +268,12 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
     setSnapshot(result.update.snapshot)
     addLogs(gameLogLines(result.update))
     const resolved = result.update.events.find((event) => event.type === 'event-resolved')
-    const directlyGainedLocalItem = resolved && actorIsLocal
-      ? result.update.events.find((event) => event.type === 'item-changed' && event.playerId === 'local-player' && event.itemId !== null)
-      : undefined
+    const previousLocalItemId = previousSnapshot.state.players.find((player) => player.playerId === 'local-player')?.itemId ?? null
+    const nextLocalItemId = result.update.snapshot.state.players.find((player) => player.playerId === 'local-player')?.itemId ?? null
+    const directlyGainedLocalItemId = resolved && actorIsLocal && nextLocalItemId !== null
+      && nextLocalItemId !== previousLocalItemId && result.update.snapshot.state.pendingItemId === null
+      ? nextLocalItemId
+      : null
     const gameWon = result.update.events.some((event) => event.type === 'game-won')
     const orderDetermined = result.update.events.some((event) => event.type === 'turn-order-determined')
     if (board) {
@@ -292,8 +295,8 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
     if (actorIsLocal && resolved?.type === 'event-resolved') {
       const event = eventById(resolved.eventCardId)
       if (event) setEventOutcome({ event, passed: resolved.passed })
-      if (directlyGainedLocalItem?.type === 'item-changed' && directlyGainedLocalItem.itemId) {
-        setItemGainConfirmation({ itemId: directlyGainedLocalItem.itemId, revision: result.update.snapshot.revision })
+      if (directlyGainedLocalItemId) {
+        setItemGainConfirmation({ itemId: directlyGainedLocalItemId, revision: result.update.snapshot.revision })
       }
     }
     if (gameWon) setShowWin(true)

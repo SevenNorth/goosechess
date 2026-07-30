@@ -213,12 +213,14 @@ describe('deterministic rule kernel', () => {
     expect(gained.state.phase).toBe('awaiting-item-choice')
     expect(gained.state.pendingItemId).not.toBeNull()
     expect(gained.state.recentEventIds).toEqual(['skip', 'gain'])
+    expect(gained.events.some((event) => event.type === 'item-offered' || event.type === 'item-changed')).toBe(false)
 
     const kept = reduceGameCommand(gained.state, definition, 'p0', { type: 'choose-item', itemId: null })
     expect(kept.ok).toBe(true)
     if (kept.ok) {
       expect(kept.state.players[0].itemId).toBe('clover')
       expect(kept.state.activePlayerId).toBe('p1')
+      expect(kept.events.some((event) => event.type === 'item-changed')).toBe(false)
     }
 
     const chosen = reduceGameCommand(gained.state, definition, 'p0', { type: 'choose-item', itemId: gained.state.pendingItemId })
@@ -226,6 +228,7 @@ describe('deterministic rule kernel', () => {
     if (chosen.ok) {
       expect(chosen.state.players[0].itemId).toBe(gained.state.pendingItemId)
       expect(chosen.state.activePlayerId).toBe('p1')
+      expect(chosen.events.some((event) => event.type === 'item-changed')).toBe(false)
     }
   })
 

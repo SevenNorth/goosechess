@@ -353,7 +353,6 @@ function gainRandomItem(
   definition: GameDefinition,
   random: RandomSource,
   playerId: string,
-  events: RuleEvent[],
 ) {
   const player = playerOf(state, playerId)
   if (!player) return
@@ -363,10 +362,8 @@ function gainRandomItem(
   const item = pool[random.nextInt(0, pool.length - 1)]
   if (player.itemId === null) {
     player.itemId = item.id
-    events.push({ type: 'item-changed', playerId, itemId: item.id })
   } else {
     state.pendingItemId = item.id
-    events.push({ type: 'item-offered', playerId, itemId: item.id })
   }
 }
 
@@ -417,7 +414,7 @@ function applyEffects(
         state.extraTurnQueued = true
         break
       case 'gain-item':
-        gainRandomItem(state, definition, random, actorPlayerId, events)
+        gainRandomItem(state, definition, random, actorPlayerId)
         break
       case 'swap': {
         const opponent = nextPlayer(state, actorPlayerId)
@@ -621,7 +618,6 @@ export function reduceGameCommand(
       if (command.itemId !== null && command.itemId !== state.pendingItemId) return reject('illegal_command', 'The requested item is not pending.')
       if (command.itemId) {
         actor.itemId = command.itemId
-        events.push({ type: 'item-changed', playerId: actorPlayerId, itemId: command.itemId })
       }
       const continuation = state.eventContinuation ?? 'end-turn'
       state.pendingItemId = null

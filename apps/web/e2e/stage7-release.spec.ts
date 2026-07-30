@@ -210,6 +210,7 @@ test('confirms item use in the center and highlights the retained item', async (
   expect(countdownAfterSelection).toBeLessThanOrEqual(countdownBeforeSelection)
   await expect(itemDialog).toHaveCount(0, { timeout: 6_000 })
   await expect(page.locator('.held-item')).toContainText(pendingItemName!)
+  await expect(page.locator('.item-use-stage')).toHaveCount(0)
 })
 
 test('confirms a directly gained event item locally and closes after three seconds', async ({ page }) => {
