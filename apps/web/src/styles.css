@@ -169,23 +169,25 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .item-use-card-face > strong { font-size: 24px; }
 .item-use-card-face > small { margin-top: 13px; color: #5c6057; font-size: 11px; line-height: 1.65; }
 .item-use-tear { position: absolute; z-index: 4; top: 0; left: calc(50% - 3px); width: 7px; height: 100%; opacity: 0; background: #f5efdc; clip-path: polygon(50% 0, 100% 9%, 20% 18%, 90% 28%, 10% 39%, 85% 50%, 12% 61%, 92% 72%, 15% 83%, 80% 92%, 50% 100%, 0 92%, 70% 82%, 5% 72%, 74% 61%, 7% 50%, 76% 39%, 8% 28%, 75% 18%, 0 9%); filter: drop-shadow(0 0 7px rgba(255,246,214,.9)); animation: item-card-tear-seam var(--item-use-duration) ease both; }
-@keyframes item-use-backdrop { 0% { opacity: 0; } 12%, 76% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes item-use-player-name { 0%, 24% { opacity: 0; transform: translate(-50%, -8px); } 34%, 72% { opacity: 1; transform: translate(-50%, 0); } 88%, 100% { opacity: 0; transform: translate(-50%, 5px); } }
+@keyframes item-use-backdrop { 0% { opacity: 0; } 8%, 90% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes item-use-player-name { 0%, 16% { opacity: 0; transform: translate(-50%, -8px); } 24%, 84% { opacity: 1; transform: translate(-50%, 0); } 96%, 100% { opacity: 0; transform: translate(-50%, 5px); } }
 @keyframes item-card-arrive-local {
   0% { opacity: 0; transform: translate(calc(-50% + 50vw - 145px), calc(-50% + 50vh - 126px)) scale(.42) rotate(5deg); }
-  8% { opacity: 1; }
-  31%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(-1deg); }
+  6% { opacity: 1; }
+  22%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(-1deg); }
 }
 @keyframes item-card-arrive-remote {
   0% { opacity: 0; transform: translate(-50%, calc(-50% - 50vh + 82px)) scale(.5) rotate(-5deg); }
-  8% { opacity: 1; }
-  31%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(1deg); }
+  6% { opacity: 1; }
+  22%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(1deg); }
 }
-@keyframes item-card-tear-left { 0%, 63% { opacity: 1; transform: translate(0, 0) rotate(0); } 70% { transform: translate(-8px, 0) rotate(-1deg); } 100% { opacity: 0; transform: translate(-180px, 34px) rotate(-14deg); } }
-@keyframes item-card-tear-right { 0%, 63% { opacity: 1; transform: translate(0, 0) rotate(0); } 70% { transform: translate(8px, 0) rotate(1deg); } 100% { opacity: 0; transform: translate(180px, 34px) rotate(14deg); } }
-@keyframes item-card-tear-seam { 0%, 56% { opacity: 0; transform: scaleY(0); } 62%, 71% { opacity: 1; transform: scaleY(1); } 86%, 100% { opacity: 0; transform: scaleY(1); } }
-@keyframes item-card-use-reduced { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.96); } 15%, 85% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1); } }
-@keyframes item-use-player-reduced { 0%, 12% { opacity: 0; transform: translate(-50%, -4px); } 22%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, 0); } }
+@keyframes item-card-tear-left { 0%, 68% { opacity: 1; transform: translate(0, 0) rotate(0); } 76% { transform: translate(-6px, 0) rotate(-1deg); } 84% { opacity: 1; transform: translate(-28px, 4px) rotate(-3deg); } 100% { opacity: 0; transform: translate(-190px, 38px) rotate(-14deg); } }
+@keyframes item-card-tear-right { 0%, 68% { opacity: 1; transform: translate(0, 0) rotate(0); } 76% { transform: translate(6px, 0) rotate(1deg); } 84% { opacity: 1; transform: translate(28px, 4px) rotate(3deg); } 100% { opacity: 0; transform: translate(190px, 38px) rotate(14deg); } }
+@keyframes item-card-tear-seam { 0%, 64% { opacity: 0; transform: scaleY(0); transform-origin: top; } 66% { opacity: 1; transform: scaleY(0); transform-origin: top; } 76%, 86% { opacity: 1; transform: scaleY(1); transform-origin: top; } 96%, 100% { opacity: 0; transform: scaleY(1); transform-origin: top; } }
+@keyframes item-card-use-reduced { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.98); } 8%, 96% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1); } }
+@keyframes item-card-tear-left-reduced { 0%, 68% { opacity: 1; transform: translate(0, 0); } 76% { transform: translate(-4px, 0); } 86% { opacity: 1; transform: translate(-16px, 2px); } 100% { opacity: 0; transform: translate(-52px, 8px); } }
+@keyframes item-card-tear-right-reduced { 0%, 68% { opacity: 1; transform: translate(0, 0); } 76% { transform: translate(4px, 0); } 86% { opacity: 1; transform: translate(16px, 2px); } 100% { opacity: 0; transform: translate(52px, 8px); } }
+@keyframes item-use-player-reduced { 0%, 16% { opacity: 0; transform: translate(-50%, -4px); } 24%, 88% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, 0); } }
 
 .overlay-stage { position: fixed; z-index: 50; inset: 68px 0 0; display: grid; place-items: center; padding: 28px; background: rgba(12,13,11,.86); }
 .panel-kicker { margin-bottom: 5px; color: var(--pink); font-size: 10px; font-weight: 900; }
@@ -312,11 +314,12 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .three-dice-layer .dice-result.is-corner { animation-name: dice-result-flight-reduced; animation-duration: var(--dice-result-travel-ms, 1000ms) !important; }
-  .item-use-stage { animation-duration: 700ms !important; }
-  .item-use-player { animation-name: item-use-player-reduced; animation-duration: 700ms !important; }
-  .item-use-flight.is-local, .item-use-flight.is-remote { animation-name: item-card-use-reduced; animation-duration: 700ms !important; }
-  .item-use-card-half { animation: none !important; opacity: 1; transform: none; }
-  .item-use-tear { display: none; }
+  .item-use-stage { animation-duration: var(--item-use-duration) !important; }
+  .item-use-player { animation-name: item-use-player-reduced; animation-duration: var(--item-use-duration) !important; }
+  .item-use-flight.is-local, .item-use-flight.is-remote { animation-name: item-card-use-reduced; animation-duration: var(--item-use-duration) !important; }
+  .item-use-card-half.is-left { animation-name: item-card-tear-left-reduced; animation-duration: var(--item-use-duration) !important; }
+  .item-use-card-half.is-right { animation-name: item-card-tear-right-reduced; animation-duration: var(--item-use-duration) !important; }
+  .item-use-tear { display: block; animation-duration: var(--item-use-duration) !important; }
 }
 
 @media (max-width: 1179px), (max-height: 679px), (orientation: portrait) {

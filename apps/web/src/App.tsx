@@ -197,7 +197,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
         itemMode: item.mode,
         description: copy?.description ?? item.description,
         source: playerId === 'local-player' ? 'local' : 'remote',
-        durationMs: import.meta.env.MODE === 'test' ? 500 : Math.max(700, 2_100 / speed),
+        durationMs: import.meta.env.MODE === 'test' ? 500 : Math.max(2_600, 3_800 / speed),
         Icon: copy?.icon ?? PackageOpen,
       })
     })

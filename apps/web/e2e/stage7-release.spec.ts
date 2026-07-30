@@ -208,6 +208,7 @@ test('confirms item use in the center and highlights the retained item', async (
 test('keeps opponent items private and tears a used item card vertically', async ({ page }, testInfo) => {
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 1600, height: 900 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   await startGame(page, '1v1', 12, 1, /轻便靴子/)
 
   const opponents = page.locator('.hud-player').filter({ hasText: '电脑' })
@@ -223,11 +224,19 @@ test('keeps opponent items private and tears a used item card vertically', async
   await expect(usePresentation).toContainText('玩家')
   await expect(usePresentation).toContainText('使用了主动道具')
 
+  const reducedMotionPresentation = await usePresentation.evaluate((element) => {
+    const flight = getComputedStyle(element.querySelector('.item-use-flight')!)
+    const tear = getComputedStyle(element.querySelector('.item-use-tear')!)
+    return { duration: flight.animationDuration, tearDisplay: tear.display }
+  })
+  expect(reducedMotionPresentation.duration).toBe('3.8s')
+  expect(reducedMotionPresentation.tearDisplay).toBe('block')
+
   const tear = await usePresentation.evaluate((element) => {
     const animations = element.getAnimations({ subtree: true })
     for (const animation of animations) {
       const duration = animation.effect?.getComputedTiming().duration
-      if (typeof duration === 'number') animation.currentTime = duration * 0.72
+      if (typeof duration === 'number') animation.currentTime = duration * 0.84
       animation.pause()
     }
     const left = getComputedStyle(element.querySelector('.item-use-card-half.is-left')!)
