@@ -64,7 +64,9 @@ describe('PixiJS 65 格完整对局', () => {
     fireEvent.click(screen.getByRole('button', { name: '投掷单骰' }))
     await finishOrderRolls(false)
     expect(screen.getByRole('button', { name: '选择起始道具' })).toBeTruthy()
-    expect(within(screen.getByRole('dialog', { name: '行动顺序已确定' })).getAllByRole('listitem')).toHaveLength(4)
+    const orderCards = within(screen.getByRole('dialog', { name: '行动顺序已确定' })).getAllByRole('listitem')
+    expect(orderCards).toHaveLength(4)
+    for (const card of orderCards) expect(card.querySelector('.order-token')).toBeTruthy()
   })
 
   it('座次确定后为本地玩家展示抽取的三件起始道具', async () => {

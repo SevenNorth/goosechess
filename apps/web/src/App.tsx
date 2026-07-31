@@ -49,6 +49,9 @@ const STAGE_LABELS: Readonly<Record<PresentationStage, string>> = {
 const COLOR_HEX: Readonly<Record<string, string>> = {
   pink: '#e82f73', blue: '#3977c5', gold: '#d4a43a', teal: '#2baf9c',
 }
+const SKIN_HEX: Readonly<Record<string, string>> = {
+  'goose-white': '#f0eee4', 'goose-yellow': '#e0ae3d', 'goose-blue': '#80aed8', 'goose-pink': '#df829f',
+}
 const ITEM_COPY: Readonly<Record<string, { icon: typeof Footprints; description: string }>> = {
   boots: { icon: Footprints, description: '使用后，本次移动额外前进 3 格。' },
   clover: { icon: Sparkles, description: '下一次骰子检定必定成功。' },
@@ -564,14 +567,15 @@ function GameSession({ mode, seed, localDisplayName, localSkinId, onRestart, onE
           <section className="order-panel" role="dialog" aria-modal="true" aria-labelledby="order-title">
             <div className="panel-kicker">开局座次</div>
             <h2 id="order-title">{showOrderResult ? '行动顺序已确定' : unresolvedOrderGroup.length < snapshot.state.players.length ? '同点小组重新投掷' : '投掷单骰决定顺序'}</h2>
-            <ol className="order-list">
+            <ol className="order-list" style={{ '--order-player-count': provisionalOrder.length } as React.CSSProperties}>
               {provisionalOrder.map((playerId, index) => {
                 const player = snapshot.state.players.find((candidate) => candidate.playerId === playerId)!
                 const isTied = unresolvedOrderGroup.includes(playerId)
                 const isRolling = snapshot.state.phase === 'determining-order' && snapshot.state.activePlayerId === playerId
-                return <li className={`${isTied ? 'is-tied' : ''} ${isRolling ? 'is-rolling' : ''}`} key={playerId} style={{ '--seat-color': COLOR_HEX[player.colorId] } as React.CSSProperties}>
+                return <li className={`${isTied ? 'is-tied' : ''} ${isRolling ? 'is-rolling' : ''}`} key={playerId} style={{ '--seat-color': COLOR_HEX[player.colorId], '--token-color': SKIN_HEX[player.skinId] ?? '#f0eee4' } as React.CSSProperties}>
                   <span className="order-rank">{index + 1}</span>
-                  <span className="order-player"><i /><strong>{player.displayName}</strong><small>{isRolling ? '等待投掷' : isTied ? '同点组' : '暂定'}</small></span>
+                  <span className="order-player"><strong>{player.displayName}</strong><small>{isRolling ? '等待投掷' : isTied ? '同点组' : '暂定'}</small></span>
+                  <span className="order-token" role="img" aria-label={`${player.displayName}的棋子`}><i className="order-token-body" /><i className="order-token-neck" /><i className="order-token-head" /><i className="order-token-eye" /><i className="order-token-beak" /><i className="order-token-base" /></span>
                   <span className="order-die" aria-label={latestOrderFaces.has(playerId) ? `${latestOrderFaces.get(playerId)} 点` : '尚未投掷'}>{latestOrderFaces.get(playerId) ?? '·'}</span>
                 </li>
               })}
