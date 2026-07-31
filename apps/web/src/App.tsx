@@ -31,6 +31,7 @@ import type { BoardSceneController } from './scene/BoardScene'
 import type { PresentationStage } from './game-client/machine/presentation-machine'
 import type { ThreeDiceRollerHandle } from './dice/ThreeDiceRoller'
 import { ItemUsePresentation, type ItemUsePresentationData } from './items/ItemUsePresentation'
+import { PauseTurnIndicator, type PauseTurnPresentation } from './hud/PauseTurnIndicator'
 
 const ThreeDiceRoller = lazy(() => import('./dice/ThreeDiceRoller').then((module) => ({ default: module.ThreeDiceRoller })))
 
@@ -189,6 +190,9 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const diceRef = useRef<ThreeDiceRollerHandle>(null)
   const [presentationStage, setPresentationStage] = useState<PresentationStage>('ready')
   const [presentedActivePlayerId, setPresentedActivePlayerId] = useState(snapshot.state.activePlayerId)
+  const [presentedSkipTurns, setPresentedSkipTurns] = useState<Readonly<Record<string, number>>>(() => Object.fromEntries(
+    snapshot.state.players.map((player) => [player.playerId, player.skipTurns]),
+  ))
   const [locked, setLocked] = useState(false)
   const lockedRef = useRef(false)
   const mountedRef = useRef(true)
@@ -203,11 +207,18 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const [showLogs, setShowLogs] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [itemUsePresentation, setItemUsePresentation] = useState<ItemUsePresentationData | null>(null)
+  const [pauseTurnPresentation, setPauseTurnPresentation] = useState<(PauseTurnPresentation & { readonly playerId: string }) | null>(null)
   const [itemGainConfirmation, setItemGainConfirmation] = useState<ItemGainConfirmation | null>(null)
   const [logs, setLogs] = useState<LogEntry[]>([{ id: 1, text: '试航棋盘已经铺好。' }])
   const logId = useRef(2)
   const itemUseId = useRef(1)
   const itemUseResolver = useRef<(() => void) | null>(null)
+  const pauseTurnId = useRef(1)
+  const pauseTurnResolver = useRef<{
+    readonly playerId: string
+    readonly remainingTurns: number
+    readonly resolve: () => void
+  } | null>(null)
 
   const aiController = useMemo(() => new AiTurnController(
     createGooseAiStrategy(),
@@ -221,6 +232,8 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
       mountedRef.current = false
       itemUseResolver.current?.()
       itemUseResolver.current = null
+      pauseTurnResolver.current?.resolve()
+      pauseTurnResolver.current = null
     }
   }, [])
 
@@ -252,6 +265,33 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
         source: playerId === 'local-player' ? 'local' : 'remote',
         durationMs: import.meta.env.MODE === 'test' ? 500 : Math.max(2_600, 3_800 / speed),
         Icon: copy?.icon ?? PackageOpen,
+      })
+    })
+  }, [])
+
+  const updatePresentedSkipTurns = useCallback((playerId: string, turns: number) => {
+    setPresentedSkipTurns((current) => ({ ...current, [playerId]: turns }))
+  }, [])
+
+  const finishPauseTurn = useCallback(() => {
+    const pending = pauseTurnResolver.current
+    pauseTurnResolver.current = null
+    setPauseTurnPresentation(null)
+    if (!pending) return
+    updatePresentedSkipTurns(pending.playerId, pending.remainingTurns)
+    pending.resolve()
+  }, [updatePresentedSkipTurns])
+
+  const presentPausedTurn = useCallback((playerId: string, remainingTurns: number, speed: number) => {
+    if (!mountedRef.current) return Promise.resolve()
+    return new Promise<void>((resolve) => {
+      pauseTurnResolver.current = { playerId, remainingTurns, resolve }
+      setPauseTurnPresentation({
+        id: pauseTurnId.current++,
+        playerId,
+        previousTurns: remainingTurns + 1,
+        remainingTurns,
+        durationMs: import.meta.env.MODE === 'test' ? 350 : Math.max(900, 1_800 / speed),
       })
     })
   }, [])
@@ -296,7 +336,18 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
         if (cue.type === 'item-use') await presentItemUse(cue.playerId, cue.itemId, cue.targetPlayerId, previousSnapshot, animationSpeed)
       }
     }
-    if (mountedRef.current) setPresentedActivePlayerId(result.update.snapshot.state.activePlayerId)
+    const skippedTurns = result.update.events.filter((event) => event.type === 'turn-skipped')
+    for (const skipped of skippedTurns) {
+      if (!mountedRef.current) return false
+      setPresentedActivePlayerId(skipped.playerId)
+      board?.setActivePlayer(skipped.playerId)
+      await presentPausedTurn(skipped.playerId, skipped.remainingTurns, animationSpeed)
+    }
+    if (mountedRef.current) {
+      setPresentedSkipTurns(Object.fromEntries(result.update.snapshot.state.players.map((player) => [player.playerId, player.skipTurns])))
+      setPresentedActivePlayerId(result.update.snapshot.state.activePlayerId)
+      board?.setActivePlayer(result.update.snapshot.state.activePlayerId)
+    }
     if (actorIsLocal && resolved?.type === 'event-resolved') {
       const event = eventById(resolved.eventCardId)
       if (event) setEventOutcome({ event, passed: resolved.passed })
@@ -307,7 +358,7 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
     if (gameWon) setShowWin(true)
     if (orderDetermined) setShowOrderResult(true)
     return true
-  }, [addLogs, animationSpeed, board, cameraMotion, finishItemUse, presentItemUse])
+  }, [addLogs, animationSpeed, board, cameraMotion, finishItemUse, presentItemUse, presentPausedTurn])
 
   const submitLocal = useCallback(async (command: CoreGameCommand) => {
     if (lockedRef.current) return false
@@ -464,10 +515,9 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
 
       <section className="floating-players" aria-label="参赛棋手">
         {hudPlayers.map((player) => {
-          const playerStatus = [
-            player.playerId === 'local-player' ? itemById(player.itemId)?.title ?? '无道具' : null,
-            player.skipTurns ? `暂停 ${player.skipTurns}` : null,
-          ].filter((value) => value !== null).join(' · ')
+          const playerStatus = player.playerId === 'local-player' ? itemById(player.itemId)?.title ?? '无道具' : null
+          const playerPausePresentation = pauseTurnPresentation?.playerId === player.playerId ? pauseTurnPresentation : undefined
+          const playerSkipTurns = presentedSkipTurns[player.playerId] ?? player.skipTurns
           const progress = Math.round(player.spaceId / finalSpaceId * 100)
           return (
             <article className={player.playerId === presentedActivePlayerId ? 'hud-player is-active' : 'hud-player'} key={player.playerId} style={{ '--seat-color': COLOR_HEX[player.colorId] } as React.CSSProperties}>
@@ -476,6 +526,14 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
                 <div><strong title={player.displayName}>{player.displayName}</strong><span>{player.spaceId} / {finalSpaceId}</span></div>
                 <div className="hud-progress"><i style={{ width: `${progress}%` }} /></div>
                 {playerStatus && <small>{playerStatus}</small>}
+                <PauseTurnIndicator
+                  key={`${player.playerId}-${playerPausePresentation?.id ?? 'idle'}`}
+                  playerName={player.displayName}
+                  turns={playerSkipTurns}
+                  presentation={playerPausePresentation}
+                  onCountChange={(turns) => updatePresentedSkipTurns(player.playerId, turns)}
+                  onComplete={finishPauseTurn}
+                />
               </div>
             </article>
           )

@@ -104,6 +104,30 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .hud-progress { height: 3px; margin: 6px 0 5px; overflow: hidden; background: #555a50; }
 .hud-progress i { display: block; height: 100%; background: var(--seat-color); transition: width .3s ease; }
 .hud-player-copy small { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.hud-pause { position: relative; width: fit-content; min-height: 19px; margin-top: 6px; padding: 2px 6px 2px 23px; display: inline-flex; align-items: baseline; gap: 3px; overflow: visible; color: #f2d88b; background: rgba(112,76,24,.34); border: 1px solid rgba(229,183,70,.48); font-size: 8px; font-weight: 800; line-height: 13px; }
+.hud-pause > strong { min-width: 9px; overflow: visible; color: #fff3c7; font-size: 12px; line-height: 1; text-align: center; }
+.hud-pause > span:not(.hud-pause-icon) { color: #d7c89b; font-size: 8px; }
+.hud-pause-icon { position: absolute; left: 4px; top: 1px; width: 17px; height: 17px; display: grid; place-items: center; border-radius: 50%; }
+.hud-pause-icon svg { width: 12px; height: 12px; color: #f0bf4e; transform-origin: center; }
+.hud-pause.is-consuming { color: #fff; border-color: #ffd76b; background: rgba(151,96,18,.72); box-shadow: 0 0 0 1px rgba(255,215,107,.2), 0 0 13px rgba(240,191,78,.32); }
+.hud-pause.is-consuming .hud-pause-icon::before { content: ''; position: absolute; inset: -2px; border: 1px solid #ffe39a; border-radius: 50%; animation: pause-hourglass-ring var(--pause-spin-duration) ease-in-out both; }
+.hud-pause.is-consuming .hud-pause-icon svg { animation: pause-hourglass-spin var(--pause-spin-duration) cubic-bezier(.45,.05,.25,1) both; }
+.hud-pause.is-decremented > strong { animation: pause-count-decrement .34s cubic-bezier(.2,.9,.3,1) both; }
+@keyframes pause-hourglass-spin {
+  0% { transform: rotate(0deg) scale(1); }
+  42% { transform: rotate(165deg) scale(1.14); }
+  68% { transform: rotate(252deg) scale(1.08); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+@keyframes pause-hourglass-ring {
+  0% { opacity: 0; transform: scale(.55); }
+  20%, 76% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.3); }
+}
+@keyframes pause-count-decrement {
+  0% { opacity: 0; transform: translateY(-7px) scale(1.45); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
 
 .round-float { position: absolute; z-index: 15; top: 90px; right: 24px; width: 108px; min-height: 98px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #f4f2e9; background: rgba(32,35,29,.96); border-top: 4px solid var(--gold); }
 .round-float small { color: #aeb4aa; font-size: 9px; font-weight: 900; }
@@ -333,6 +357,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
   .item-use-card-half.is-left { animation-name: item-card-tear-left-reduced; animation-duration: var(--item-use-duration) !important; }
   .item-use-card-half.is-right { animation-name: item-card-tear-right-reduced; animation-duration: var(--item-use-duration) !important; }
   .item-use-tear { display: block; animation-duration: var(--item-use-duration) !important; }
+  .hud-pause.is-consuming .hud-pause-icon::before, .hud-pause.is-consuming .hud-pause-icon svg { animation-duration: var(--pause-spin-duration) !important; }
+  .hud-pause.is-decremented > strong { animation-duration: .34s !important; }
 }
 
 @media (max-width: 1179px), (max-height: 679px), (orientation: portrait) {
