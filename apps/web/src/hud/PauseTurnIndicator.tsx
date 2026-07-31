@@ -59,9 +59,10 @@ export function PauseTurnIndicator({
 
   if (turns <= 0 && !presentation) return null
 
+  const visibleTurns = presentation ? displayedTurns : turns
   const label = presentation
-    ? `${playerName}暂停 ${displayedTurns} 回合，正在跳过本回合`
-    : `${playerName}暂停 ${displayedTurns} 回合`
+    ? `${playerName}暂停 ${visibleTurns} 回合，正在跳过本回合`
+    : `${playerName}暂停 ${visibleTurns} 回合`
   const style = presentation
     ? ({ '--pause-spin-duration': `${Math.round(presentation.durationMs * 0.7)}ms` } as CSSProperties)
     : undefined
@@ -75,7 +76,7 @@ export function PauseTurnIndicator({
     >
       <span className="hud-pause-icon" aria-hidden="true"><Hourglass /></span>
       <span>暂停</span>
-      <strong key={displayedTurns}>{displayedTurns}</strong>
+      <strong key={visibleTurns}>{visibleTurns}</strong>
       <span>回合</span>
     </span>
   )

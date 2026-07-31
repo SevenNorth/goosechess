@@ -103,6 +103,24 @@ describe('PixiJS 65 格完整对局', () => {
     expect(within(screen.getByRole('region', { name: '从三张牌中选择' })).getAllByRole('button')).toHaveLength(3)
   })
 
+  it('在暂停玩家的回合被跳过时展示中央动画并在结束后交棒', async () => {
+    await startGame({ seed: 3 })
+
+    fireEvent.click(screen.getByRole('button', { name: '投掷双骰' }))
+    const eventChoices = await screen.findByRole('region', { name: '从三张牌中选择' })
+    fireEvent.click(within(eventChoices).getByRole('button', { name: /钓鱼/ }))
+
+    await screen.findByText('鱼线缠成了死结，暂停一回合。')
+    expect(screen.getByLabelText('玩家暂停 1 回合')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
+
+    await waitFor(() => expect(document.querySelector('.pause-turn-stage')).toBeTruthy(), { timeout: 5_000 })
+    expect(document.querySelector('.pause-turn-stage')?.textContent).toContain('玩家')
+    expect(screen.getByRole('status', { name: '玩家暂停 1 回合，正在跳过本回合' })).toBeTruthy()
+    await waitFor(() => expect(document.querySelector('.pause-turn-stage')).toBeNull(), { timeout: 2_000 })
+    await waitFor(() => expect(screen.getByRole('button', { name: '投掷双骰' }).hasAttribute('disabled')).toBe(false))
+  })
+
   it('重新开始会重新进入座次投掷并保持模式人数', async () => {
     await startGame({ mode: '1v2', seed: 8 })
     fireEvent.click(screen.getByRole('button', { name: '重新开始' }))
