@@ -49,12 +49,6 @@ const STAGE_LABELS: Readonly<Record<PresentationStage, string>> = {
 const COLOR_HEX: Readonly<Record<string, string>> = {
   pink: '#e82f73', blue: '#3977c5', gold: '#d4a43a', teal: '#2baf9c',
 }
-const SKIN_SWATCHES = [
-  { id: 'goose-white', label: '白鹅', color: '#ece9dc' },
-  { id: 'goose-yellow', label: '黄鹅', color: '#dda735' },
-  { id: 'goose-blue', label: '蓝鹅', color: '#75a7d5' },
-  { id: 'goose-pink', label: '粉鹅', color: '#db7d9c' },
-] as const
 const ITEM_COPY: Readonly<Record<string, { icon: typeof Footprints; description: string }>> = {
   boots: { icon: Footprints, description: '使用后，本次移动额外前进 3 格。' },
   clover: { icon: Sparkles, description: '下一次骰子检定必定成功。' },
@@ -130,6 +124,8 @@ function CountdownConfirmButton({ label, seconds, className, disabled, onConfirm
 interface GameSessionProps {
   readonly mode: OfflineMatchMode
   readonly seed: number
+  readonly localDisplayName: string
+  readonly localSkinId: string
   readonly onRestart: () => void
   readonly onExit?: () => void
   readonly animationSpeed: number
@@ -184,8 +180,13 @@ function gameLogLines(update: AuthorityUpdate) {
   return lines
 }
 
-function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMotion, onAnimationSpeedChange, onCameraMotionChange }: GameSessionProps) {
-  const [match] = useState(() => createOfflineMatch({ mode, seed, gameId: `offline-${mode}-${seed}` }, GAME_DEFINITION))
+function GameSession({ mode, seed, localDisplayName, localSkinId, onRestart, onExit, animationSpeed, cameraMotion, onAnimationSpeedChange, onCameraMotionChange }: GameSessionProps) {
+  const [match] = useState(() => createOfflineMatch({
+    mode, seed,
+    gameId: `offline-${mode}-${seed}`,
+    localDisplayName,
+    localSkinId,
+  }, GAME_DEFINITION))
   const [snapshot, setSnapshot] = useState(() => match.authority.getSnapshot())
   const [board, setBoard] = useState<BoardSceneController | null>(null)
   const diceRef = useRef<ThreeDiceRollerHandle>(null)
@@ -197,7 +198,6 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const [locked, setLocked] = useState(false)
   const lockedRef = useRef(false)
   const mountedRef = useRef(true)
-  const [selectedSkin, setSelectedSkin] = useState('goose-white')
   const [selectedStartingItem, setSelectedStartingItem] = useState<string | null>(null)
   const [itemDetailsOpen, setItemDetailsOpen] = useState(false)
   const [selectedItemTargetId, setSelectedItemTargetId] = useState<string | null>(null)
@@ -377,21 +377,12 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
     if (lockedRef.current) return
     lockedRef.current = true
     setLocked(true)
-    let previous = match.authority.getSnapshot()
-    if (previous.state.players.find((player) => player.playerId === 'local-player')?.skinId !== selectedSkin) {
-      const skinResult = await match.controller.submit('local-player', { type: 'select-skin', skinId: selectedSkin })
-      if (!await presentResult(skinResult, previous, true)) {
-        lockedRef.current = false
-        setLocked(false)
-        return
-      }
-      previous = match.authority.getSnapshot()
-    }
+    const previous = match.authority.getSnapshot()
     const result = await match.controller.submit('local-player', { type: 'request-order-roll' })
     await presentResult(result, previous, true)
     lockedRef.current = false
     if (mountedRef.current) setLocked(false)
-  }, [match, presentResult, selectedSkin])
+  }, [match, presentResult])
 
   const shouldDriveAi = snapshot.state.phase !== 'game-over'
     && !eventOutcome
@@ -479,8 +470,6 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
     for (const result of round.results) latestOrderFaces.set(result.playerId, result.face)
   }
   for (const result of snapshot.state.orderRollResults) latestOrderFaces.set(result.playerId, result.face)
-  const localHasOrderRoll = snapshot.state.orderRollResults.some((result) => result.playerId === 'local-player')
-    || snapshot.state.orderRollHistory.some((round) => round.results.some((result) => result.playerId === 'local-player'))
   const startingItemOffers = snapshot.state.startingItemOfferIds.map(itemById).filter((item) => item !== undefined)
   const startingItemChoiceIndex = provisionalOrder.findIndex((playerId) => playerId === snapshot.state.activePlayerId)
 
@@ -575,11 +564,6 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
           <section className="order-panel" role="dialog" aria-modal="true" aria-labelledby="order-title">
             <div className="panel-kicker">开局座次</div>
             <h2 id="order-title">{showOrderResult ? '行动顺序已确定' : unresolvedOrderGroup.length < snapshot.state.players.length ? '同点小组重新投掷' : '投掷单骰决定顺序'}</h2>
-            {!showOrderResult && !localHasOrderRoll && snapshot.state.activePlayerId === 'local-player' && <div className="skin-picker" role="radiogroup" aria-label="棋子皮肤">
-              {SKIN_SWATCHES.map((skin) => <button type="button" role="radio" aria-checked={selectedSkin === skin.id} className={selectedSkin === skin.id ? 'skin-choice is-selected' : 'skin-choice'} onClick={() => setSelectedSkin(skin.id)} key={skin.id}>
-                <i style={{ background: skin.color }} /><span>{skin.label}</span>
-              </button>)}
-            </div>}
             <ol className="order-list">
               {provisionalOrder.map((playerId, index) => {
                 const player = snapshot.state.players.find((candidate) => candidate.playerId === playerId)!
@@ -713,20 +697,24 @@ export interface AppProps {
   readonly mode?: OfflineMatchMode
   readonly seed?: number
   readonly animationSpeed?: number
+  readonly localDisplayName?: string
+  readonly localSkinId?: string
   readonly cameraMotion?: boolean
   readonly onExit?: () => void
 }
 
-function App({ mode = '1v1', seed = 20260728, animationSpeed: initialAnimationSpeed = 1, cameraMotion: initialCameraMotion = true, onExit }: AppProps) {
+function App({ mode = '1v1', seed = 20260728, localDisplayName = '玩家', localSkinId = 'goose-white', animationSpeed: initialAnimationSpeed = 1, cameraMotion: initialCameraMotion = true, onExit }: AppProps) {
   const [restart, setRestart] = useState(0)
   const [animationSpeed, setAnimationSpeed] = useState(initialAnimationSpeed)
   const [cameraMotion, setCameraMotion] = useState(initialCameraMotion)
   return <GameSession
-    key={`${mode}-${seed}-${restart}`}
+    key={`${mode}-${seed}-${localDisplayName}-${localSkinId}-${restart}`}
     mode={mode}
     seed={seed + restart}
     animationSpeed={animationSpeed}
     cameraMotion={cameraMotion}
+    localDisplayName={localDisplayName}
+    localSkinId={localSkinId}
     onAnimationSpeedChange={setAnimationSpeed}
     onCameraMotionChange={setCameraMotion}
     onRestart={() => setRestart((value) => value + 1)}

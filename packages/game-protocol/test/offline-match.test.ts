@@ -19,6 +19,19 @@ describe('offline match composition', () => {
     expect(() => createOfflineParticipants({ mode: '2v2' as '1v1', gameId: 'g', seed: 1 }, AUTHORITY_DEFINITION)).toThrow(/Unsupported/)
   })
 
+  it('uses the configured local profile and stable unique AI names', () => {
+    const config = { mode: '1v3' as const, gameId: 'profile-game', seed: 20260731, localDisplayName: '小北', localSkinId: 'blue' }
+    const first = createOfflineParticipants(config, AUTHORITY_DEFINITION)
+    const second = createOfflineParticipants(config, AUTHORITY_DEFINITION)
+    const names = first.map((participant) => participant.displayName)
+
+    expect(first[0]).toMatchObject({ displayName: '小北', skinId: 'blue' })
+    expect(first.slice(1).every((participant) => !participant.displayName.startsWith('电脑'))).toBe(true)
+    expect(new Set(names).size).toBe(names.length)
+    expect(second.map((participant) => participant.displayName)).toEqual(names)
+    expect(first[1].skinId).toBe('white')
+  })
+
   it('uses the current revision and the same command envelope for every controller', async () => {
     const match = createOfflineMatch({ mode: '1v1', gameId: 'game-controller', seed: 8 }, AUTHORITY_DEFINITION)
     const submit = vi.spyOn(match.authority, 'submit')

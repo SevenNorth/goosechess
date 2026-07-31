@@ -38,7 +38,6 @@ describe('PixiJS 65 格完整对局', () => {
 
   async function startGame(options: { mode?: '1v1' | '1v2' | '1v3'; seed?: number; startingItem?: RegExp } = {}) {
     render(<App mode={options.mode} seed={options.seed} />)
-    fireEvent.click(screen.getByRole('radio', { name: '黄鹅' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: /投掷单骰决定顺序|同点小组重新投掷/ })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: '投掷单骰' }))
     await finishOrderRolls()
@@ -51,7 +50,7 @@ describe('PixiJS 65 格完整对局', () => {
 
     expect(within(screen.getByRole('region', { name: '参赛棋手' })).getAllByRole('article')).toHaveLength(4)
     const playerCards = within(screen.getByRole('region', { name: '参赛棋手' })).getAllByRole('article')
-    const opponentCards = playerCards.filter((card) => within(card).queryByTitle(/电脑/) !== null)
+    const opponentCards = playerCards.filter((card) => card.querySelector('.lucide-bot') !== null)
     expect(opponentCards).toHaveLength(3)
     for (const opponentCard of opponentCards) expect(opponentCard.querySelector('.hud-player-copy > small')).toBeNull()
     expect(screen.queryByRole('heading', { name: /选择起始道具/ })).toBeNull()
