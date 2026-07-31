@@ -62,6 +62,21 @@ describe('客户端路由', () => {
     expect(screen.getByLabelText('65 格 PixiJS 竞速棋盘')).toBeTruthy()
   })
 
+  it('准备页地图卡进入不包含对局状态的独立地图预览', () => {
+    const { unmount } = render(<MemoryRouter initialEntries={['/']}><AppRoutes /><LocationProbe /></MemoryRouter>)
+
+    const mapLink = screen.getByRole('link', { name: '预览奥普港棋盘地图' })
+    expect(mapLink.getAttribute('href')).toBe('/maps/aup-port-65')
+    fireEvent.click(mapLink)
+    expect(screen.getByTestId('location-probe').textContent).toBe('/maps/aup-port-65')
+    expect(screen.getByLabelText('65 格 PixiJS 竞速棋盘')).toBeTruthy()
+    expect(screen.queryByRole('region', { name: '参赛棋手' })).toBeNull()
+
+    unmount()
+    render(<MemoryRouter initialEntries={['/maps/not-found']}><AppRoutes /></MemoryRouter>)
+    expect(screen.getByRole('heading', { name: '地图不可用' })).toBeTruthy()
+  })
+
   it('在线房间路由显示未开放状态', () => {
     render(<MemoryRouter initialEntries={['/room/test']}><AppRoutes /></MemoryRouter>)
 

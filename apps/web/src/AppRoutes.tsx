@@ -5,6 +5,7 @@ import { OFFLINE_MATCH_MODES, type OfflineMatchMode } from '@goose-chess/game-pr
 import App from './App'
 import { createMatchSeed, parseSeedParameter } from './match-seed'
 import { PreparationPage } from './PreparationPage'
+import { MapPreviewPage } from './MapPreviewPage'
 import {
   DEFAULT_PLAYER_NICKNAME,
   DEFAULT_PLAYER_SKIN_ID,
@@ -61,6 +62,7 @@ export default function AppRoutes() {
       <Routes>
         <Route path="/" element={<PreparationPage />} />
         <Route path="/play" element={<PlayPage />} />
+        <Route path="/maps/:mapId" element={<MapPreviewPage />} />
         <Route path="/room/:roomCode" element={<RoomUnavailablePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

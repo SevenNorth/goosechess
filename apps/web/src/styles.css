@@ -112,6 +112,22 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .online-note strong { color: #e9e8df; font-size: 14px; }
 .online-note span { font-size: var(--font-static-min); }
 .status-tag { padding: 5px 8px; color: #151713; background: var(--gold); font-weight: 800; }
+.map-picker { margin-top: 26px; }
+.map-picker-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.map-preview-card { position: relative; min-width: 0; min-height: 230px; display: grid; grid-template-rows: 138px 1fr; overflow: hidden; border: 1px solid #555b50; color: #f3f1e7; background: #242720; text-decoration: none; box-shadow: 7px 8px 0 rgba(0,0,0,.22); }
+.map-preview-card:hover { border-color: var(--teal); transform: translateY(-2px); }
+.map-preview-card:focus-visible { outline-offset: 4px; }
+.map-card-art { position: relative; overflow: hidden; border-bottom: 1px solid #555b50; background: #b9b29e; }
+.map-card-paper { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.map-card-landmark { position: absolute; width: 72px; height: 72px; object-fit: contain; filter: drop-shadow(3px 5px 2px rgba(31,33,27,.32)); }
+.map-card-landmark.is-start { left: 8px; bottom: 4px; }
+.map-card-landmark.is-middle { left: calc(50% - 33px); top: 24px; }
+.map-card-landmark.is-finish { right: 5px; bottom: 2px; width: 82px; height: 82px; }
+.map-card-copy { min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 14px 45px 14px 15px; }
+.map-card-copy small { color: var(--teal); font-size: var(--font-static-min); font-weight: 800; }
+.map-card-copy strong { margin-top: 3px; font-size: 19px; }
+.map-card-copy span { margin-top: 4px; color: #aeb4aa; font-size: var(--font-static-min); }
+.map-preview-card > svg { position: absolute; right: 15px; bottom: 22px; width: 19px; color: var(--teal); }
 @keyframes profile-sidebar-enter { from { transform: translateX(28px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 .route-message-shell { display: grid; place-items: center; padding: 48px; }
 .route-message { width: min(480px, 100%); text-align: center; }
@@ -147,6 +163,12 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .board-load-track i { display: block; height: 100%; background: var(--teal); transition: width .18s ease; }
 .stage5-topbar { position: absolute; z-index: 20; top: 0; left: 0; right: 0; height: 68px; display: flex; align-items: center; justify-content: space-between; padding: 0 22px; border-bottom: 1px solid rgba(255,255,255,.1); background: rgba(18,20,17,.96); }
 .topbar-actions { display: flex; gap: 7px; }
+.map-preview-title { display: flex; align-items: center; gap: 12px; }
+.map-preview-title .stage5-brand > span { box-shadow: 5px 5px 0 #165f56; background: var(--teal); transform: rotate(-4deg); }
+.map-preview-title .stage5-brand > span svg { width: 23px; }
+.map-preview-stats { display: flex; align-items: center; gap: 8px; }
+.map-preview-stats span { min-height: 36px; display: inline-flex; align-items: center; gap: 7px; padding: 0 11px; border: 1px solid rgba(255,255,255,.12); color: #c9cec4; background: #292d26; font-size: var(--font-static-min); font-weight: 800; }
+.map-preview-stats svg { width: 16px; color: var(--gold); }
 .icon-command, .drawer-close { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.14); color: #eef0e8; background: #2a2d27; cursor: pointer; }
 .icon-command:disabled { color: #737970; cursor: not-allowed; }
 .icon-command:hover:not(:disabled), .drawer-close:hover { background: #3a3e35; }

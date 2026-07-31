@@ -4,7 +4,7 @@ import type { AuthorityUpdate, GameSnapshot } from '@goose-chess/game-protocol'
 import type { BoardSceneController, BoardPlaybackOptions } from './BoardScene'
 
 interface PixiBoardProps {
-  readonly snapshot: GameSnapshot
+  readonly snapshot?: GameSnapshot
   readonly map: MapDefinition
   readonly onReady: (controller: BoardSceneController) => void
   readonly onDispose?: () => void
@@ -84,7 +84,7 @@ export function PixiBoard({ snapshot, map, onReady, onDispose }: PixiBoardProps)
         return
       }
       controllerRef.current = controller
-      controller.sync(snapshotRef.current)
+      if (snapshotRef.current) controller.sync(snapshotRef.current)
       setProgress(1)
       setLoadState('ready')
       if (import.meta.env.DEV) window.__GOOSE_CHESS_DIAGNOSTICS__ = () => controller.diagnostics()
@@ -106,8 +106,8 @@ export function PixiBoard({ snapshot, map, onReady, onDispose }: PixiBoardProps)
   }, [attempt, map])
 
   useEffect(() => {
-    controllerRef.current?.setActivePlayer(snapshot.state.activePlayerId)
-  }, [snapshot.state.activePlayerId])
+    if (snapshot) controllerRef.current?.setActivePlayer(snapshot.state.activePlayerId)
+  }, [snapshot])
 
   return <>
     <div className="pixi-board-host" ref={hostRef} role="img" aria-label={`${map.spaces.length - 1} 格 PixiJS 竞速棋盘`} />

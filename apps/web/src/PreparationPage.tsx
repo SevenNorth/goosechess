@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react'
-import { Bot, Dices, Play, RefreshCw, UsersRound, X } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { ArrowUpRight, Bot, Dices, MapPinned, Play, RefreshCw, UsersRound, X } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { DEFAULT_MAP_CONTENT, LANDMARK_DEFINITIONS } from '@goose-chess/game-content'
 import {
   OFFLINE_MATCH_MODES,
   createOfflineAiDisplayNames,
@@ -138,6 +139,29 @@ export function PreparationPage() {
           <div><strong>在线房间</strong><span>独立游戏服务器将在在线阶段接入。</span></div>
           <span className="status-tag">规划中</span>
         </div>
+
+        <section className="map-picker" aria-labelledby="map-picker-title">
+          <div className="mode-picker-title">
+            <span id="map-picker-title"><MapPinned /> 棋盘地图</span>
+            <small>当前可用 1 张</small>
+          </div>
+          <div className="map-picker-grid">
+            <Link className="map-preview-card" to={`/maps/${DEFAULT_MAP_CONTENT.id}`} aria-label={`预览${DEFAULT_MAP_CONTENT.title}棋盘地图`}>
+              <div className="map-card-art" aria-hidden="true">
+                <img className="map-card-paper" src="/assets/maps/aup-port/paper-board.png" alt="" />
+                <img className="map-card-landmark is-start" src="/assets/maps/aup-port/repair-room.png" alt="" />
+                <img className="map-card-landmark is-middle" src="/assets/maps/aup-port/yellow-dog.png" alt="" />
+                <img className="map-card-landmark is-finish" src="/assets/maps/aup-port/noise-house.png" alt="" />
+              </div>
+              <div className="map-card-copy">
+                <small>经典竞速地图</small>
+                <strong>{DEFAULT_MAP_CONTENT.title}</strong>
+                <span>{DEFAULT_MAP_CONTENT.spaceCount - 1} 格路线 · {LANDMARK_DEFINITIONS.length} 处地标</span>
+              </div>
+              <ArrowUpRight />
+            </Link>
+          </div>
+        </section>
       </section>
       {profileOpen && (
         <aside id="player-profile-sidebar" className="player-profile-sidebar" aria-labelledby="profile-title">
