@@ -303,7 +303,7 @@ export class BoardScene implements BoardSceneController {
         text: space.kind === 'event' ? '!' : String(space.index),
         style: {
           fontFamily: 'Microsoft YaHei',
-          fontSize: compact ? (space.kind === 'finish' ? 11 : 9) : space.kind === 'event' ? 15 : 13,
+          fontSize: compact ? 14 : space.kind === 'event' ? 15 : 14,
           fill: space.kind === 'event' ? 0xfff4df : space.kind === 'finish' ? 0xffe39a : 0x54574e,
           fontWeight: '700',
         },
@@ -336,7 +336,7 @@ export class BoardScene implements BoardSceneController {
     const eventLegendBang = new Text({ text: '!', style: { fontFamily: 'Arial', fontSize: 14, fill: 0xfff4df, fontWeight: '900' } })
     eventLegendBang.anchor.set(0.5)
     eventLegendBang.position.set(12, 12)
-    const eventLegendLabel = new Text({ text: '事件格', style: { fontFamily: 'Microsoft YaHei', fontSize: 12, fill: 0x55584f, fontWeight: '700' } })
+    const eventLegendLabel = new Text({ text: '事件格', style: { fontFamily: 'Microsoft YaHei', fontSize: 14, fill: 0x55584f, fontWeight: '700' } })
     eventLegendLabel.position.set(32, 4)
     eventLegend.addChild(eventLegendMark, eventLegendBang, eventLegendLabel)
     this.foregroundLayer.addChild(title, eventLegend)
