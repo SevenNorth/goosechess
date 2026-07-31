@@ -12,6 +12,11 @@ async function completeOrderRolls(page: Page) {
       await confirm.click()
       return
     }
+    const tieContinue = page.getByRole('button', { name: /再次投掷|继续/ })
+    if (await tieContinue.count() > 0 && await tieContinue.isEnabled()) {
+      await tieContinue.click()
+      continue
+    }
     const roll = page.getByRole('button', { name: '投掷单骰' })
     if (await roll.count() > 0 && await roll.isEnabled()) await roll.click()
     else await page.waitForTimeout(30)
@@ -107,6 +112,11 @@ test('lists the in-game player HUD in final action order', async ({ page }) => {
   for (let attempt = 0; attempt < 80; attempt += 1) {
     const confirm = page.getByRole('button', { name: '选择起始道具' })
     if (await confirm.isVisible()) break
+    const tieContinue = page.getByRole('button', { name: /再次投掷|继续/ })
+    if (await tieContinue.count() > 0 && await tieContinue.isEnabled()) {
+      await tieContinue.click()
+      continue
+    }
     const roll = page.getByRole('button', { name: '投掷单骰' })
     if (await roll.count() > 0 && await roll.isEnabled()) await roll.click()
     else await page.waitForTimeout(30)

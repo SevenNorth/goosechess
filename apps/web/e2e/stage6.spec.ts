@@ -8,6 +8,11 @@ async function completeOrderRolls(page: Page) {
       await confirm.click()
       return
     }
+    const tieContinue = page.getByRole('button', { name: /再次投掷|继续/ })
+    if (await tieContinue.count() > 0 && await tieContinue.isEnabled()) {
+      await tieContinue.click()
+      continue
+    }
     const roll = page.getByRole('button', { name: '投掷单骰' })
     if (await roll.count() > 0 && await roll.isEnabled()) await roll.click()
     else await page.waitForTimeout(30)

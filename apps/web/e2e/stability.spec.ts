@@ -20,8 +20,10 @@ async function clickNextAction(page: Page) {
   const item = page.locator('.item-compare-grid button').last()
   const itemConfirm = page.getByRole('button', { name: '确认保留' })
   const orderRoll = page.getByRole('button', { name: '投掷单骰' })
+  const tieContinue = page.getByRole('button', { name: /再次投掷|继续/ })
   const orderConfirm = page.getByRole('button', { name: '选择起始道具' })
   const roll = page.getByRole('button', { name: '投掷双骰' })
+  if (await tryClick(tieContinue)) return 'order-tie'
   if (await tryClick(orderRoll)) return 'order-roll'
   if (await tryClick(orderConfirm)) return 'order-confirm'
   if (await tryClick(startingItemConfirm)) return 'starting-item'

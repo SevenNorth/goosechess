@@ -13,6 +13,12 @@ describe('PixiJS 65 格完整对局', () => {
         if (confirm) fireEvent.click(enter)
         return
       }
+      const repeatOrderRoll = screen.queryByRole('button', { name: /再次投掷|继续/ })
+      if (repeatOrderRoll && !repeatOrderRoll.hasAttribute('disabled')) {
+        fireEvent.click(repeatOrderRoll)
+        await new Promise((resolve) => window.setTimeout(resolve, 10))
+        continue
+      }
       const orderRoll = screen.queryByRole('button', { name: '投掷单骰' })
       if (orderRoll && !orderRoll.hasAttribute('disabled')) fireEvent.click(orderRoll)
       await new Promise((resolve) => window.setTimeout(resolve, 10))
@@ -71,6 +77,17 @@ describe('PixiJS 65 格完整对局', () => {
       expect(token).toBeInstanceOf(HTMLImageElement)
       expect(token?.getAttribute('src')).toMatch(/^\/assets\/tokens\/characters\/.+\.png$/)
     }
+  })
+
+  it('座次同点时移除卡片标签并提示再次投掷', async () => {
+    render(<App mode="1v3" seed={1} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '投掷单骰' }))
+    const notice = await screen.findByRole('alertdialog', { name: '需要再次投掷' })
+
+    expect(notice.textContent).toContain('投出了相同点数')
+    expect(within(notice).getByRole('button', { name: '再次投掷' })).toBeTruthy()
+    expect(document.querySelector('.order-player small')).toBeNull()
   })
 
   it('座次确定后为本地玩家展示抽取的三件起始道具', async () => {

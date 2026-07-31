@@ -326,14 +326,21 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .order-list li.is-tied { box-shadow: inset 0 0 0 1px var(--gold); }
 .order-list li.is-rolling { background: #3b4036; box-shadow: inset 0 0 0 2px var(--pink); }
 .order-rank { position: absolute; top: 12px; left: 12px; width: 28px; height: 28px; display: grid; place-items: center; color: #d7dbd2; background: #22251f; font-size: 16px; font-weight: 900; }
-.order-player { width: 100%; min-height: 66px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 29px 4px 0; }
+.order-player { width: 100%; min-height: 66px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 18px 4px 0; }
 .order-player strong { width: 100%; overflow: hidden; font-size: 17px; text-overflow: ellipsis; white-space: nowrap; }
-.order-player small { position: absolute; top: 14px; right: 12px; padding: 3px 6px; color: #d5dacd; background: #252922; font-size: var(--font-static-min); }
 .order-token { width: 112px; height: 116px; flex: 0 0 auto; margin: 8px 0 5px; object-fit: contain; object-position: center bottom; filter: drop-shadow(0 8px 4px rgba(0,0,0,.28)); }
 .order-die { width: 52px; height: 52px; display: grid; place-items: center; margin-top: auto; border-radius: 7px; color: #282b25; background: #eee9d9; box-shadow: inset -5px -6px 0 #c8c1ae, 0 5px 0 rgba(0,0,0,.2); font-size: 24px; font-weight: 900; }
 .order-list li.is-rolling .order-die { animation: order-die-pulse .52s ease-in-out infinite alternate; }
 .order-command { min-width: 210px; margin-top: 20px; }
 .order-wait { min-height: 42px; display: inline-flex; align-items: center; gap: 9px; margin-top: 20px; color: #cbd0c6; }
+.order-tie-notice-backdrop { position: fixed; z-index: 58; inset: 68px 0 0; display: grid; place-items: center; padding: 28px; background: rgba(10,11,9,.68); }
+.order-tie-notice { width: min(440px, calc(100vw - 80px)); padding: 30px 32px 32px; color: #eff0e9; background: #272a24; border: 1px solid #656b5f; border-top: 5px solid var(--gold); box-shadow: 0 26px 70px rgba(0,0,0,.52); text-align: center; }
+.order-tie-icon { width: 58px; height: 58px; display: grid; place-items: center; margin: 0 auto 15px; color: #242620; background: var(--gold); transform: rotate(-3deg); }
+.order-tie-icon svg { width: 29px; height: 29px; }
+.order-tie-notice h3 { margin: 5px 0 12px; font-size: 25px; }
+.order-tie-notice p { margin: 0; color: #c7ccc2; font-size: var(--font-static-min); line-height: 1.75; }
+.order-tie-notice p strong { color: white; }
+.order-tie-command { min-width: 190px; margin-top: 23px; }
 @keyframes order-die-pulse { from { transform: translateY(0) rotate(-2deg); } to { transform: translateY(-5px) rotate(3deg); } }
 
 .event-panel { width: min(980px, calc(100vw - 80px)); }

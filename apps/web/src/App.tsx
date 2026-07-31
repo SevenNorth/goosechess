@@ -80,6 +80,10 @@ interface ItemGainConfirmation {
   readonly revision: number
 }
 
+interface OrderTieNotice {
+  readonly playerIds: readonly string[]
+}
+
 interface CountdownConfirmButtonProps {
   readonly label: string
   readonly seconds: number
@@ -205,6 +209,7 @@ function GameSession({ mode, seed, localDisplayName, localSkinId, onRestart, onE
   const [keepPendingItem, setKeepPendingItem] = useState(false)
   const [eventOutcome, setEventOutcome] = useState<EventOutcome | null>(null)
   const [showOrderResult, setShowOrderResult] = useState(false)
+  const [orderTieNotice, setOrderTieNotice] = useState<OrderTieNotice | null>(null)
   const [showWin, setShowWin] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -323,6 +328,13 @@ function GameSession({ mode, seed, localDisplayName, localSkinId, onRestart, onE
       : null
     const gameWon = result.update.events.some((event) => event.type === 'game-won')
     const orderDetermined = result.update.events.some((event) => event.type === 'turn-order-determined')
+    const completedOrderRound = previousSnapshot.state.phase === 'determining-order'
+      && result.update.snapshot.state.phase === 'determining-order'
+      && result.update.snapshot.state.orderRollResults.length === 0
+      && result.update.events.some((event) => event.type === 'order-die-rolled')
+    const nextOrderTieGroup = completedOrderRound
+      ? result.update.snapshot.state.turnOrderGroups.find((group) => group.length > 1)
+      : undefined
     if (board) {
       await board.playUpdate(result.update, previousSnapshot, {
         onStageChange: (stage) => mountedRef.current && setPresentationStage(stage),
@@ -359,6 +371,9 @@ function GameSession({ mode, seed, localDisplayName, localSkinId, onRestart, onE
     }
     if (gameWon) setShowWin(true)
     if (orderDetermined) setShowOrderResult(true)
+    if (nextOrderTieGroup) {
+      setOrderTieNotice({ playerIds: [...nextOrderTieGroup] })
+    }
     return true
   }, [addLogs, animationSpeed, board, cameraMotion, finishItemUse, presentItemUse, presentPausedTurn])
 
@@ -389,6 +404,7 @@ function GameSession({ mode, seed, localDisplayName, localSkinId, onRestart, onE
     && !eventOutcome
     && !itemGainConfirmation
     && !showOrderResult
+    && !orderTieNotice
     && snapshot.state.players.find((player) => player.playerId === snapshot.state.activePlayerId)?.controller === 'ai'
 
   useEffect(() => {
@@ -408,6 +424,10 @@ function GameSession({ mode, seed, localDisplayName, localSkinId, onRestart, onE
           if (!turn || !await presentResult(turn.result, current, false)) break
           addLogs([`${player.displayName}：${turn.decision.reasonTag}`])
           if (turn.result.ok && turn.result.update.events.some((event) => event.type === 'turn-order-determined')) break
+          if (turn.result.ok
+            && current.state.phase === 'determining-order'
+            && turn.result.update.snapshot.state.phase === 'determining-order'
+            && turn.result.update.snapshot.state.orderRollResults.length === 0) break
           if ((current.state.phase === 'determining-order' || current.state.phase === 'choosing-starting-item') && import.meta.env.MODE !== 'test') {
             await new Promise((resolve) => window.setTimeout(resolve, Math.max(140, 520 / animationSpeed)))
           }
@@ -466,6 +486,9 @@ function GameSession({ mode, seed, localDisplayName, localSkinId, onRestart, onE
     return left.seatIndex - right.seatIndex
   })
   const unresolvedOrderGroup = snapshot.state.turnOrderGroups.find((group) => group.length > 1) ?? []
+  const orderTieNames = orderTieNotice?.playerIds.map((playerId) => (
+    snapshot.state.players.find((player) => player.playerId === playerId)?.displayName ?? playerId
+  )) ?? []
   const latestOrderFaces = new Map<string, number>()
   for (const round of snapshot.state.orderRollHistory) {
     for (const result of round.results) latestOrderFaces.set(result.playerId, result.face)
@@ -572,7 +595,7 @@ function GameSession({ mode, seed, localDisplayName, localSkinId, onRestart, onE
                 const isRolling = snapshot.state.phase === 'determining-order' && snapshot.state.activePlayerId === playerId
                 return <li className={`${isTied ? 'is-tied' : ''} ${isRolling ? 'is-rolling' : ''}`} key={playerId} style={{ '--seat-color': COLOR_HEX[player.colorId] } as React.CSSProperties}>
                   <span className="order-rank">{index + 1}</span>
-                  <span className="order-player"><strong>{player.displayName}</strong><small>{isRolling ? '等待投掷' : isTied ? '同点组' : '暂定'}</small></span>
+                  <span className="order-player"><strong>{player.displayName}</strong></span>
                   <img className="order-token" src={playerSkinOption(player.skinId).imageSrc} alt={`${player.displayName}的棋子`} />
                   <span className="order-die" aria-label={latestOrderFaces.has(playerId) ? `${latestOrderFaces.get(playerId)} 点` : '尚未投掷'}>{latestOrderFaces.get(playerId) ?? '·'}</span>
                 </li>
@@ -583,6 +606,24 @@ function GameSession({ mode, seed, localDisplayName, localSkinId, onRestart, onE
               : snapshot.state.activePlayerId === 'local-player'
                 ? <button className="primary-command order-command" type="button" disabled={locked || !board} onClick={() => void rollForOrder()}><Dices /> 投掷单骰</button>
                 : <div className="order-wait" aria-live="polite"><Dices /> {activePlayer.displayName} 正在投掷</div>}
+          </section>
+        </div>
+      )}
+
+      {orderTieNotice && (
+        <div className="order-tie-notice-backdrop">
+          <section className="order-tie-notice" role="alertdialog" aria-modal="true" aria-labelledby="order-tie-title">
+            <span className="order-tie-icon"><Dices /></span>
+            <div className="panel-kicker">出现同点</div>
+            <h3 id="order-tie-title">需要再次投掷</h3>
+            <p><strong>{orderTieNames.join('、')}</strong> 投出了相同点数，本组需要重新决定先后顺序。</p>
+            <button className="primary-command order-tie-command" type="button" disabled={locked} onClick={() => {
+              const localPlayerRollsNext = snapshot.state.activePlayerId === 'local-player'
+              setOrderTieNotice(null)
+              if (localPlayerRollsNext) void rollForOrder()
+            }}>
+              <RotateCcw /> {snapshot.state.activePlayerId === 'local-player' ? '再次投掷' : '继续'}
+            </button>
           </section>
         </div>
       )}
