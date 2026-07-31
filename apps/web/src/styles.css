@@ -28,8 +28,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .preparation-header { height: 76px; display: flex; align-items: center; padding: 0 32px; border-bottom: 1px solid rgba(255,255,255,.1); background: rgba(15,17,14,.88); }
 .profile-account-trigger { position: fixed; z-index: 92; top: 15px; right: 18px; height: 46px; max-width: 190px; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 7px; border: 1px solid rgba(255,255,255,.14); color: #f3f1e7; background: #292d26; cursor: pointer; }
 .profile-account-trigger:hover { background: #363a31; border-color: var(--teal); }
-.profile-account-trigger > span { --profile-color: #ece9dc; width: 32px; height: 32px; display: grid; place-items: center; flex: 0 0 auto; color: #171916; background: var(--profile-color); border: 2px solid white; border-radius: 50%; }
-.profile-account-trigger svg { width: 16px; }
+.profile-account-trigger > span { --profile-color: #ece9dc; width: 32px; height: 32px; display: grid; place-items: center; flex: 0 0 auto; overflow: hidden; background: var(--profile-color); border: 2px solid white; border-radius: 50%; }
+.profile-account-trigger > span img { width: 100%; height: 100%; object-fit: contain; object-position: center bottom; }
 .profile-account-trigger div { min-width: 0; display: flex; flex-direction: column; text-align: left; }
 .profile-account-trigger strong, .profile-account-trigger small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .profile-account-trigger strong { font-size: var(--font-static-min); }
@@ -67,8 +67,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .start-match-button { width: 100%; margin-top: 12px; text-decoration: none; }
 .preparation-section + .preparation-section { margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.1); }
 .player-profile-editor { display: flex; flex-direction: column; gap: 16px; }
-.profile-token-preview { --profile-color: #ece9dc; min-height: 132px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; color: #f3f1e7; background: #191b17; border: 1px solid #464b42; }
-.profile-token-preview svg { width: 48px; height: 48px; padding: 11px; color: #171916; background: var(--profile-color); border: 3px solid #f4f2e8; border-radius: 50%; box-shadow: 4px 4px 0 rgba(0,0,0,.3); }
+.profile-token-preview { --profile-color: #ece9dc; min-height: 210px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; color: #f3f1e7; background: #191b17; border: 1px solid #464b42; }
+.profile-token-preview > img { width: 116px; height: 148px; object-fit: contain; object-position: center bottom; filter: drop-shadow(5px 8px 3px rgba(0,0,0,.35)); }
 .profile-token-preview strong { font-size: var(--font-static-min); }
 .profile-token-preview small { color: #9fa69a; font-size: var(--font-static-min); }
 .profile-fields { min-width: 0; display: flex; flex-direction: column; }
@@ -83,13 +83,12 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .nickname-field > div > strong.is-invalid { color: #ef8d7f; }
 .nickname-field > small { min-height: 18px; padding-top: 5px; color: #8f968b; font-size: var(--font-static-min); }
 .nickname-field input[aria-invalid="true"] ~ strong { color: #ef8d7f; }
-.profile-skin-options { height: 66px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; padding: 4px; background: #171914; border: 1px solid rgba(255,255,255,.08); }
+.profile-skin-options { height: 94px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; padding: 4px; background: #171914; border: 1px solid rgba(255,255,255,.08); }
 .profile-skin-option { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 1px solid transparent; color: #aeb4aa; background: #282b25; cursor: pointer; }
-.profile-skin-option i { width: 24px; height: 24px; flex: 0 0 auto; border: 3px solid #62675d; border-radius: 50%; }
+.profile-skin-option img { width: 44px; height: 53px; flex: 0 0 auto; object-fit: contain; object-position: center bottom; filter: drop-shadow(2px 3px 1px rgba(0,0,0,.35)); }
 .profile-skin-option span { overflow: hidden; font-size: var(--font-static-min); white-space: nowrap; text-overflow: ellipsis; }
 .profile-skin-option:hover { background: #32362e; }
 .profile-skin-option.is-selected { color: white; border-color: var(--pink); background: #383c33; }
-.profile-skin-option.is-selected i { border-color: white; }
 .opponent-roster .mode-picker-title { margin-bottom: 10px; }
 .reroll-opponents { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid #555b50; color: #d9ddd4; background: #30342c; cursor: pointer; }
 .reroll-opponents:hover { color: white; border-color: var(--teal); background: #3a3f35; }
@@ -323,21 +322,14 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .order-panel { width: fit-content; min-width: 500px; max-width: calc(100vw - 80px); padding: 28px; background: #22251f; border: 1px solid #5a6054; box-shadow: 0 28px 70px rgba(0,0,0,.5); }
 .order-panel h2 { margin: 4px 0 20px; font-size: 26px; }
 .order-list { display: grid; grid-template-columns: repeat(var(--order-player-count), 180px); justify-content: center; gap: 14px; margin: 0; padding: 0; list-style: none; }
-.order-list li { --seat-color: #e82f73; --token-color: #f0eee4; position: relative; min-height: 292px; display: flex; flex-direction: column; align-items: center; padding: 15px 14px 16px; border-top: 5px solid var(--seat-color); background: #30342c; text-align: center; }
+.order-list li { --seat-color: #e82f73; position: relative; min-height: 292px; display: flex; flex-direction: column; align-items: center; padding: 15px 14px 16px; border-top: 5px solid var(--seat-color); background: #30342c; text-align: center; }
 .order-list li.is-tied { box-shadow: inset 0 0 0 1px var(--gold); }
 .order-list li.is-rolling { background: #3b4036; box-shadow: inset 0 0 0 2px var(--pink); }
 .order-rank { position: absolute; top: 12px; left: 12px; width: 28px; height: 28px; display: grid; place-items: center; color: #d7dbd2; background: #22251f; font-size: 16px; font-weight: 900; }
 .order-player { width: 100%; min-height: 66px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 29px 4px 0; }
 .order-player strong { width: 100%; overflow: hidden; font-size: 17px; text-overflow: ellipsis; white-space: nowrap; }
 .order-player small { position: absolute; top: 14px; right: 12px; padding: 3px 6px; color: #d5dacd; background: #252922; font-size: var(--font-static-min); }
-.order-token { position: relative; width: 84px; height: 116px; flex: 0 0 auto; margin: 8px 0 5px; filter: drop-shadow(0 8px 4px rgba(0,0,0,.28)); }
-.order-token > i { position: absolute; display: block; }
-.order-token-body { z-index: 2; left: 18px; top: 44px; width: 50px; height: 54px; border: 4px solid var(--seat-color); border-radius: 52% 48% 46% 54%; background: var(--token-color); transform: rotate(-5deg); }
-.order-token-neck { z-index: 3; left: 43px; top: 24px; width: 20px; height: 49px; border: 4px solid var(--seat-color); border-radius: 11px; background: var(--token-color); }
-.order-token-head { z-index: 4; left: 41px; top: 10px; width: 30px; height: 30px; border: 4px solid var(--seat-color); border-radius: 50%; background: var(--token-color); }
-.order-token-eye { z-index: 5; left: 60px; top: 19px; width: 4px; height: 4px; border-radius: 50%; background: #272925; }
-.order-token-beak { z-index: 3; left: 67px; top: 21px; width: 18px; height: 13px; background: #d39f35; clip-path: polygon(0 0, 100% 50%, 0 100%); }
-.order-token-base { z-index: 1; left: 10px; bottom: 2px; width: 64px; height: 14px; border: 3px solid var(--seat-color); border-radius: 4px; background: #6b6251; }
+.order-token { width: 112px; height: 116px; flex: 0 0 auto; margin: 8px 0 5px; object-fit: contain; object-position: center bottom; filter: drop-shadow(0 8px 4px rgba(0,0,0,.28)); }
 .order-die { width: 52px; height: 52px; display: grid; place-items: center; margin-top: auto; border-radius: 7px; color: #282b25; background: #eee9d9; box-shadow: inset -5px -6px 0 #c8c1ae, 0 5px 0 rgba(0,0,0,.2); font-size: 24px; font-weight: 900; }
 .order-list li.is-rolling .order-die { animation: order-die-pulse .52s ease-in-out infinite alternate; }
 .order-command { min-width: 210px; margin-top: 20px; }

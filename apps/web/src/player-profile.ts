@@ -3,11 +3,15 @@ export const DEFAULT_PLAYER_NICKNAME = '玩家'
 export const DEFAULT_PLAYER_SKIN_ID = 'goose-white'
 
 export const PLAYER_SKIN_OPTIONS = [
-  { id: 'goose-white', label: '白鹅', color: '#ece9dc' },
-  { id: 'goose-yellow', label: '黄鹅', color: '#dda735' },
-  { id: 'goose-blue', label: '蓝鹅', color: '#75a7d5' },
-  { id: 'goose-pink', label: '粉鹅', color: '#db7d9c' },
+  { id: 'goose-white', label: '妮露', color: '#d95e4a', imageSrc: '/assets/tokens/characters/nilou.png' },
+  { id: 'goose-yellow', label: '魈', color: '#2baf9c', imageSrc: '/assets/tokens/characters/xiao.png' },
+  { id: 'goose-blue', label: '芙宁娜', color: '#3977c5', imageSrc: '/assets/tokens/characters/furina.png' },
+  { id: 'goose-pink', label: '菲谢尔', color: '#8d68b7', imageSrc: '/assets/tokens/characters/fischl.png' },
 ] as const
+
+export function playerSkinOption(skinId: string) {
+  return PLAYER_SKIN_OPTIONS.find((skin) => skin.id === skinId) ?? PLAYER_SKIN_OPTIONS[0]
+}
 
 export interface PlayerProfile {
   readonly nickname: string

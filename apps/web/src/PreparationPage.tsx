@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react'
-import { Bot, Dices, Play, RefreshCw, UserRound, UsersRound, X } from 'lucide-react'
+import { Bot, Dices, Play, RefreshCw, UsersRound, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   OFFLINE_MATCH_MODES,
@@ -68,7 +68,9 @@ export function PreparationPage() {
           aria-controls="player-profile-sidebar"
           onClick={() => setProfileOpen((open) => !open)}
         >
-          <span style={{ '--profile-color': selectedSkin.color } as CSSProperties}><UserRound /></span>
+          <span style={{ '--profile-color': selectedSkin.color } as CSSProperties}>
+            <img src={selectedSkin.imageSrc} alt="" />
+          </span>
           <div><strong>{nicknameIssue ? DEFAULT_PLAYER_NICKNAME : normalizedNickname}</strong><small>本地档案</small></div>
         </button>
       </header>
@@ -145,7 +147,7 @@ export function PreparationPage() {
           </header>
           <div className="player-profile-editor">
             <div className="profile-token-preview" style={{ '--profile-color': selectedSkin.color } as CSSProperties}>
-              <UserRound />
+              <img src={selectedSkin.imageSrc} alt={`${selectedSkin.label}棋子预览`} />
               <strong>{nicknameIssue ? DEFAULT_PLAYER_NICKNAME : normalizedNickname}</strong>
               <small>{selectedSkin.label}</small>
             </div>
@@ -177,7 +179,7 @@ export function PreparationPage() {
                       onClick={() => setSelectedSkinId(skin.id)}
                       key={skin.id}
                     >
-                      <i style={{ background: skin.color }} />
+                      <img src={skin.imageSrc} alt="" />
                       <span>{skin.label}</span>
                     </button>
                   ))}

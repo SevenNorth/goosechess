@@ -8,7 +8,7 @@ import type {
   SkinContentDefinition,
 } from './types.js'
 
-export const CONTENT_VERSION = '2026.07.30.3'
+export const CONTENT_VERSION = '2026.07.31.1'
 
 export const LANDMARK_DEFINITIONS = [
   { id: 'repair-room', title: '维修室', spaceIds: [0] },
@@ -32,10 +32,10 @@ export const DEFAULT_MAP_CONTENT = {
 } as const satisfies MapContentDefinition
 
 export const SKINS = [
-  { id: 'goose-white', version: 1, title: '白鹅', name: '白鹅', atlas: 'assets/tokens/goose-white.json', animations: { idle: 'idle', active: 'active', hop: 'hop', hit: 'hit' }, anchor: { x: 0.5, y: 0.9 }, shadowScale: 1 },
-  { id: 'goose-yellow', version: 1, title: '黄鹅', name: '黄鹅', atlas: 'assets/tokens/goose-yellow.json', animations: { idle: 'idle', active: 'active', hop: 'hop', hit: 'hit' }, anchor: { x: 0.5, y: 0.9 }, shadowScale: 1 },
-  { id: 'goose-blue', version: 1, title: '蓝鹅', name: '蓝鹅', atlas: 'assets/tokens/goose-blue.json', animations: { idle: 'idle', active: 'active', hop: 'hop', hit: 'hit' }, anchor: { x: 0.5, y: 0.9 }, shadowScale: 1 },
-  { id: 'goose-pink', version: 1, title: '粉鹅', name: '粉鹅', atlas: 'assets/tokens/goose-pink.json', animations: { idle: 'idle', active: 'active', hop: 'hop', hit: 'hit' }, anchor: { x: 0.5, y: 0.9 }, shadowScale: 1 },
+  { id: 'goose-white', version: 2, title: '妮露', name: '妮露', atlas: 'assets/tokens/characters/nilou.png', animations: { idle: 'idle', active: 'active', hop: 'hop', hit: 'hit' }, anchor: { x: 0.5, y: 1 }, shadowScale: 1 },
+  { id: 'goose-yellow', version: 2, title: '魈', name: '魈', atlas: 'assets/tokens/characters/xiao.png', animations: { idle: 'idle', active: 'active', hop: 'hop', hit: 'hit' }, anchor: { x: 0.5, y: 1 }, shadowScale: 1 },
+  { id: 'goose-blue', version: 2, title: '芙宁娜', name: '芙宁娜', atlas: 'assets/tokens/characters/furina.png', animations: { idle: 'idle', active: 'active', hop: 'hop', hit: 'hit' }, anchor: { x: 0.5, y: 1 }, shadowScale: 1 },
+  { id: 'goose-pink', version: 2, title: '菲谢尔', name: '菲谢尔', atlas: 'assets/tokens/characters/fischl.png', animations: { idle: 'idle', active: 'active', hop: 'hop', hit: 'hit' }, anchor: { x: 0.5, y: 1 }, shadowScale: 1 },
 ] as const satisfies readonly SkinContentDefinition[]
 
 export const DEFAULT_RULESET = {

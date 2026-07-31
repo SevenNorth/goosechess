@@ -94,11 +94,11 @@ test('keeps scene resources and memory bounded during continuous play', async ({
   const finalDiagnostics = await page.evaluate(() => window.__GOOSE_CHESS_DIAGNOSTICS__?.())
 
   expect(await page.locator('canvas[data-testid="pixi-canvas"]').count()).toBe(1)
-  expect(finalDiagnostics).toMatchObject({ activeScenes: 1, tickerHandlers: 1, loadedTextures: 11, windowListeners: 0, activeTweens: 0 })
+  expect(finalDiagnostics).toMatchObject({ activeScenes: 1, tickerHandlers: 1, loadedTextures: 15, windowListeners: 0, activeTweens: 0 })
   for (const sample of diagnostics) {
     expect(sample?.activeScenes).toBe(1)
     expect(sample?.tickerHandlers).toBe(1)
-    expect(sample?.loadedTextures).toBe(11)
+    expect(sample?.loadedTextures).toBe(15)
     expect(sample?.windowListeners).toBeLessThanOrEqual(1)
   }
   if (baselineHeap > 0 && finalHeap > 0) {

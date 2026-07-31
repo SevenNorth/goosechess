@@ -66,7 +66,11 @@ describe('PixiJS 65 格完整对局', () => {
     expect(screen.getByRole('button', { name: '选择起始道具' })).toBeTruthy()
     const orderCards = within(screen.getByRole('dialog', { name: '行动顺序已确定' })).getAllByRole('listitem')
     expect(orderCards).toHaveLength(4)
-    for (const card of orderCards) expect(card.querySelector('.order-token')).toBeTruthy()
+    for (const card of orderCards) {
+      const token = card.querySelector('.order-token')
+      expect(token).toBeInstanceOf(HTMLImageElement)
+      expect(token?.getAttribute('src')).toMatch(/^\/assets\/tokens\/characters\/.+\.png$/)
+    }
   })
 
   it('座次确定后为本地玩家展示抽取的三件起始道具', async () => {

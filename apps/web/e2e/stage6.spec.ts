@@ -30,7 +30,6 @@ async function startGame(page: Page, mode = '1v1', seed = 3, speed = 1) {
   await page.goto(`/play?mode=${mode}&seed=${seed}&speed=${speed}`)
   await expect(page.getByRole('heading', { name: '投掷单骰决定顺序' })).toBeVisible()
   await expect(page.locator('canvas[data-testid="pixi-canvas"]')).toHaveCount(1)
-  await page.getByRole('radio', { name: '黄鹅' }).click()
   await completeOrderRolls(page)
   await completeStartingItemChoices(page)
   await expect(page.getByRole('button', { name: '投掷双骰' })).toBeEnabled()

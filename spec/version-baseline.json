@@ -13,9 +13,9 @@
     }
   },
   "content": {
-    "version": "2026.07.30.3",
+    "version": "2026.07.31.1",
     "files": {
-      "packages/game-content/src/default-content.ts": "b8e19a3376fb24fbcc79388f0db1b4549e21f8435148f6cc12e526618d6259a7",
+      "packages/game-content/src/default-content.ts": "f8386fa8ca18d57594be489d7c324395cdd5e2699f64fdbb9791a554594126ea",
       "packages/game-content/src/legacy-content.ts": "43f28d6137ecaf88c6534da8ee190883356f2562e9485faf4ff1acb1f66a10ee"
     }
   }

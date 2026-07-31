@@ -14,18 +14,13 @@ import type { GameSnapshot, AuthorityUpdate, PresentationCue } from '@goose-ches
 import type { AudioPort } from '../audio/audio-port'
 import { presentationMachine, type PresentationStage } from '../game-client/machine/presentation-machine'
 import { settlePresentation } from '../game-client/presentation-recovery'
+import { PLAYER_SKIN_OPTIONS, playerSkinOption } from '../player-profile'
 import { tokenOffset } from './token-layout'
 const SEAT_COLORS: Readonly<Record<string, number>> = {
   pink: 0xe82f73,
   blue: 0x3977c5,
   gold: 0xd4a43a,
   teal: 0x2baf9c,
-}
-const SKIN_COLORS: Readonly<Record<string, number>> = {
-  'goose-white': 0xf0eee4,
-  'goose-yellow': 0xe0ae3d,
-  'goose-blue': 0x80aed8,
-  'goose-pink': 0xdf829f,
 }
 
 interface TokenVisual {
@@ -87,6 +82,7 @@ export class BoardScene implements BoardSceneController {
   private readonly foregroundLayer = new Container()
   private readonly tweens = new Group()
   private readonly tokens = new Map<string, TokenVisual>()
+  private readonly tokenTextures = new Map<string, Texture>()
   private readonly machine: ActorRefFrom<typeof presentationMachine>
   private readonly resizeObserver: ResizeObserver
   private routeGraphic: Graphics | null = null
@@ -259,18 +255,25 @@ export class BoardScene implements BoardSceneController {
   private async buildBoard(onProgress: (progress: number) => void) {
     const landmarkAssets = this.map.assets.landmarks ?? {}
     const landmarkTextures = new Map<string, Texture>()
+    const tokenAssetCount = PLAYER_SKIN_OPTIONS.length
+    const totalAssetCount = this.map.landmarks.length + 2 + tokenAssetCount
     const assetPromises = [
       '/assets/sample/tabletop.png',
       `/${this.map.assets.background}`,
       ...this.map.landmarks.map((landmark) => landmarkAssets[landmark.id] ? `/${landmarkAssets[landmark.id]}` : null),
+      ...PLAYER_SKIN_OPTIONS.map((skin) => skin.imageSrc),
     ].map(async (url) => {
       const texture = url ? await Assets.load<Texture>(url) : Texture.WHITE
       this.loadedTextureCount += url ? 1 : 0
-      onProgress(0.12 + this.loadedTextureCount / (this.map.landmarks.length + 2) * 0.8)
+      onProgress(0.12 + this.loadedTextureCount / totalAssetCount * 0.8)
       return texture
     })
-    const [tableTexture, paperTexture, ...loadedLandmarks] = await Promise.all(assetPromises)
+    const loadedAssets = await Promise.all(assetPromises)
+    const [tableTexture, paperTexture] = loadedAssets
+    const loadedLandmarks = loadedAssets.slice(2, 2 + this.map.landmarks.length)
+    const loadedTokens = loadedAssets.slice(2 + this.map.landmarks.length)
     this.map.landmarks.forEach((landmark, index) => landmarkTextures.set(landmark.id, loadedLandmarks[index]))
+    PLAYER_SKIN_OPTIONS.forEach((skin, index) => this.tokenTextures.set(skin.id, loadedTokens[index]))
     const worldWidth = this.map.logicalSize.width
     const worldHeight = this.map.logicalSize.height
     const table = new Sprite({ texture: tableTexture, width: worldWidth, height: worldHeight })
@@ -370,23 +373,21 @@ export class BoardScene implements BoardSceneController {
 
   private makeToken(player: GameSnapshot['state']['players'][number], players: GameSnapshot['state']['players']) {
     const root = new Container()
-    const shadow = new Graphics().ellipse(0, 1, 29, 10).fill({ color: 0x181914, alpha: 0.3 })
+    const shadow = new Graphics().ellipse(0, 2, 32, 10).fill({ color: 0x181914, alpha: 0.3 })
     const body = new Container()
-    const skin = SKIN_COLORS[player.skinId] ?? 0xf0eee4
     const outline = SEAT_COLORS[player.colorId] ?? 0xe82f73
-    const model = new Graphics()
-      .ellipse(0, -31, 25, 30).fill({ color: outline })
-      .ellipse(0, -33, 20, 25).fill({ color: skin })
-      .roundRect(-9, -69, 18, 35, 9).fill({ color: outline })
-      .roundRect(-6, -66, 12, 32, 6).fill({ color: skin })
-      .circle(2, -75, 15).fill({ color: outline })
-      .circle(2, -75, 11).fill({ color: skin })
-      .poly([12, -77, 29, -71, 12, -66], true).fill({ color: 0xd39f35 })
-      .circle(6, -79, 2).fill({ color: 0x272925 })
-      .roundRect(-27, -9, 54, 11, 4).fill({ color: outline })
-      .roundRect(-22, -7, 44, 7, 3).fill({ color: 0x6b6251 })
-    body.addChild(model)
-    body.cacheAsTexture({ resolution: 1.5, antialias: true })
+    const base = new Graphics()
+      .ellipse(0, -2, 33, 10).fill({ color: outline })
+      .ellipse(0, -4, 27, 7).fill({ color: 0x383a34 })
+    const texture = this.tokenTextures.get(player.skinId)
+      ?? this.tokenTextures.get(playerSkinOption(player.skinId).id)
+      ?? Texture.WHITE
+    const model = new Sprite(texture)
+    model.anchor.set(0.5, 1)
+    const modelScale = Math.min(78 / Math.max(1, texture.width), 112 / Math.max(1, texture.height))
+    model.scale.set(modelScale)
+    model.position.y = -5
+    body.addChild(base, model)
     root.addChild(shadow, body)
     const offset = tokenOffset(player, players)
     const point = spacePoint(this.map, player.spaceId)

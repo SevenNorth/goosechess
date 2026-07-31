@@ -21,10 +21,11 @@ describe('客户端路由', () => {
 
     expect(screen.getByRole('heading', { name: '配置本局棋手' })).toBeTruthy()
     expect(screen.getByRole('radio', { name: /1v1/ }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('img', { name: '妮露棋子预览' }).getAttribute('src')).toBe('/assets/tokens/characters/nilou.png')
 
     fireEvent.click(screen.getByRole('radio', { name: /1v3/ }))
     fireEvent.change(screen.getByRole('textbox', { name: /昵称/ }), { target: { value: '海风Captain' } })
-    fireEvent.click(screen.getByRole('radio', { name: '黄鹅' }))
+    fireEvent.click(screen.getByRole('radio', { name: '魈' }))
     fireEvent.click(screen.getByRole('button', { name: '开始对局' }))
 
     const location = screen.getByTestId('location-probe').textContent ?? ''
