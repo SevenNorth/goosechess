@@ -184,6 +184,9 @@ describe('PixiJS 65 格完整对局', () => {
     const targets = within(dialog).getAllByRole('radio')
 
     expect(targets).toHaveLength(2)
+    for (const target of targets) {
+      expect(target.querySelector('img')?.getAttribute('src')).toMatch(/^\/assets\/tokens\/characters\/.+\.png$/)
+    }
     expect(confirm.hasAttribute('disabled')).toBe(true)
     const selectedName = targets[1].querySelector('strong')?.textContent
     fireEvent.click(targets[1])

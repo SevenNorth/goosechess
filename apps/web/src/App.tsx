@@ -698,10 +698,10 @@ function GameSession({ mode, seed, localDisplayName, localSkinId, onRestart, onE
 
       {itemDetailsOpen && localItem && (
         <div className="item-modal-backdrop" onClick={() => setItemDetailsOpen(false)}>
-          <section className="item-modal" role="dialog" aria-modal="true" aria-labelledby="item-modal-title" onClick={(event) => event.stopPropagation()}>
+          <section className={itemTargetPlayers.length > 0 ? 'item-modal has-targets' : 'item-modal'} role="dialog" aria-modal="true" aria-labelledby="item-modal-title" onClick={(event) => event.stopPropagation()}>
             <button className="drawer-close" type="button" title="关闭道具详情" aria-label="关闭道具详情" onClick={() => setItemDetailsOpen(false)}><X /></button>
             <div className="item-modal-icon"><LocalItemIcon /></div><span>{localItem.mode}道具</span><h2 id="item-modal-title">{canUseItem ? `使用${localItem.title}` : localItem.title}</h2><p>{ITEM_COPY[localItem.id]?.description}</p>
-            {itemTargetPlayers.length > 0 && <div className="item-target-picker" role="radiogroup" aria-label="选择道具目标">
+            {itemTargetPlayers.length > 0 && <div className="item-target-picker" role="radiogroup" aria-label="选择道具目标" style={{ '--target-count': Math.min(4, itemTargetPlayers.length) } as React.CSSProperties}>
               <small>选择生效玩家</small>
               {itemTargetPlayers.map((player) => <button
                 className={selectedItemTargetId === player.playerId ? 'is-selected' : ''}
@@ -712,7 +712,9 @@ function GameSession({ mode, seed, localDisplayName, localSkinId, onRestart, onE
                 key={player.playerId}
                 style={{ '--seat-color': COLOR_HEX[player.colorId] } as React.CSSProperties}
               >
-                <i /><strong>{player.displayName}</strong><span>第 {player.spaceId} 格</span>
+                <strong>{player.displayName}</strong>
+                <img src={playerSkinOption(player.skinId).imageSrc} alt={`${player.displayName}的棋子`} />
+                <span>第 {player.spaceId} 格</span>
                 {selectedItemTargetId === player.playerId && <Check />}
               </button>)}
             </div>}
