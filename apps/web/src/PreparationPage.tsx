@@ -55,7 +55,7 @@ export function PreparationPage() {
   }
 
   return (
-    <main className={profileOpen ? 'preparation-shell is-profile-open' : 'preparation-shell'}>
+    <main className="preparation-shell">
       <header className="preparation-header">
         <div className="brand-mark" aria-label="鹅了个棋">
           <span className="brand-goose">鹅</span>
@@ -75,6 +75,29 @@ export function PreparationPage() {
           <div><strong>{nicknameIssue ? DEFAULT_PLAYER_NICKNAME : normalizedNickname}</strong><small>本地档案</small></div>
         </button>
       </header>
+
+      <aside className="map-library-sidebar" aria-labelledby="map-picker-title">
+        <div className="mode-picker-title">
+          <span id="map-picker-title"><MapPinned /> 棋盘地图</span>
+          <small>当前可用 1 张</small>
+        </div>
+        <div className="map-picker-grid">
+          <Link className="map-preview-card" to={`/maps/${DEFAULT_MAP_CONTENT.id}`} aria-label={`预览${DEFAULT_MAP_CONTENT.title}棋盘地图`}>
+            <div className="map-card-art" aria-hidden="true">
+              <img className="map-card-paper" src="/assets/maps/aup-port/paper-board.png" alt="" />
+              <img className="map-card-landmark is-start" src="/assets/maps/aup-port/repair-room.png" alt="" />
+              <img className="map-card-landmark is-middle" src="/assets/maps/aup-port/yellow-dog.png" alt="" />
+              <img className="map-card-landmark is-finish" src="/assets/maps/aup-port/noise-house.png" alt="" />
+            </div>
+            <div className="map-card-copy">
+              <small>经典竞速地图</small>
+              <strong>{DEFAULT_MAP_CONTENT.title}</strong>
+              <span>{DEFAULT_MAP_CONTENT.spaceCount - 1} 格路线 · {LANDMARK_DEFINITIONS.length} 处地标</span>
+            </div>
+            <ArrowUpRight />
+          </Link>
+        </div>
+      </aside>
 
       <section className="preparation-content" aria-labelledby="prepare-title">
         <div className="preparation-heading">
@@ -139,29 +162,6 @@ export function PreparationPage() {
           <div><strong>在线房间</strong><span>独立游戏服务器将在在线阶段接入。</span></div>
           <span className="status-tag">规划中</span>
         </div>
-
-        <section className="map-picker" aria-labelledby="map-picker-title">
-          <div className="mode-picker-title">
-            <span id="map-picker-title"><MapPinned /> 棋盘地图</span>
-            <small>当前可用 1 张</small>
-          </div>
-          <div className="map-picker-grid">
-            <Link className="map-preview-card" to={`/maps/${DEFAULT_MAP_CONTENT.id}`} aria-label={`预览${DEFAULT_MAP_CONTENT.title}棋盘地图`}>
-              <div className="map-card-art" aria-hidden="true">
-                <img className="map-card-paper" src="/assets/maps/aup-port/paper-board.png" alt="" />
-                <img className="map-card-landmark is-start" src="/assets/maps/aup-port/repair-room.png" alt="" />
-                <img className="map-card-landmark is-middle" src="/assets/maps/aup-port/yellow-dog.png" alt="" />
-                <img className="map-card-landmark is-finish" src="/assets/maps/aup-port/noise-house.png" alt="" />
-              </div>
-              <div className="map-card-copy">
-                <small>经典竞速地图</small>
-                <strong>{DEFAULT_MAP_CONTENT.title}</strong>
-                <span>{DEFAULT_MAP_CONTENT.spaceCount - 1} 格路线 · {LANDMARK_DEFINITIONS.length} 处地标</span>
-              </div>
-              <ArrowUpRight />
-            </Link>
-          </div>
-        </section>
       </section>
       {profileOpen && (
         <aside id="player-profile-sidebar" className="player-profile-sidebar" aria-labelledby="profile-title">
