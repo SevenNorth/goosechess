@@ -56,9 +56,14 @@ describe('PixiJS 65 格完整对局', () => {
 
     expect(within(screen.getByRole('region', { name: '参赛棋手' })).getAllByRole('article')).toHaveLength(4)
     const playerCards = within(screen.getByRole('region', { name: '参赛棋手' })).getAllByRole('article')
-    const opponentCards = playerCards.filter((card) => card.querySelector('.lucide-bot') !== null)
+    const opponentCards = playerCards.filter((card) => card.querySelector('.hud-player-copy > small') === null)
     expect(opponentCards).toHaveLength(3)
     for (const opponentCard of opponentCards) expect(opponentCard.querySelector('.hud-player-copy > small')).toBeNull()
+    for (const playerCard of playerCards) {
+      const avatar = playerCard.querySelector('.hud-avatar img')
+      expect(avatar).toBeInstanceOf(HTMLImageElement)
+      expect(avatar?.getAttribute('src')).toMatch(/^\/assets\/tokens\/characters\/.+\.png$/)
+    }
     expect(screen.queryByRole('heading', { name: /选择起始道具/ })).toBeNull()
     expect(screen.getByRole('button', { name: /当前道具/ })).toBeTruthy()
   })

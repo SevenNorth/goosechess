@@ -1,6 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Bot,
   Check,
   Crown,
   Dices,
@@ -12,7 +11,6 @@ import {
   SlidersHorizontal,
   Shield,
   Sparkles,
-  UserRound,
   VolumeX,
   X,
 } from 'lucide-react'
@@ -541,13 +539,14 @@ function GameSession({ mode, seed, localDisplayName, localSkinId, onRestart, onE
 
       <section className="floating-players" aria-label="参赛棋手">
         {hudPlayers.map((player) => {
+          const skin = playerSkinOption(player.skinId)
           const playerStatus = player.playerId === 'local-player' ? itemById(player.itemId)?.title ?? '无道具' : null
           const playerPausePresentation = pauseTurnPresentation?.playerId === player.playerId ? pauseTurnPresentation : undefined
           const playerSkipTurns = presentedSkipTurns[player.playerId] ?? player.skipTurns
           const progress = Math.round(player.spaceId / finalSpaceId * 100)
           return (
-            <article className={player.playerId === presentedActivePlayerId ? 'hud-player is-active' : 'hud-player'} key={player.playerId} style={{ '--seat-color': COLOR_HEX[player.colorId] } as React.CSSProperties}>
-              <span className="hud-avatar">{player.controller === 'local' ? <UserRound /> : <Bot />}</span>
+            <article className={player.playerId === presentedActivePlayerId ? 'hud-player is-active' : 'hud-player'} key={player.playerId} style={{ '--seat-color': COLOR_HEX[player.colorId], '--avatar-color': skin.color } as React.CSSProperties}>
+              <span className="hud-avatar"><img src={skin.imageSrc} alt={`${player.displayName}的棋子头像`} /></span>
               <div className="hud-player-copy">
                 <div><strong title={player.displayName}>{player.displayName}</strong><span>{player.spaceId} / {finalSpaceId}</span></div>
                 <div className="hud-progress"><i style={{ width: `${progress}%` }} /></div>
