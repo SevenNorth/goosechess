@@ -32,6 +32,7 @@ import type { PresentationStage } from './game-client/machine/presentation-machi
 import type { ThreeDiceRollerHandle } from './dice/ThreeDiceRoller'
 import { ItemUsePresentation, type ItemUsePresentationData } from './items/ItemUsePresentation'
 import { PauseTurnIndicator, type PauseTurnPresentation } from './hud/PauseTurnIndicator'
+import { PauseTurnOverlay } from './hud/PauseTurnOverlay'
 
 const ThreeDiceRoller = lazy(() => import('./dice/ThreeDiceRoller').then((module) => ({ default: module.ThreeDiceRoller })))
 
@@ -459,6 +460,9 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
   const activeLandmark = GAME_DEFINITION.map.landmarks.find((landmark) => landmark.id === activeSpace?.landmarkId)
   const finalSpaceId = GAME_DEFINITION.map.spaces.at(-1)?.index ?? 65
   const standings = [...snapshot.state.players].sort((left, right) => right.spaceId - left.spaceId || left.seatIndex - right.seatIndex)
+  const pausedTurnPlayer = pauseTurnPresentation
+    ? snapshot.state.players.find((player) => player.playerId === pauseTurnPresentation.playerId)
+    : undefined
   const provisionalOrder = snapshot.state.turnOrderGroups.flat()
   const actionOrder = new Map(provisionalOrder.map((playerId, index) => [playerId, index]))
   const hudPlayers = [...snapshot.state.players].sort((left, right) => {
@@ -500,6 +504,15 @@ function GameSession({ mode, seed, onRestart, onExit, animationSpeed, cameraMoti
       </Suspense>
       {itemUsePresentation && (
         <ItemUsePresentation key={itemUsePresentation.id} presentation={itemUsePresentation} onComplete={finishItemUse} />
+      )}
+      {pauseTurnPresentation && pausedTurnPlayer && (
+        <PauseTurnOverlay
+          key={pauseTurnPresentation.id}
+          playerName={pausedTurnPlayer.displayName}
+          playerColor={COLOR_HEX[pausedTurnPlayer.colorId]}
+          turns={presentedSkipTurns[pausedTurnPlayer.playerId] ?? pauseTurnPresentation.previousTurns}
+          presentation={pauseTurnPresentation}
+        />
       )}
 
       <header className="stage5-topbar">
