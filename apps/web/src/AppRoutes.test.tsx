@@ -21,6 +21,7 @@ describe('客户端路由', () => {
     render(<MemoryRouter initialEntries={['/']}><AppRoutes /><LocationProbe /></MemoryRouter>)
 
     expect(screen.getByRole('heading', { name: '配置本局棋手' })).toBeTruthy()
+    expect(screen.getByText('2–4 人私人房间')).toBeTruthy()
     expect(screen.getByRole('radio', { name: /1v1/ }).getAttribute('aria-checked')).toBe('true')
     expect(screen.getByRole('img', { name: '妮露棋子预览' }).getAttribute('src')).toBe('/assets/tokens/characters/nilou.png')
 

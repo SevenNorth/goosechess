@@ -180,7 +180,7 @@ export function PreparationPage() {
         <section className="online-room-entry" aria-labelledby="online-room-title">
           <header>
             <span><DoorOpen /> 在线房间</span>
-            <small>双人技术样片</small>
+            <small>2–4 人私人房间</small>
           </header>
           <p>创建私人房间，或输入另一位玩家分享的 6 位房间码。</p>
           <div className="online-room-actions">

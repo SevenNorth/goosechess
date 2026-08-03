@@ -8,7 +8,7 @@ import type {
   SkinContentDefinition,
 } from './types.js'
 
-export const CONTENT_VERSION = '2026.08.03.1'
+export const CONTENT_VERSION = '2026.08.03.2'
 
 export const LANDMARK_DEFINITIONS = [
   { id: 'repair-room', title: '维修室', spaceIds: [0] },
@@ -182,7 +182,7 @@ export const TECHNICAL_SAMPLE_GAME_DEFINITION = {
   ruleset: {
     ...DEFAULT_RULESET,
     id: 'online-sample-race',
-    playerCount: { min: 2, max: 2 },
+    playerCount: { min: 2, max: 4 },
     mapIds: [TEST_MAP_DEFINITION.id],
   },
   events: EVENTS,

@@ -1,8 +1,8 @@
 {
   "protocol": {
-    "version": 6,
+    "version": 7,
     "files": {
-      "packages/game-protocol/src/schemas.ts": "810ad7b1949c2bd51e016361cc105be9b18ddfbf1a6ed70c7f593ac3a28f1cb2"
+      "packages/game-protocol/src/schemas.ts": "c5e7c14a76c9521e595dd345648c387ccc04cca52f251591189661d87adfe3c6"
     }
   },
   "rules": {
@@ -13,9 +13,9 @@
     }
   },
   "content": {
-    "version": "2026.08.03.1",
+    "version": "2026.08.03.2",
     "files": {
-      "packages/game-content/src/default-content.ts": "423d2f9938f8dc4885e31462c970d204d47850bdfd789171835048a439564f9d",
+      "packages/game-content/src/default-content.ts": "abcec793e777c310a6a21ce04557c0d9315891d70f9e5a0f5c61577638e96b3d",
       "packages/game-content/src/legacy-content.ts": "1fb3811f7f1f49984720237f196ae090aed7aa6f48b76b0e03bd51f886e22cb6"
     }
   }

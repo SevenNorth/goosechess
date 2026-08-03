@@ -13,6 +13,7 @@
   },
   "references": [
     { "path": "../../packages/game-core" },
+    { "path": "../../packages/game-ai" },
     { "path": "../../packages/game-protocol" },
     { "path": "../../packages/game-content" }
   ],

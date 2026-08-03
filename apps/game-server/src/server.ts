@@ -141,6 +141,16 @@ export function createGameServer(options: GameServerOptions = {}) {
           store.sync(roomCode, recoveryToken)
           return
         }
+        if (parsed.data.type === 'lobby-command') {
+          const result = store.submitLobby(roomCode, recoveryToken, parsed.data.command)
+          socketSend(socket, {
+            type: 'lobby-result',
+            requestId: parsed.data.requestId,
+            ok: result.ok,
+            ...(result.error ? { error: result.error } : {}),
+          })
+          return
+        }
         const result = await store.submit(roomCode, recoveryToken, parsed.data.envelope)
         socketSend(socket, {
           type: 'command-result',
