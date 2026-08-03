@@ -37,6 +37,8 @@ interface OnlineMatchStageProps {
   readonly legalCommands: readonly GameCommand[]
   readonly pendingUpdates: readonly OnlineQueuedUpdate[]
   readonly connection: 'connecting' | 'connected' | 'disconnected'
+  readonly presenceNow: number
+  readonly ownReconnectDeadlineAt: number | null
   readonly commandBusy: boolean
   readonly notice: string
   readonly onSubmit: (command: GameCommand) => void
@@ -105,6 +107,8 @@ export function OnlineMatchStage({
   legalCommands,
   pendingUpdates,
   connection,
+  presenceNow,
+  ownReconnectDeadlineAt,
   commandBusy,
   notice,
   onSubmit,
@@ -302,6 +306,14 @@ export function OnlineMatchStage({
   const pausedPlayer = pausePresentation
     ? presentedSnapshot.state.players.find((player) => player.playerId === pausePresentation.playerId)
     : undefined
+  const ownReconnectRemaining = ownReconnectDeadlineAt === null
+    ? null
+    : Math.max(0, Math.ceil((ownReconnectDeadlineAt - presenceNow) / 1_000))
+  const connectionLabel = connection === 'connected'
+    ? '已连接'
+    : ownReconnectRemaining !== null && ownReconnectRemaining > 0
+      ? '重连中 · ' + ownReconnectRemaining + ' 秒'
+      : connection === 'connecting' ? '连接中' : '重连中'
   const standings = [...presentedSnapshot.state.players].sort(
     (left, right) => right.spaceId - left.spaceId || left.seatIndex - right.seatIndex,
   )
@@ -344,7 +356,7 @@ export function OnlineMatchStage({
         <div className="stage5-brand"><span>鹅</span><div><strong>鹅了个棋</strong><small>奥普港 65 格联机 · 房间 {room.roomCode}</small></div></div>
         <div className="online-match-connection">
           {connection === 'connected' ? <Wifi /> : <WifiOff />}
-          <span>{connection === 'connected' ? '已连接' : connection === 'connecting' ? '连接中' : '重连中'}</span>
+          <span>{connectionLabel}</span>
           <Link className="icon-command" to="/" title="返回准备" aria-label="返回准备"><ArrowLeft /></Link>
         </div>
       </header>
@@ -353,12 +365,23 @@ export function OnlineMatchStage({
         {hudPlayers.map((player) => {
           const skin = playerSkinOption(player.skinId)
           const progress = Math.round(player.spaceId / finalSpaceId * 100)
+          const roomPlayer = room.players.find((candidate) => candidate.playerId === player.playerId)
+          const locallyDisconnected = player.playerId === viewerPlayerId && connection !== 'connected'
+          const reconnectDeadlineAt = locallyDisconnected ? ownReconnectDeadlineAt : roomPlayer?.reconnectDeadlineAt ?? null
+          const reconnectRemaining = reconnectDeadlineAt === null
+            ? null
+            : Math.max(0, Math.ceil((reconnectDeadlineAt - presenceNow) / 1_000))
           return (
             <article className={player.playerId === activePlayer.playerId ? 'hud-player is-active' : 'hud-player'} key={player.playerId} style={{ '--seat-color': COLOR_HEX[player.colorId], '--avatar-color': skin.color } as CSSProperties}>
               <span className="hud-avatar"><img src={skin.imageSrc} alt={`${player.displayName}的棋子头像`} /></span>
               <div className="hud-player-copy">
                 <div><strong title={player.displayName}>{player.displayName}{player.playerId === viewerPlayerId ? '（你）' : ''}</strong><span>{player.spaceId} / {finalSpaceId}</span></div>
                 <div className="hud-progress"><i style={{ width: `${progress}%` }} /></div>
+                {roomPlayer && (!roomPlayer.connected || locallyDisconnected) && (
+                  <small className="hud-reconnect-status">
+                    {reconnectRemaining !== null && reconnectRemaining > 0 ? '重连中 · ' + reconnectRemaining + ' 秒' : '暂时离线'}
+                  </small>
+                )}
                 {player.playerId === viewerPlayerId && <small>{ownItem?.title ?? '无道具'}</small>}
                 <PauseTurnIndicator playerName={player.displayName} turns={player.skipTurns} />
               </div>

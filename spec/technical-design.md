@@ -48,11 +48,11 @@ Vite 负责开发服务器和浏览器静态资源构建，不作为生产后端
 
 ### 2.2 联机房间协议
 
-协议 v8 在私人房间协议上增加按查看者生成的 `legalCommands`，并将在线 authority 切换为完整 `aup-port-65` 定义。HTTP 只创建或加入房间；WebSocket 接受 `CommandEnvelope`、同步请求和带 `requestId` 的大厅命令。大厅命令覆盖准备、容量、地图、添加 AI、移除成员和开始游戏。服务端对每个房间串行调用共享 `LocalAuthority`，重复 `commandId` 返回原结果，旧 `expectedRevision` 返回 `stale_revision`；AI 决策也进入同一房间命令队列。浏览器只从每条 `room-state` 或 `authority-update` 的合法命令生成控件，不在在线 UI 中复制行动权、目标或阶段判断。
+协议 v9 在 v8 的按查看者 `legalCommands` 基础上，为房间增加 `reconnectGraceMs`，并为真人成员增加 `reconnectDeadlineAt`；在线 authority 继续使用完整 `aup-port-65` 定义。HTTP 只创建或加入房间；WebSocket 接受 `CommandEnvelope`、同步请求和带 `requestId` 的大厅命令。大厅命令覆盖准备、容量、地图、添加 AI、移除成员和开始游戏。服务端对每个房间串行调用共享 `LocalAuthority`，重复 `commandId` 返回原结果，旧 `expectedRevision` 返回 `stale_revision`；AI 决策也进入同一房间命令队列。浏览器只从每条 `room-state` 或 `authority-update` 的合法命令生成控件，不在在线 UI 中复制行动权、目标或阶段判断。
 
 发给浏览器的在线快照是按查看者投影后的合法 `GameSnapshot`：其他玩家的持有道具为 `null`，非本人回合不下发开局道具候选和待确认道具，相关私有领域事件不广播，真实 RNG 种子与游标不下发。该投影只用于显示和恢复客户端画面，服务端始终保留完整权威快照。
 
-在线客户端分别保存最新权威快照和当前表现快照。前者收到消息后立即推进，并用于下一条命令的 `expectedRevision`；后者按 `AuthorityUpdate` 顺序交给现有 `BoardScene.playUpdate`，复用 3D 骰子、路线、棋子移动、道具撕裂和暂停沙漏，动画结束后才更新 HUD、行动者和轮次。失焦、异常或 12 秒超时会同步到该更新的权威快照并继续消费队列，不能让本地表现阻塞服务端或其他客户端。
+在线客户端分别保存最新权威快照和当前表现快照。前者收到消息后立即推进，并用于下一条命令的 `expectedRevision`；后者按 `AuthorityUpdate` 顺序交给现有 `BoardScene.playUpdate`，复用 3D 骰子、路线、棋子移动、道具撕裂和暂停沙漏，动画结束后才更新 HUD、行动者和轮次。失焦、异常或 12 秒超时会同步到该更新的权威快照并继续消费队列，不能让本地表现阻塞服务端或其他客户端。最后一条连接断开时服务端保留座位并开始 30 秒宽限；房主超时后只转交给最早入座且在线的真人。重连收到 `room-state` 后，客户端清空尚未播放的旧表现更新，直接用最新投影快照重建棋盘。
 
 ## 3. 模块边界
 

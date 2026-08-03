@@ -124,10 +124,11 @@ describe('game protocol', () => {
         hostPlayerId: 'player-1',
         mapId: 'aup-port-65',
         maxPlayers: 4,
+        reconnectGraceMs: 30_000,
         status: 'waiting' as const,
         players: [{
           playerId: 'player-1', displayName: '玩家', skinId: 'goose-white', seatIndex: 0,
-          controller: 'remote' as const, connected: true, ready: false,
+          controller: 'remote' as const, connected: true, reconnectDeadlineAt: null, ready: false,
         }],
       },
       legalCommands: [{ type: 'request-roll' as const }],

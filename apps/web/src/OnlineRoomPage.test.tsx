@@ -2,8 +2,21 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import type { RoomPlayer } from '@goose-chess/game-protocol'
+import { DEFAULT_GAME_DEFINITION } from '@goose-chess/game-content'
+import { LocalAuthority, type RoomPlayer } from '@goose-chess/game-protocol'
 import { OnlineRoomPage } from './OnlineRoomPage'
+
+vi.mock('./OnlineMatchStage', () => ({
+  OnlineMatchStage: ({ snapshot, pendingUpdates, room }: {
+    snapshot: { revision: number }
+    pendingUpdates: readonly unknown[]
+    room: { hostPlayerId: string }
+  }) => (
+    <div data-testid="mock-online-stage">
+      revision:{snapshot.revision} queue:{pendingUpdates.length} host:{room.hostPlayerId}
+    </div>
+  ),
+}))
 
 interface SocketListenerEvent {
   readonly data?: string
@@ -46,6 +59,18 @@ const host: RoomPlayer = {
   seatIndex: 0,
   controller: 'remote',
   connected: true,
+  reconnectDeadlineAt: null,
+  ready: false,
+}
+
+const guest: RoomPlayer = {
+  playerId: 'player-guest',
+  displayName: '晚班水手',
+  skinId: 'goose-blue',
+  seatIndex: 1,
+  controller: 'remote',
+  connected: true,
+  reconnectDeadlineAt: null,
   ready: false,
 }
 
@@ -56,6 +81,7 @@ const ai: RoomPlayer = {
   seatIndex: 1,
   controller: 'ai',
   connected: true,
+  reconnectDeadlineAt: null,
   ready: true,
 }
 
@@ -63,12 +89,13 @@ function roomState(players: RoomPlayer[] = [host]) {
   return {
     type: 'room-state' as const,
     room: {
-      schemaVersion: 8 as const,
+      schemaVersion: 9 as const,
       roomCode: 'ABC123',
       gameId: 'game-room',
       hostPlayerId: host.playerId,
       mapId: 'aup-port-65',
       maxPlayers: 4,
+      reconnectGraceMs: 30_000,
       status: 'waiting' as const,
       players,
     },
@@ -82,6 +109,7 @@ describe('在线房间大厅', () => {
     window.sessionStorage.clear()
     FakeWebSocket.instances.length = 0
     vi.unstubAllGlobals()
+    vi.restoreAllMocks()
   })
 
   it('房主可以添加电脑、准备并手动开始对局', () => {
@@ -127,4 +155,134 @@ describe('在线房间大厅', () => {
     fireEvent.click(startButton)
     expect(socket.sent.at(-1)).toMatchObject({ type: 'lobby-command', command: { type: 'start-game' } })
   })
+
+
+
+  it('当前连接断开时连接栏和本人卡片使用同一本地倒计时', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_000)
+    window.sessionStorage.setItem('goose-chess-online-room-v1:ABC123', JSON.stringify({
+      playerId: host.playerId,
+      recoveryToken: 'recovery-host',
+    }))
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+
+    render(
+      <MemoryRouter initialEntries={['/room/ABC123']}>
+        <Routes><Route path="/room/:roomCode" element={<OnlineRoomPage />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    const socket = FakeWebSocket.instances[0]
+    act(() => {
+      socket.emit('open')
+      socket.emit('message', roomState())
+      socket.emit('close')
+    })
+
+    expect(screen.getAllByText('重连中 · 30 秒')).toHaveLength(2)
+  })
+
+  it('显示离线玩家的重连倒计时', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_000)
+    window.sessionStorage.setItem('goose-chess-online-room-v1:ABC123', JSON.stringify({
+      playerId: host.playerId,
+      recoveryToken: 'recovery-host',
+    }))
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+
+    render(
+      <MemoryRouter initialEntries={['/room/ABC123']}>
+        <Routes><Route path="/room/:roomCode" element={<OnlineRoomPage />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    const socket = FakeWebSocket.instances[0]
+    act(() => {
+      socket.emit('open')
+      socket.emit('message', roomState([host, { ...guest, connected: false, reconnectDeadlineAt: 6_000 }]))
+    })
+
+    expect(screen.getByText('重连中 · 5 秒')).toBeTruthy()
+  })
+
+  it('房主转移后立即撤下原房主的管理操作', () => {
+    window.sessionStorage.setItem('goose-chess-online-room-v1:ABC123', JSON.stringify({
+      playerId: host.playerId,
+      recoveryToken: 'recovery-host',
+    }))
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+
+    render(
+      <MemoryRouter initialEntries={['/room/ABC123']}>
+        <Routes><Route path="/room/:roomCode" element={<OnlineRoomPage />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    const socket = FakeWebSocket.instances[0]
+    act(() => {
+      socket.emit('open')
+      socket.emit('message', roomState([host, guest]))
+    })
+    expect(screen.getByRole('button', { name: '添加电脑' })).toBeTruthy()
+
+    const transferred = roomState([host, guest])
+    act(() => socket.emit('message', {
+      ...transferred,
+      room: { ...transferred.room, hostPlayerId: guest.playerId },
+    }))
+
+    expect(screen.queryByRole('button', { name: '添加电脑' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '开始对局' })).toBeNull()
+  })
+
+  it('权威房间快照替换旧表现队列并直接恢复最新修订', () => {
+    window.sessionStorage.setItem('goose-chess-online-room-v1:ABC123', JSON.stringify({
+      playerId: host.playerId,
+      recoveryToken: 'recovery-host',
+    }))
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    const authority = LocalAuthority.create({
+      gameId: 'game-room',
+      definition: DEFAULT_GAME_DEFINITION,
+      seed: 20260803,
+      participants: [
+        { playerId: host.playerId, displayName: host.displayName, skinId: host.skinId, seatIndex: 0, controller: 'remote', colorId: 'pink' },
+        { playerId: guest.playerId, displayName: guest.displayName, skinId: guest.skinId, seatIndex: 1, controller: 'remote', colorId: 'blue' },
+      ],
+    })
+    const initialSnapshot = authority.getSnapshot()
+    const playingRoom = { ...roomState([host, guest]).room, status: 'playing' as const }
+
+    render(
+      <MemoryRouter initialEntries={['/room/ABC123']}>
+        <Routes><Route path="/room/:roomCode" element={<OnlineRoomPage />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    const socket = FakeWebSocket.instances[0]
+    act(() => {
+      socket.emit('open')
+      socket.emit('message', {
+        type: 'room-state',
+        room: playingRoom,
+        snapshot: initialSnapshot,
+        legalCommands: [],
+      })
+      socket.emit('message', {
+        type: 'authority-update',
+        update: { snapshot: { ...initialSnapshot, revision: 1 }, events: [], cues: [] },
+        legalCommands: [],
+      })
+    })
+    expect(screen.getByTestId('mock-online-stage').textContent).toContain('revision:1 queue:1')
+
+    act(() => socket.emit('message', {
+      type: 'room-state',
+      room: playingRoom,
+      snapshot: { ...initialSnapshot, revision: 2 },
+      legalCommands: [],
+    }))
+    expect(screen.getByTestId('mock-online-stage').textContent).toContain('revision:2 queue:0')
+  })
+
 })

@@ -8,16 +8,17 @@ import { LocalAuthority, PROTOCOL_SCHEMA_VERSION, type GameCommand, type RoomSta
 import { OnlineMatchStage, type OnlineQueuedUpdate } from './OnlineMatchStage'
 
 const room: RoomState = {
-  schemaVersion: 8,
+  schemaVersion: 9,
   roomCode: 'ABC123',
   gameId: 'online-abc123',
   hostPlayerId: 'remote-host',
   mapId: 'aup-port-65',
   maxPlayers: 2,
+  reconnectGraceMs: 30_000,
   status: 'playing',
   players: [
-    { playerId: 'remote-host', displayName: '港口房主', skinId: 'goose-white', seatIndex: 0, controller: 'remote', connected: true, ready: true },
-    { playerId: 'ai-one', displayName: '晚班水手', skinId: 'goose-yellow', seatIndex: 1, controller: 'ai', connected: true, ready: true },
+    { playerId: 'remote-host', displayName: '港口房主', skinId: 'goose-white', seatIndex: 0, controller: 'remote', connected: true, reconnectDeadlineAt: null, ready: true },
+    { playerId: 'ai-one', displayName: '晚班水手', skinId: 'goose-yellow', seatIndex: 1, controller: 'ai', connected: true, reconnectDeadlineAt: null, ready: true },
   ],
 }
 
@@ -47,6 +48,8 @@ describe('在线完整棋盘', () => {
           legalCommands={legalCommands}
           pendingUpdates={[]}
           connection="connected"
+          presenceNow={Date.now()}
+          ownReconnectDeadlineAt={null}
           commandBusy={false}
           notice=""
           onSubmit={onSubmit}
@@ -62,6 +65,48 @@ describe('在线完整棋盘', () => {
     fireEvent.click(roll)
     expect(onSubmit).toHaveBeenCalledWith({ type: 'request-order-roll' })
   })
+
+
+  it('在对局 HUD 显示其他玩家的重连倒计时', async () => {
+    const authority = LocalAuthority.create({
+      gameId: room.gameId,
+      definition: DEFAULT_GAME_DEFINITION,
+      seed: 20260803,
+      participants: [
+        { playerId: 'remote-host', displayName: '港口房主', skinId: 'goose-white', seatIndex: 0, controller: 'remote', colorId: 'pink' },
+        { playerId: 'ai-one', displayName: '晚班水手', skinId: 'goose-yellow', seatIndex: 1, controller: 'ai', colorId: 'blue' },
+      ],
+    })
+    const reconnectingRoom: RoomState = {
+      ...room,
+      players: [
+        room.players[0],
+        { ...room.players[1], controller: 'remote', connected: false, reconnectDeadlineAt: 6_000 },
+      ],
+    }
+
+    render(
+      <MemoryRouter>
+        <OnlineMatchStage
+          room={reconnectingRoom}
+          snapshot={authority.getSnapshot()}
+          viewerPlayerId="remote-host"
+          legalCommands={[]}
+          pendingUpdates={[]}
+          connection="connected"
+          presenceNow={1_000}
+          ownReconnectDeadlineAt={null}
+          commandBusy={false}
+          notice=""
+          onSubmit={() => undefined}
+          onPresented={() => undefined}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('重连中 · 5 秒')).toBeTruthy()
+  })
+
   it('在 Strict Mode 重新挂载后消费随后到达的权威更新', async () => {
     const authority = LocalAuthority.create({
       gameId: room.gameId,
@@ -84,6 +129,8 @@ describe('在线完整棋盘', () => {
             legalCommands={[]}
             pendingUpdates={pendingUpdates}
             connection="connected"
+            presenceNow={Date.now()}
+            ownReconnectDeadlineAt={null}
             commandBusy={false}
             notice=""
             onSubmit={() => undefined}
@@ -165,6 +212,8 @@ describe('在线完整棋盘', () => {
             legalCommands={[]}
             pendingUpdates={pending}
             connection="connected"
+            presenceNow={Date.now()}
+            ownReconnectDeadlineAt={null}
             commandBusy={false}
             notice=""
             onSubmit={() => undefined}

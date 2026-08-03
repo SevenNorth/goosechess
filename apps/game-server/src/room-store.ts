@@ -32,6 +32,8 @@ interface RoomMember extends RoomProfile {
   seatIndex: number
   ready: boolean
   connections: number
+  reconnectDeadlineAt: number | null
+  reconnectTimer: ReturnType<typeof setTimeout> | null
 }
 
 type Subscriber = (message: ServerRoomMessage) => void
@@ -58,6 +60,10 @@ const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const COLOR_IDS = ['pink', 'blue', 'gold', 'teal'] as const
 const SUPPORTED_MAP_IDS = [DEFAULT_GAME_DEFINITION.map.id] as const
 const aiStrategy = createGooseAiStrategy()
+
+export interface RoomStoreOptions {
+  readonly disconnectGraceMs?: number
+}
 
 function createRoomCode() {
   return Array.from({ length: 6 }, () => ROOM_ALPHABET[randomInt(ROOM_ALPHABET.length)]).join('')
@@ -110,6 +116,14 @@ function aiDecisionSeed(snapshot: GameSnapshot, playerId: string) {
 
 export class RoomStore {
   private readonly rooms = new Map<string, RoomSession>()
+  private readonly disconnectGraceMs: number
+
+  constructor(options: RoomStoreOptions = {}) {
+    this.disconnectGraceMs = options.disconnectGraceMs ?? 30_000
+    if (!Number.isInteger(this.disconnectGraceMs) || this.disconnectGraceMs <= 0) {
+      throw new Error('disconnectGraceMs must be a positive integer.')
+    }
+  }
 
   createRoom(profile: RoomProfile): RoomJoinResponse {
     let roomCode = createRoomCode()
@@ -153,13 +167,19 @@ export class RoomStore {
     memberSubscribers.add(subscriber)
     room.subscribers.set(member.playerId, memberSubscribers)
     member.connections += 1
+    this.cancelDisconnectTimer(member)
+    this.transferExpiredHost(room)
     this.sendRoomState(room, member, subscriber)
     this.broadcastRoomState(room)
 
+    let subscribed = true
     return () => {
+      if (!subscribed) return
+      subscribed = false
       memberSubscribers.delete(subscriber)
       member.connections = Math.max(0, member.connections - 1)
       if (!memberSubscribers.size) room.subscribers.delete(member.playerId)
+      if (member.connections === 0) this.beginDisconnectGrace(room, member)
       this.broadcastRoomState(room)
     }
   }
@@ -273,6 +293,8 @@ export class RoomStore {
       seatIndex,
       ready: false,
       connections: 0,
+      reconnectDeadlineAt: null,
+      reconnectTimer: null,
     }
   }
 
@@ -295,6 +317,8 @@ export class RoomStore {
       seatIndex: room.members.length,
       ready: true,
       connections: 0,
+      reconnectDeadlineAt: null,
+      reconnectTimer: null,
     }
   }
 
@@ -372,6 +396,7 @@ export class RoomStore {
       hostPlayerId: room.hostPlayerId,
       mapId: room.mapId,
       maxPlayers: room.maxPlayers,
+      reconnectGraceMs: this.disconnectGraceMs,
       status: !snapshot ? 'waiting' : snapshot.state.phase === 'game-over' ? 'finished' : 'playing',
       players: room.members.map((member) => ({
         playerId: member.playerId,
@@ -380,6 +405,7 @@ export class RoomStore {
         seatIndex: member.seatIndex,
         controller: member.controller,
         connected: member.controller === 'ai' || member.connections > 0,
+        reconnectDeadlineAt: member.controller === 'remote' ? member.reconnectDeadlineAt : null,
         ready: member.ready,
       })),
     })
@@ -409,6 +435,7 @@ export class RoomStore {
   }
 
   private notifyRemoved(room: RoomSession, member: RoomMember) {
+    this.cancelDisconnectTimer(member)
     const subscribers = room.subscribers.get(member.playerId)
     subscribers?.forEach((subscriber) => subscriber({
       type: 'room-error',
@@ -422,6 +449,42 @@ export class RoomStore {
     room.members.forEach((member, index) => {
       member.seatIndex = index
     })
+  }
+
+  private beginDisconnectGrace(room: RoomSession, member: RoomMember) {
+    if (member.controller !== 'remote' || member.reconnectTimer) return
+    member.reconnectDeadlineAt = Date.now() + this.disconnectGraceMs
+    member.reconnectTimer = setTimeout(() => {
+      member.reconnectTimer = null
+      if (member.connections > 0) return
+      if (room.hostPlayerId === member.playerId) {
+        this.transferExpiredHost(room)
+      } else {
+        member.reconnectDeadlineAt = null
+      }
+      this.broadcastRoomState(room)
+    }, this.disconnectGraceMs)
+  }
+
+  private cancelDisconnectTimer(member: RoomMember) {
+    if (member.reconnectTimer) clearTimeout(member.reconnectTimer)
+    member.reconnectTimer = null
+    member.reconnectDeadlineAt = null
+  }
+
+  private transferExpiredHost(room: RoomSession) {
+    const host = room.members.find((member) => member.playerId === room.hostPlayerId)
+    if (!host || host.connections > 0 || host.reconnectDeadlineAt === null || host.reconnectDeadlineAt > Date.now()) return
+    const successor = room.members
+      .filter((member) => member.controller === 'remote' && member.connections > 0 && member.playerId !== host.playerId)
+      .sort((left, right) => left.seatIndex - right.seatIndex)[0]
+    if (!successor) return
+    room.hostPlayerId = successor.playerId
+    this.cancelDisconnectTimer(host)
+  }
+
+  close() {
+    this.rooms.forEach((room) => room.members.forEach((member) => this.cancelDisconnectTimer(member)))
   }
 
   private joinResponse(room: RoomSession, member: RoomMember) {

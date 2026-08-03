@@ -48,10 +48,11 @@ export interface GameServerOptions {
   readonly host?: string
   readonly port?: number
   readonly store?: RoomStore
+  readonly disconnectGraceMs?: number
 }
 
 export function createGameServer(options: GameServerOptions = {}) {
-  const store = options.store ?? new RoomStore()
+  const store = options.store ?? new RoomStore({ disconnectGraceMs: options.disconnectGraceMs })
   const httpServer = createServer(async (request, response) => {
     response.setHeader('Access-Control-Allow-Origin', '*')
     if (request.method === 'OPTIONS') {
@@ -182,6 +183,7 @@ export function createGameServer(options: GameServerOptions = {}) {
     async close() {
       sockets.clients.forEach((socket) => socket.close())
       await new Promise<void>((resolve, reject) => httpServer.close((error) => error ? reject(error) : resolve()))
+      store.close()
     },
   }
 }

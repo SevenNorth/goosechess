@@ -22,11 +22,31 @@ import {
   type GameCommand,
   type GameSnapshot,
   type LobbyCommand,
+  type RoomPlayer,
   type RoomState,
 } from '@goose-chess/game-protocol'
 import { loadOnlineIdentity, roomSocketUrl } from './online-room-client'
 import { playerSkinOption } from './player-profile'
 import { OnlineMatchStage, type OnlineQueuedUpdate } from './OnlineMatchStage'
+
+function reconnectSeconds(deadlineAt: number | null, now: number) {
+  return deadlineAt === null ? null : Math.max(0, Math.ceil((deadlineAt - now) / 1_000))
+}
+
+function playerPresenceLabel(
+  player: RoomPlayer,
+  viewerPlayerId: string,
+  connection: 'connecting' | 'connected' | 'disconnected',
+  ownReconnectDeadlineAt: number | null,
+  now: number,
+) {
+  if (player.controller === 'ai') return '电脑棋手'
+  const locallyDisconnected = player.playerId === viewerPlayerId && connection !== 'connected'
+  if (player.connected && !locallyDisconnected) return '在线'
+  const deadlineAt = locallyDisconnected ? ownReconnectDeadlineAt : player.reconnectDeadlineAt
+  const remaining = reconnectSeconds(deadlineAt, now)
+  return remaining !== null && remaining > 0 ? '重连中 · ' + remaining + ' 秒' : '暂时离线'
+}
 
 interface RoomRosterProps {
   readonly room: RoomState
@@ -34,10 +54,13 @@ interface RoomRosterProps {
   readonly viewerPlayerId: string
   readonly canManage: boolean
   readonly busy: boolean
+  readonly connection: 'connecting' | 'connected' | 'disconnected'
+  readonly now: number
+  readonly ownReconnectDeadlineAt: number | null
   readonly onRemove: (playerId: string) => void
 }
 
-function RoomRoster({ room, snapshot, viewerPlayerId, canManage, busy, onRemove }: RoomRosterProps) {
+function RoomRoster({ room, snapshot, viewerPlayerId, canManage, busy, connection, now, ownReconnectDeadlineAt, onRemove }: RoomRosterProps) {
   return (
     <aside className="online-player-list" aria-label="房间玩家">
       <header><strong>房间棋手</strong><span>{room.players.length}/{room.maxPlayers}</span></header>
@@ -46,6 +69,7 @@ function RoomRoster({ room, snapshot, viewerPlayerId, canManage, busy, onRemove 
         const position = snapshot?.state.players.find((candidate) => candidate.playerId === player.playerId)
         const isHost = player.playerId === room.hostPlayerId
         const removable = canManage && player.playerId !== viewerPlayerId && (player.controller === 'ai' || !player.ready)
+        const presence = playerPresenceLabel(player, viewerPlayerId, connection, ownReconnectDeadlineAt, now)
         return (
           <article
             className={[
@@ -59,8 +83,8 @@ function RoomRoster({ room, snapshot, viewerPlayerId, canManage, busy, onRemove 
             </span>
             <div>
               <strong>{player.displayName}{player.playerId === viewerPlayerId ? '（你）' : ''}</strong>
-              <small>
-                {player.controller === 'ai' ? <><Bot /> 电脑棋手</> : player.connected ? '在线' : '暂时离线'}
+              <small className={player.controller === 'remote' && (!player.connected || (player.playerId === viewerPlayerId && connection !== 'connected')) ? 'is-reconnecting' : ''}>
+                {player.controller === 'ai' ? <><Bot /> {presence}</> : presence}
                 {snapshot ? ` · 第 ${position ? position.spaceId + 1 : 1} 格` : ''}
               </small>
               {room.status === 'waiting' && (
@@ -116,6 +140,28 @@ export function OnlineRoomPage() {
   const [copied, setCopied] = useState(false)
   const [lobbyBusy, setLobbyBusy] = useState(false)
   const [removed, setRemoved] = useState(false)
+  const [ownReconnectDeadlineAt, setOwnReconnectDeadlineAt] = useState<number | null>(null)
+  const [presenceNow, setPresenceNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (!room) return
+    if (connection === 'connected') {
+      setOwnReconnectDeadlineAt(null)
+      return
+    }
+    setOwnReconnectDeadlineAt((current) => current ?? Date.now() + room.reconnectGraceMs)
+  }, [connection, room])
+
+  const hasReconnectCountdown = Boolean(
+    (ownReconnectDeadlineAt !== null && ownReconnectDeadlineAt > presenceNow)
+    || room?.players.some((player) => player.reconnectDeadlineAt !== null && player.reconnectDeadlineAt > presenceNow),
+  )
+
+  useEffect(() => {
+    if (!hasReconnectCountdown) return
+    const interval = window.setInterval(() => setPresenceNow(Date.now()), 250)
+    return () => window.clearInterval(interval)
+  }, [hasReconnectCountdown])
 
   useEffect(() => {
     if (!playerId || !recoveryToken) return
@@ -210,6 +256,12 @@ export function OnlineRoomPage() {
 
   const ownRoomPlayer = room?.players.find((player) => player.playerId === identity.playerId)
   const isHost = room?.hostPlayerId === identity.playerId
+  const ownReconnectRemaining = reconnectSeconds(ownReconnectDeadlineAt, presenceNow)
+  const connectionLabel = connection === 'connected'
+    ? '已连接'
+    : ownReconnectRemaining !== null && ownReconnectRemaining > 0
+      ? '重连中 · ' + ownReconnectRemaining + ' 秒'
+      : connection === 'connecting' ? '连接中' : '重连中'
   const canStart = Boolean(
     room
     && room.players.length >= 2
@@ -261,7 +313,7 @@ export function OnlineRoomPage() {
       </button>
       <span className={`room-connection is-${connection}`}>
         {connection === 'connected' ? <Wifi /> : connection === 'connecting' ? <LoaderCircle /> : <WifiOff />}
-        {connection === 'connected' ? '已连接' : connection === 'connecting' ? '连接中' : '重连中'}
+        {connectionLabel}
       </span>
     </header>
   )
@@ -286,6 +338,9 @@ export function OnlineRoomPage() {
             viewerPlayerId={identity.playerId}
             canManage={isHost}
             busy={lobbyBusy}
+            connection={connection}
+            now={presenceNow}
+            ownReconnectDeadlineAt={ownReconnectDeadlineAt}
             onRemove={(targetPlayerId) => submitLobby({ type: 'remove-player', playerId: targetPlayerId })}
           />
 
@@ -387,6 +442,8 @@ export function OnlineRoomPage() {
       legalCommands={legalCommands}
       pendingUpdates={pendingUpdates}
       connection={connection}
+      presenceNow={presenceNow}
+      ownReconnectDeadlineAt={ownReconnectDeadlineAt}
       commandBusy={commandBusy}
       notice={notice}
       onSubmit={submit}

@@ -79,8 +79,8 @@ describe('game server private lobby and room flow', () => {
     await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()))
   })
 
-  async function setupLobby() {
-    const server = createGameServer({ port: 0 })
+  async function setupLobby(disconnectGraceMs = 30_000) {
+    const server = createGameServer({ port: 0, disconnectGraceMs })
     const address = await server.listen()
     cleanups.push(() => server.close())
     const baseUrl = `http://127.0.0.1:${address.port}`
@@ -246,14 +246,151 @@ describe('game server private lobby and room flow', () => {
     expect(rejected.type === 'command-result' && !rejected.result.ok && rejected.result.error.code).toBe('stale_revision')
   })
 
-  it('restores a started seat without exposing private state', async () => {
-    const { creator, host, socketUrl } = await startTwoPlayerRoom()
+
+  it('keeps the host seat during grace and cancels transfer after recovery', async () => {
+    const { creator, guest, socketUrl } = await setupLobby(120)
+    const host = await openInbox(socketUrl(creator))
+    const guestInbox = await openInbox(socketUrl(guest))
+    cleanups.push(async () => {
+      host.socket.terminate()
+      guestInbox.socket.terminate()
+    })
+    await host.next((message) => message.type === 'room-state')
+    await guestInbox.next((message) => message.type === 'room-state')
+
+    host.socket.terminate()
+    const disconnected = await guestInbox.next((message) => (
+      message.type === 'room-state'
+      && message.room.players.some((player) => player.playerId === creator.playerId && !player.connected)
+    ))
+    if (disconnected.type !== 'room-state') throw new Error('Missing disconnected room state.')
+    expect(disconnected.room.hostPlayerId).toBe(creator.playerId)
+    expect(disconnected.room.players.find((player) => player.playerId === creator.playerId)?.reconnectDeadlineAt).not.toBeNull()
+
+    const recovered = await openInbox(socketUrl(creator))
+    cleanups.push(async () => recovered.socket.terminate())
+    const restored = await recovered.next((message) => message.type === 'room-state')
+    expect(restored.type === 'room-state' && restored.room.hostPlayerId).toBe(creator.playerId)
+    expect(restored.type === 'room-state' && restored.room.players.find((player) => player.playerId === creator.playerId)?.reconnectDeadlineAt).toBeNull()
+
+    await new Promise((resolve) => setTimeout(resolve, 160))
+    recovered.socket.send(JSON.stringify({ type: 'sync-request' }))
+    const afterGrace = await recovered.next((message) => message.type === 'room-state')
+    expect(afterGrace.type === 'room-state' && afterGrace.room.hostPlayerId).toBe(creator.playerId)
+  })
+
+  it('transfers an expired host to the earliest connected remote and does not revert on late recovery', async () => {
+    const setup = await setupLobby(60)
+    const third = await postJson(`${setup.baseUrl}/rooms/${setup.creator.room.roomCode}/join`, {
+      displayName: '灯塔看守',
+      skinId: 'goose-yellow',
+    })
+    const host = await openInbox(setup.socketUrl(setup.creator))
+    const guest = await openInbox(setup.socketUrl(setup.guest))
+    const thirdInbox = await openInbox(setup.socketUrl(third))
+    cleanups.push(async () => {
+      host.socket.terminate()
+      guest.socket.terminate()
+      thirdInbox.socket.terminate()
+    })
+    await host.next((message) => message.type === 'room-state')
+    await guest.next((message) => message.type === 'room-state')
+    await thirdInbox.next((message) => message.type === 'room-state')
+
+    host.socket.terminate()
+    const transferred = await guest.next((message) => (
+      message.type === 'room-state' && message.room.hostPlayerId === setup.guest.playerId
+    ))
+    if (transferred.type !== 'room-state') throw new Error('Missing transferred room state.')
+    expect(transferred.room.players.map((player) => player.playerId)).toContain(setup.creator.playerId)
+    expect(transferred.room.hostPlayerId).not.toBe(third.playerId)
+
+    const recovered = await openInbox(setup.socketUrl(setup.creator))
+    cleanups.push(async () => recovered.socket.terminate())
+    const restored = await recovered.next((message) => message.type === 'room-state')
+    expect(restored.type === 'room-state' && restored.room.hostPlayerId).toBe(setup.guest.playerId)
+    expect(restored.type === 'room-state' && restored.room.players.find((player) => player.playerId === setup.creator.playerId)?.connected).toBe(true)
+  })
+
+
+
+  it('defers expired host transfer until another remote reconnects', async () => {
+    const { creator, guest, socketUrl } = await setupLobby(50)
+    const host = await openInbox(socketUrl(creator))
+    const guestInbox = await openInbox(socketUrl(guest))
+    cleanups.push(async () => {
+      host.socket.terminate()
+      guestInbox.socket.terminate()
+    })
+    await host.next((message) => message.type === 'room-state')
+    await guestInbox.next((message) => message.type === 'room-state')
+
+    host.socket.terminate()
+    guestInbox.socket.terminate()
+    await new Promise((resolve) => setTimeout(resolve, 80))
+
+    const recoveredGuest = await openInbox(socketUrl(guest))
+    cleanups.push(async () => recoveredGuest.socket.terminate())
+    const transferred = await recoveredGuest.next((message) => message.type === 'room-state')
+    if (transferred.type !== 'room-state') throw new Error('Missing restored room state.')
+    expect(transferred.room.hostPlayerId).toBe(guest.playerId)
+    expect(transferred.room.players.find((player) => player.playerId === creator.playerId)?.connected).toBe(false)
+  })
+
+  it('marks a player disconnected only after their last socket closes', async () => {
+    const { creator, guest, socketUrl } = await setupLobby(120)
+    const hostFirst = await openInbox(socketUrl(creator))
+    const hostSecond = await openInbox(socketUrl(creator))
+    const guestInbox = await openInbox(socketUrl(guest))
+    cleanups.push(async () => {
+      hostFirst.socket.terminate()
+      hostSecond.socket.terminate()
+      guestInbox.socket.terminate()
+    })
+    await hostFirst.next((message) => message.type === 'room-state')
+    await hostSecond.next((message) => message.type === 'room-state')
+    await guestInbox.next((message) => message.type === 'room-state')
+
+    hostFirst.socket.terminate()
+    const stillConnected = await guestInbox.next((message) => (
+      message.type === 'room-state'
+      && message.room.players.some((player) => player.playerId === creator.playerId && player.connected)
+    ))
+    expect(stillConnected.type === 'room-state'
+      && stillConnected.room.players.find((player) => player.playerId === creator.playerId)?.reconnectDeadlineAt).toBeNull()
+
+    hostSecond.socket.terminate()
+    const disconnected = await guestInbox.next((message) => (
+      message.type === 'room-state'
+      && message.room.players.some((player) => player.playerId === creator.playerId && !player.connected)
+    ))
+    expect(disconnected.type === 'room-state'
+      && disconnected.room.players.find((player) => player.playerId === creator.playerId)?.reconnectDeadlineAt).not.toBeNull()
+  })
+
+  it('restores the latest started state without exposing private data or stale animations', async () => {
+    const { creator, guest, host, socketUrl, initialSnapshot } = await startTwoPlayerRoom()
+    const envelope: CommandEnvelope = {
+      schemaVersion: PROTOCOL_SCHEMA_VERSION,
+      gameId: creator.room.gameId,
+      commandId: 'before-reconnect',
+      playerId: creator.playerId,
+      expectedRevision: initialSnapshot.revision,
+      command: { type: 'request-order-roll' },
+    }
+    host.socket.send(JSON.stringify({ type: 'command', envelope }))
+    const accepted = await host.next((message) => message.type === 'command-result' && message.commandId === envelope.commandId)
+    expect(accepted.type === 'command-result' && accepted.result.ok).toBe(true)
+
     host.socket.terminate()
     const recovered = await openInbox(socketUrl(creator))
     cleanups.push(async () => recovered.socket.terminate())
     const restored = await recovered.next((message) => message.type === 'room-state' && Boolean(message.snapshot))
-    expect(restored.type === 'room-state' && restored.snapshot?.revision).toBe(0)
-    expect(restored.type === 'room-state' && restored.room.players[0].playerId).toBe(creator.playerId)
-    expect(restored.type === 'room-state' && restored.snapshot?.rngSeed).toBe(0)
+    if (restored.type !== 'room-state' || !restored.snapshot) throw new Error('Missing restored snapshot.')
+    expect(restored.snapshot.revision).toBe(1)
+    expect(restored.room.players[0].playerId).toBe(creator.playerId)
+    expect(restored.snapshot.rngSeed).toBe(0)
+    expect(restored.snapshot.state.players.find((player) => player.playerId === guest.playerId)?.itemId).toBeNull()
+    expect(restored.legalCommands.some((command) => command.type === 'request-order-roll')).toBe(false)
   })
 })
