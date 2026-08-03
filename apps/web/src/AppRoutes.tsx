@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Construction, Dices } from 'lucide-react'
-import { Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Dices } from 'lucide-react'
+import { Navigate, Route, Routes, useNavigate, useSearchParams } from 'react-router-dom'
 import { OFFLINE_MATCH_MODES, type OfflineMatchMode } from '@goose-chess/game-protocol'
 import App from './App'
 import { createMatchSeed, parseSeedParameter } from './match-seed'
 import { PreparationPage } from './PreparationPage'
 import { MapPreviewPage } from './MapPreviewPage'
+import { OnlineRoomPage } from './OnlineRoomPage'
 import {
   DEFAULT_PLAYER_NICKNAME,
   DEFAULT_PLAYER_SKIN_ID,
@@ -13,22 +14,6 @@ import {
   nicknameValidationMessage,
   normalizeNickname,
 } from './player-profile'
-
-function RoomUnavailablePage() {
-  const { roomCode } = useParams()
-
-  return (
-    <main className="route-message-shell">
-      <section className="route-message">
-        <Construction />
-        <span>在线房间</span>
-        <h1>{roomCode}</h1>
-        <p>联机服务尚未开放，这个房间暂时无法加入。</p>
-        <Link className="primary-button" to="/">返回准备</Link>
-      </section>
-    </main>
-  )
-}
 
 function PlayPage() {
   const navigate = useNavigate()
@@ -63,7 +48,7 @@ export default function AppRoutes() {
         <Route path="/" element={<PreparationPage />} />
         <Route path="/play" element={<PlayPage />} />
         <Route path="/maps/:mapId" element={<MapPreviewPage />} />
-        <Route path="/room/:roomCode" element={<RoomUnavailablePage />} />
+        <Route path="/room/:roomCode" element={<OnlineRoomPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <aside className="desktop-size-warning" role="status" aria-label="桌面窗口尺寸提示">

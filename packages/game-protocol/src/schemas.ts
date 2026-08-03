@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const PROTOCOL_SCHEMA_VERSION = 5 as const
+export const PROTOCOL_SCHEMA_VERSION = 6 as const
 
 const IdSchema = z.string().trim().min(1).max(128)
 const RevisionSchema = z.number().int().nonnegative()
@@ -166,6 +166,40 @@ export const CommandResultSchema = z.discriminatedUnion('ok', [
   z.object({ ok: z.literal(false), error: AuthorityErrorSchema }).strict(),
 ])
 
+export const RoomPlayerSchema = z.object({
+  playerId: IdSchema,
+  displayName: z.string().trim().min(1).max(48),
+  skinId: IdSchema,
+  seatIndex: z.number().int().min(0).max(1),
+  connected: z.boolean(),
+}).strict()
+
+export const RoomStateSchema = z.object({
+  schemaVersion: z.literal(PROTOCOL_SCHEMA_VERSION),
+  roomCode: z.string().regex(/^[A-Z0-9]{6}$/),
+  gameId: IdSchema,
+  status: z.enum(['waiting', 'playing', 'finished']),
+  players: z.array(RoomPlayerSchema).min(1).max(2),
+}).strict()
+
+export const RoomJoinResponseSchema = z.object({
+  room: RoomStateSchema,
+  playerId: IdSchema,
+  recoveryToken: IdSchema,
+}).strict()
+
+export const ClientRoomMessageSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('command'), envelope: CommandEnvelopeSchema }).strict(),
+  z.object({ type: z.literal('sync-request') }).strict(),
+])
+
+export const ServerRoomMessageSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('room-state'), room: RoomStateSchema, snapshot: GameSnapshotSchema.optional() }).strict(),
+  z.object({ type: z.literal('command-result'), commandId: IdSchema, result: CommandResultSchema }).strict(),
+  z.object({ type: z.literal('authority-update'), update: AuthorityUpdateSchema }).strict(),
+  z.object({ type: z.literal('room-error'), code: IdSchema, message: z.string().min(1).max(256) }).strict(),
+])
+
 export type GameCommand = z.infer<typeof GameCommandSchema>
 export type CommandEnvelope = z.infer<typeof CommandEnvelopeSchema>
 export type PlayerSnapshot = z.infer<typeof PlayerSnapshotSchema>
@@ -177,3 +211,8 @@ export type AuthorityErrorCode = z.infer<typeof AuthorityErrorCodeSchema>
 export type AuthorityError = z.infer<typeof AuthorityErrorSchema>
 export type AuthorityUpdate = z.infer<typeof AuthorityUpdateSchema>
 export type CommandResult = z.infer<typeof CommandResultSchema>
+export type RoomPlayer = z.infer<typeof RoomPlayerSchema>
+export type RoomState = z.infer<typeof RoomStateSchema>
+export type RoomJoinResponse = z.infer<typeof RoomJoinResponseSchema>
+export type ClientRoomMessage = z.infer<typeof ClientRoomMessageSchema>
+export type ServerRoomMessage = z.infer<typeof ServerRoomMessageSchema>

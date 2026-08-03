@@ -29,7 +29,7 @@
 | 单元测试 | Vitest | 复用现有测试环境，支持规则模拟 |
 | 端到端测试 | Playwright | 验证 Vite SPA、Canvas、交互流程和桌面分辨率截图 |
 
-首阶段不接入 WebSocket 库或部署游戏服务器，但协议数据结构和权威端接口属于技术基线，不得留到联机阶段再反推规则层。
+离线首阶段没有运行时后端依赖。联机阶段 1 已在 `apps/game-server` 接入轻量 WebSocket 服务；协议数据结构和权威端接口仍位于共享包，离线关键路径不依赖该服务。
 
 不建议直接使用 `@pixi/react` 作为首选集成层。棋盘入口是普通 React 组件，在组件生命周期中创建和销毁 PixiJS `Application`，由场景控制器命令式管理显示对象。这样可以减少 React 生命周期和高频场景更新之间的耦合。
 
@@ -45,6 +45,12 @@ Vite 负责开发服务器和浏览器静态资源构建，不作为生产后端
 离线准备页通过独立的 `player-profile` 模块读取、校验和保存玩家档案，React 页面不直接拼装本地存储键。当前实现使用 `localStorage`；账号启用后由身份会话提供同形资料，并由服务端持久化。开始离线对局时只把已验证的显示名和 `skinId` 复制进 `OfflineMatchConfig`，规则快照不保存账号令牌、邮箱或其他身份数据。
 
 静态前端与游戏服务可以分别部署、缓存、扩缩容和回滚。React Router 的生产部署必须配置 SPA fallback，使 `/play` 和 `/room/:roomCode` 刷新时返回 `index.html`。
+
+### 2.2 联机技术样片协议
+
+协议 v6 增加房间成员、房间状态、创建/加入响应及客户端/服务端 WebSocket 消息 schema。HTTP 只创建或加入房间；WebSocket 只接受 `CommandEnvelope` 和同步请求。服务端对每个房间串行调用共享 `LocalAuthority`，重复 `commandId` 返回原结果，旧 `expectedRevision` 返回 `stale_revision`。
+
+发给浏览器的在线快照是按查看者投影后的合法 `GameSnapshot`：其他玩家的持有道具为 `null`，非本人回合不下发开局道具候选和待确认道具，相关私有领域事件不广播，真实 RNG 种子与游标不下发。该投影只用于显示和恢复客户端画面，服务端始终保留完整权威快照。
 
 ## 3. 模块边界
 

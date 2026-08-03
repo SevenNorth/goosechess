@@ -175,3 +175,17 @@ export const TEST_MAP_DEFINITION = {
     landmarkAtlas: 'assets/maps/test-harbor/landmarks.json',
   },
 } as const satisfies MapDefinition
+
+export const TECHNICAL_SAMPLE_GAME_DEFINITION = {
+  contentVersion: CONTENT_VERSION + '-online-sample',
+  map: TEST_MAP_DEFINITION,
+  ruleset: {
+    ...DEFAULT_RULESET,
+    id: 'online-sample-race',
+    playerCount: { min: 2, max: 2 },
+    mapIds: [TEST_MAP_DEFINITION.id],
+  },
+  events: EVENTS,
+  items: ITEMS,
+  skins: SKINS,
+} as const satisfies GameDefinition

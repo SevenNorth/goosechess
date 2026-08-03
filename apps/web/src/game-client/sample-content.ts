@@ -35,7 +35,7 @@ export const SAMPLE_MAP_DEFINITION: MapDefinition = {
   allowedEventIds: DEFAULT_GAME_DEFINITION.ruleset.eventPoolIds,
   blockedItemIds: [],
   assets: {
-    background: 'assets/sample/paper-board.png',
+    background: 'assets/maps/aup-port/paper-board.png',
     landmarkAtlas: 'assets/sample/landmarks.png',
   },
 }

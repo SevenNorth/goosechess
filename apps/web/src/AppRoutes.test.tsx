@@ -14,6 +14,7 @@ describe('客户端路由', () => {
   afterEach(() => {
     cleanup()
     window.localStorage.clear()
+    window.sessionStorage.clear()
   })
 
   it('根路由配置玩家档案与本局阵容后进入对局', () => {
@@ -77,10 +78,14 @@ describe('客户端路由', () => {
     expect(screen.getByRole('heading', { name: '地图不可用' })).toBeTruthy()
   })
 
-  it('在线房间路由显示未开放状态', () => {
-    render(<MemoryRouter initialEntries={['/room/test']}><AppRoutes /></MemoryRouter>)
+  it('准备页提供联机入口且无恢复凭证时阻止直接进入房间', () => {
+    const { unmount } = render(<MemoryRouter initialEntries={['/']}><AppRoutes /></MemoryRouter>)
+    expect(screen.getByRole('button', { name: '创建房间' })).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: '6 位房间码' })).toBeTruthy()
 
-    expect(screen.getByRole('heading', { name: 'test' })).toBeTruthy()
-    expect(screen.getByText('联机服务尚未开放，这个房间暂时无法加入。')).toBeTruthy()
+    unmount()
+    render(<MemoryRouter initialEntries={['/room/test12']}><AppRoutes /></MemoryRouter>)
+    expect(screen.getByRole('heading', { name: '缺少房间身份' })).toBeTruthy()
+    expect(screen.getByText(/恢复凭证只保存在当前浏览器标签页/)).toBeTruthy()
   })
 })

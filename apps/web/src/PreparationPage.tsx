@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react'
-import { ArrowUpRight, Bot, Dices, MapPinned, Play, RefreshCw, UsersRound, X } from 'lucide-react'
+import { ArrowUpRight, Bot, Dices, DoorOpen, LoaderCircle, MapPinned, Play, RefreshCw, UsersRound, X } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { DEFAULT_MAP_CONTENT, LANDMARK_DEFINITIONS } from '@goose-chess/game-content'
 import {
@@ -8,6 +8,7 @@ import {
   type OfflineMatchMode,
 } from '@goose-chess/game-protocol'
 import { createMatchSeed } from './match-seed'
+import { createOnlineRoom, joinOnlineRoom } from './online-room-client'
 import {
   DEFAULT_PLAYER_NICKNAME,
   NICKNAME_MAX_WIDTH,
@@ -27,6 +28,9 @@ export function PreparationPage() {
   const [nickname, setNickname] = useState(initialProfile.nickname)
   const [selectedSkinId, setSelectedSkinId] = useState(initialProfile.skinId)
   const [profileOpen, setProfileOpen] = useState(true)
+  const [onlineCode, setOnlineCode] = useState('')
+  const [onlineBusy, setOnlineBusy] = useState(false)
+  const [onlineError, setOnlineError] = useState('')
   const opponentCount = Number(selectedMode.at(-1))
   const normalizedNickname = normalizeNickname(nickname)
   const nicknameIssue = nicknameValidationMessage(nickname)
@@ -41,6 +45,22 @@ export function PreparationPage() {
   useEffect(() => {
     if (!nicknameIssue) savePlayerProfile({ nickname: normalizedNickname, skinId: selectedSkin.id })
   }, [nicknameIssue, normalizedNickname, selectedSkin.id])
+
+  const enterOnlineRoom = async (action: 'create' | 'join') => {
+    if (nicknameIssue || onlineBusy) return
+    setOnlineBusy(true)
+    setOnlineError('')
+    try {
+      const joined = action === 'create'
+        ? await createOnlineRoom(normalizedNickname, selectedSkin.id)
+        : await joinOnlineRoom(onlineCode, normalizedNickname, selectedSkin.id)
+      navigate(`/room/${joined.room.roomCode}`)
+    } catch (error) {
+      setOnlineError(error instanceof Error ? error.message : '无法进入在线房间。')
+    } finally {
+      setOnlineBusy(false)
+    }
+  }
 
   const startMatch = () => {
     if (nicknameIssue) return
@@ -157,11 +177,32 @@ export function PreparationPage() {
           </button>
         </div>
 
-        <div className="online-note">
-          <Bot />
-          <div><strong>在线房间</strong><span>独立游戏服务器将在在线阶段接入。</span></div>
-          <span className="status-tag">规划中</span>
-        </div>
+        <section className="online-room-entry" aria-labelledby="online-room-title">
+          <header>
+            <span><DoorOpen /> 在线房间</span>
+            <small>双人技术样片</small>
+          </header>
+          <p>创建私人房间，或输入另一位玩家分享的 6 位房间码。</p>
+          <div className="online-room-actions">
+            <button className="primary-button" type="button" disabled={Boolean(nicknameIssue) || onlineBusy} onClick={() => void enterOnlineRoom('create')}>
+              {onlineBusy ? <LoaderCircle /> : <DoorOpen />} 创建房间
+            </button>
+            <label>
+              <span>房间码</span>
+              <input
+                value={onlineCode}
+                maxLength={6}
+                placeholder="例如 A7K2MP"
+                aria-label="6 位房间码"
+                onChange={(event) => setOnlineCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+              />
+            </label>
+            <button className="secondary-command" type="button" disabled={Boolean(nicknameIssue) || onlineBusy || onlineCode.length !== 6} onClick={() => void enterOnlineRoom('join')}>
+              加入
+            </button>
+          </div>
+          {onlineError && <strong className="online-room-error" role="alert">{onlineError}</strong>}
+        </section>
       </section>
       {profileOpen && (
         <aside id="player-profile-sidebar" className="player-profile-sidebar" aria-labelledby="profile-title">
