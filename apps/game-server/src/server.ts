@@ -92,6 +92,7 @@ export function createGameServer(options: GameServerOptions = {}) {
   })
 
   const sockets = new WebSocketServer({ noServer: true, maxPayload: JSON_LIMIT })
+  let closePromise: Promise<void> | null = null
   const connectionDetails = new WeakMap<WebSocket, { roomCode: string; recoveryToken: string }>()
   httpServer.on('upgrade', (request, socket, head) => {
     try {
@@ -180,10 +181,20 @@ export function createGameServer(options: GameServerOptions = {}) {
       if (!address || typeof address === 'string') throw new Error('Game server did not bind a TCP port.')
       return { host: options.host ?? '127.0.0.1', port: address.port }
     },
-    async close() {
-      sockets.clients.forEach((socket) => socket.close())
-      await new Promise<void>((resolve, reject) => httpServer.close((error) => error ? reject(error) : resolve()))
-      store.close()
+    close() {
+      if (closePromise) return closePromise
+      closePromise = (async () => {
+        sockets.clients.forEach((socket) => socket.close())
+        const closingSockets = new Promise<void>((resolve, reject) => {
+          sockets.close((error) => error ? reject(error) : resolve())
+        })
+        const closingHttp = new Promise<void>((resolve, reject) => {
+          httpServer.close((error) => error ? reject(error) : resolve())
+        })
+        await Promise.all([closingSockets, closingHttp])
+        store.close()
+      })()
+      return closePromise
     },
   }
 }

@@ -322,7 +322,12 @@ export function OnlineRoomPage() {
     return (
       <main className="online-room-shell">
         {header}
-        <section className="route-message"><LoaderCircle /><h1>正在读取房间</h1></section>
+        <section className="route-message">
+          <LoaderCircle />
+          <h1>{notice ? '无法恢复房间' : '正在恢复房间'}</h1>
+          <p>{notice || (connection === 'disconnected' ? '游戏服务暂时不可用，正在继续重连。' : '正在连接游戏服务并读取最新房间状态。')}</p>
+          {notice && <Link className="primary-button" to="/">返回准备</Link>}
+        </section>
       </main>
     )
   }

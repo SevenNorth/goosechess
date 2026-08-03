@@ -11,10 +11,13 @@ import {
 } from '@goose-chess/game-core'
 import type { AuthorityListener, GameAuthorityPort } from './authority.js'
 import {
+  AuthorityCheckpointSchema,
   AuthorityUpdateSchema,
+  CommandEnvelopeSchema,
   CommandResultSchema,
   GameSnapshotSchema,
   PROTOCOL_SCHEMA_VERSION,
+  type AuthorityCheckpoint,
   type CommandEnvelope,
   type CommandResult,
   type DomainEvent,
@@ -31,10 +34,12 @@ export interface CreateLocalAuthorityOptions {
   readonly seed: number
 }
 
-export interface RestoreLocalAuthorityOptions {
+export type RestoreLocalAuthorityOptions = {
   readonly definition: GameDefinition
-  readonly snapshot: GameSnapshot
-}
+} & (
+  | { readonly checkpoint: AuthorityCheckpoint; readonly snapshot?: never }
+  | { readonly checkpoint?: never; readonly snapshot: GameSnapshot }
+)
 
 function toCoreCommand(command: GameCommand): CoreGameCommand {
   switch (command.type) {
@@ -195,11 +200,21 @@ export class LocalAuthority implements GameAuthorityPort {
   private state: GameState
   private snapshot: GameSnapshot
 
-  private constructor(definition: GameDefinition, snapshot: GameSnapshot) {
+  private constructor(
+    definition: GameDefinition,
+    snapshot: GameSnapshot,
+    processedCommands: AuthorityCheckpoint['processedCommands'] = [],
+  ) {
     this.definition = definition
     this.gameId = snapshot.gameId
     this.snapshot = snapshot
     this.state = fromSnapshot(snapshot)
+    processedCommands.forEach(({ envelope, result }) => {
+      this.processedCommands.set(envelope.commandId, {
+        envelope: CommandEnvelopeSchema.parse(envelope),
+        result: CommandResultSchema.parse(result),
+      })
+    })
   }
 
   static create(options: CreateLocalAuthorityOptions) {
@@ -208,9 +223,17 @@ export class LocalAuthority implements GameAuthorityPort {
   }
 
   static restore(options: RestoreLocalAuthorityOptions) {
-    const snapshot = GameSnapshotSchema.parse(options.snapshot)
+    const checkpoint = options.checkpoint ? AuthorityCheckpointSchema.parse(options.checkpoint) : null
+    const snapshot = GameSnapshotSchema.parse(checkpoint?.snapshot ?? options.snapshot)
     assertSnapshotMatchesDefinition(snapshot, options.definition)
-    return new LocalAuthority(options.definition, snapshot)
+    return new LocalAuthority(options.definition, snapshot, checkpoint?.processedCommands)
+  }
+
+  getCheckpoint() {
+    return AuthorityCheckpointSchema.parse({
+      snapshot: this.snapshot,
+      processedCommands: [...this.processedCommands.values()],
+    })
   }
 
   getSnapshot() {

@@ -8,7 +8,7 @@ import { LocalAuthority, PROTOCOL_SCHEMA_VERSION, type GameCommand, type RoomSta
 import { OnlineMatchStage, type OnlineQueuedUpdate } from './OnlineMatchStage'
 
 const room: RoomState = {
-  schemaVersion: 9,
+  schemaVersion: 10,
   roomCode: 'ABC123',
   gameId: 'online-abc123',
   hostPlayerId: 'remote-host',

@@ -25,6 +25,7 @@
 | 动画 | PixiJS ticker + tween.js、Three.js | PixiJS 负责棋盘与棋子；Three.js 负责透明画布中的立体骰子，二者共享同一表现队列顺序 |
 | 游戏服务端 | 独立 Node.js + TypeScript 服务 | 常驻承载房间、WebSocket、在线 AI 和权威结算 |
 | 协议校验 | Zod | 从运行时 schema 推导 TypeScript 类型并校验网络/快照数据 |
+| 房间持久化 | Node `node:sqlite` | 单实例同步提交房间检查点，使用 WAL 支持进程重启恢复 |
 | 音频 | 自定义 `AudioPort` | 第一阶段只建立接口与无声音实现，不引入播放库 |
 | 单元测试 | Vitest | 复用现有测试环境，支持规则模拟 |
 | 端到端测试 | Playwright | 验证 Vite SPA、Canvas、交互流程和桌面分辨率截图 |
@@ -48,11 +49,13 @@ Vite 负责开发服务器和浏览器静态资源构建，不作为生产后端
 
 ### 2.2 联机房间协议
 
-协议 v9 在 v8 的按查看者 `legalCommands` 基础上，为房间增加 `reconnectGraceMs`，并为真人成员增加 `reconnectDeadlineAt`；在线 authority 继续使用完整 `aup-port-65` 定义。HTTP 只创建或加入房间；WebSocket 接受 `CommandEnvelope`、同步请求和带 `requestId` 的大厅命令。大厅命令覆盖准备、容量、地图、添加 AI、移除成员和开始游戏。服务端对每个房间串行调用共享 `LocalAuthority`，重复 `commandId` 返回原结果，旧 `expectedRevision` 返回 `stale_revision`；AI 决策也进入同一房间命令队列。浏览器只从每条 `room-state` 或 `authority-update` 的合法命令生成控件，不在在线 UI 中复制行动权、目标或阶段判断。
+协议 v10 延续 v9 的 `reconnectGraceMs`、`reconnectDeadlineAt` 和按查看者 `legalCommands`，新增可持久化的 `AuthorityCheckpoint`：完整权威快照与已处理命令信封/结果共同保存，使服务重启后重复 `commandId` 仍返回原结果而不重复推进 revision。在线 authority 继续使用完整 `aup-port-65` 定义。HTTP 只创建或加入房间；WebSocket 接受 `CommandEnvelope`、同步请求和带 `requestId` 的大厅命令。大厅命令覆盖准备、容量、地图、添加 AI、移除成员和开始游戏。服务端对每个房间串行调用共享 `LocalAuthority`，旧 `expectedRevision` 返回 `stale_revision`；AI 决策也进入同一房间命令队列。浏览器只从每条 `room-state` 或 `authority-update` 的合法命令生成控件，不在在线 UI 中复制行动权、目标或阶段判断。
 
 发给浏览器的在线快照是按查看者投影后的合法 `GameSnapshot`：其他玩家的持有道具为 `null`，非本人回合不下发开局道具候选和待确认道具，相关私有领域事件不广播，真实 RNG 种子与游标不下发。该投影只用于显示和恢复客户端画面，服务端始终保留完整权威快照。
 
 在线客户端分别保存最新权威快照和当前表现快照。前者收到消息后立即推进，并用于下一条命令的 `expectedRevision`；后者按 `AuthorityUpdate` 顺序交给现有 `BoardScene.playUpdate`，复用 3D 骰子、路线、棋子移动、道具撕裂和暂停沙漏，动画结束后才更新 HUD、行动者和轮次。失焦、异常或 12 秒超时会同步到该更新的权威快照并继续消费队列，不能让本地表现阻塞服务端或其他客户端。最后一条连接断开时服务端保留座位并开始 30 秒宽限；房主超时后只转交给最早入座且在线的真人。重连收到 `room-state` 后，客户端清空尚未播放的旧表现更新，直接用最新投影快照重建棋盘。
+
+`RoomStore` 通过可替换的持久化端口保存房间。当前单实例适配器使用 SQLite WAL 与 `synchronous = FULL`，每次大厅变更和 authority 更新后写入完整检查点；默认活跃房间租约为 24 小时，终局房间为 6 小时，并周期清理过期记录。恢复令牌明文不落盘，只保存 SHA-256 摘要。服务启动时先删除过期记录，再恢复房间、AI 命令序号和幂等缓存；所有真人座位重新进入断线宽限。该适配器不提供多实例互斥，多实例部署前必须增加共享租约或房间分片。
 
 ## 3. 模块边界
 

@@ -91,6 +91,24 @@ describe('LocalAuthority', () => {
     expect(() => LocalAuthority.restore({ definition: AUTHORITY_DEFINITION, snapshot })).toThrow(/player p0/)
   })
 
+  it('restores duplicate command results from an authority checkpoint', async () => {
+    const authority = createAuthority()
+    const envelope = command('persisted-command', 'p0', 0, { type: 'request-roll' })
+    const first = await authority.submit(envelope)
+    const checkpoint = JSON.parse(JSON.stringify(authority.getCheckpoint()))
+    const restored = LocalAuthority.restore({ definition: AUTHORITY_DEFINITION, checkpoint })
+    const listener = vi.fn()
+    restored.subscribe(listener)
+
+    expect(await restored.submit(envelope)).toEqual(first)
+    expect(restored.getSnapshot().revision).toBe(1)
+    expect(listener).not.toHaveBeenCalled()
+    expect(await restored.submit({ ...envelope, command: { type: 'continue' } })).toMatchObject({
+      ok: false,
+      error: { code: 'duplicate_command' },
+    })
+  })
+
   it('is idempotent for duplicate commandIds and publishes accepted updates once', async () => {
     const authority = createAuthority()
     const listener = vi.fn()

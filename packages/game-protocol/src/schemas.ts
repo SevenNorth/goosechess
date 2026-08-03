@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const PROTOCOL_SCHEMA_VERSION = 9 as const
+export const PROTOCOL_SCHEMA_VERSION = 10 as const
 
 const IdSchema = z.string().trim().min(1).max(128)
 const RevisionSchema = z.number().int().nonnegative()
@@ -166,6 +166,14 @@ export const CommandResultSchema = z.discriminatedUnion('ok', [
   z.object({ ok: z.literal(false), error: AuthorityErrorSchema }).strict(),
 ])
 
+export const AuthorityCheckpointSchema = z.object({
+  snapshot: GameSnapshotSchema,
+  processedCommands: z.array(z.object({
+    envelope: CommandEnvelopeSchema,
+    result: CommandResultSchema,
+  }).strict()),
+}).strict()
+
 export const RoomPlayerSchema = z.object({
   playerId: IdSchema,
   displayName: z.string().trim().min(1).max(48),
@@ -241,6 +249,7 @@ export type AuthorityErrorCode = z.infer<typeof AuthorityErrorCodeSchema>
 export type AuthorityError = z.infer<typeof AuthorityErrorSchema>
 export type AuthorityUpdate = z.infer<typeof AuthorityUpdateSchema>
 export type CommandResult = z.infer<typeof CommandResultSchema>
+export type AuthorityCheckpoint = z.infer<typeof AuthorityCheckpointSchema>
 export type RoomPlayer = z.infer<typeof RoomPlayerSchema>
 export type RoomState = z.infer<typeof RoomStateSchema>
 export type RoomJoinResponse = z.infer<typeof RoomJoinResponseSchema>

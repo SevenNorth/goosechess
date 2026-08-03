@@ -89,7 +89,7 @@ function roomState(players: RoomPlayer[] = [host]) {
   return {
     type: 'room-state' as const,
     room: {
-      schemaVersion: 9 as const,
+      schemaVersion: 10 as const,
       roomCode: 'ABC123',
       gameId: 'game-room',
       hostPlayerId: host.playerId,
@@ -110,6 +110,64 @@ describe('在线房间大厅', () => {
     FakeWebSocket.instances.length = 0
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+  })
+
+  it('首次进入时显示正在恢复最新房间状态', () => {
+    window.sessionStorage.setItem('goose-chess-online-room-v1:ABC123', JSON.stringify({
+      playerId: host.playerId,
+      recoveryToken: 'recovery-host',
+    }))
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+
+    render(
+      <MemoryRouter initialEntries={['/room/ABC123']}>
+        <Routes><Route path="/room/:roomCode" element={<OnlineRoomPage />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('heading', { name: '正在恢复房间' })).toBeTruthy()
+    expect(screen.getByText('正在连接游戏服务并读取最新房间状态。')).toBeTruthy()
+  })
+
+  it('连接中断且还没有快照时显示服务不可用并继续重连', () => {
+    window.sessionStorage.setItem('goose-chess-online-room-v1:ABC123', JSON.stringify({
+      playerId: host.playerId,
+      recoveryToken: 'recovery-host',
+    }))
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+
+    render(
+      <MemoryRouter initialEntries={['/room/ABC123']}>
+        <Routes><Route path="/room/:roomCode" element={<OnlineRoomPage />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    act(() => FakeWebSocket.instances[0].emit('close'))
+    expect(screen.getByRole('heading', { name: '正在恢复房间' })).toBeTruthy()
+    expect(screen.getByText('游戏服务暂时不可用，正在继续重连。')).toBeTruthy()
+  })
+
+  it('服务端拒绝恢复时显示明确错误并提供返回入口', () => {
+    window.sessionStorage.setItem('goose-chess-online-room-v1:ABC123', JSON.stringify({
+      playerId: host.playerId,
+      recoveryToken: 'recovery-host',
+    }))
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+
+    render(
+      <MemoryRouter initialEntries={['/room/ABC123']}>
+        <Routes><Route path="/room/:roomCode" element={<OnlineRoomPage />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    act(() => FakeWebSocket.instances[0].emit('message', {
+      type: 'room-error',
+      code: 'room_not_found',
+      message: '找不到这个房间。',
+    }))
+    expect(screen.getByRole('heading', { name: '无法恢复房间' })).toBeTruthy()
+    expect(screen.getByText('找不到这个房间。')).toBeTruthy()
+    expect(screen.getByRole('link', { name: '返回准备' })).toBeTruthy()
   })
 
   it('房主可以添加电脑、准备并手动开始对局', () => {

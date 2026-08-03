@@ -6,3 +6,5 @@ vite.config.js
 vite.config.d.ts
 playwright-report/
 test-results/
+data/*.sqlite*
+apps/game-server/data/*.sqlite*
