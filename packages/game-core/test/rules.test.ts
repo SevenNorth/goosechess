@@ -7,6 +7,7 @@ import {
   drawEventChoices,
   reduceGameCommand,
   settleMovement,
+  validateGameDefinition,
 } from '../src/index.js'
 import { makeDefinition, makeMap, makeParticipants } from './fixtures.js'
 
@@ -35,6 +36,34 @@ describe('deterministic rule kernel', () => {
       expect(new Set(recent.map((event) => event.id)).size).toBe(3)
     }
     expect(recentSelections).toBeLessThan(normalSelections)
+  })
+
+  it('uses separate generic and landmark event pools based on the landing space', () => {
+    const baseMap = makeMap(10, [9], [2, 3])
+    const map = {
+      ...baseMap,
+      spaces: baseMap.spaces.map((space) => space.index === 3 ? { ...space, landmarkId: 'market' } : space),
+      landmarks: [{ id: 'market', name: 'Market', spaceIds: [3] }],
+      genericEventPoolIds: ['move-one', 'extra', 'gain'],
+      landmarkEventPoolIds: { market: ['skip', 'swap', 'check'] },
+    }
+    const definition = makeDefinition(map)
+    expect(validateGameDefinition(definition)).toEqual([])
+    expect(validateGameDefinition({
+      ...definition,
+      map: { ...definition.map, genericEventPoolIds: undefined },
+    })).toContain(`Map ${definition.map.id} uses landmark event pools without a generic event pool.`)
+
+    const generic = drawEventChoices(definition, [], new DeterministicRandom({ seed: 3, cursor: 0 }))
+    const landmark = drawEventChoices(definition, [], new DeterministicRandom({ seed: 3, cursor: 0 }), 'market')
+    expect(new Set(generic.map((event) => event.id))).toEqual(new Set(['move-one', 'extra', 'gain']))
+    expect(new Set(landmark.map((event) => event.id))).toEqual(new Set(['skip', 'swap', 'check']))
+
+    const state = createInitialGameState({ definition, participants: makeParticipants(2), seed: 3 })
+    expect(settleMovement(state, definition, 'p0', 3)).toMatchObject({
+      landedOnEvent: true,
+      landedEventLandmarkId: 'market',
+    })
   })
 
   it('rerolls only tied groups and locks the resulting turn order', () => {

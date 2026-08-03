@@ -160,6 +160,7 @@ export interface MovementSettlement {
   readonly events: readonly RuleEvent[]
   readonly cues: readonly RuleCue[]
   readonly landedOnEvent: boolean
+  readonly landedEventLandmarkId: string | null
 }
 
 export function settleMovement(
@@ -193,7 +194,7 @@ export function settleMovement(
 
   if (isWinningSpace(definition.map, movement.toSpaceId)) {
     winGame(state, playerId, events, cues)
-    return { state, events, cues, landedOnEvent: false }
+    return { state, events, cues, landedOnEvent: false, landedEventLandmarkId: null }
   }
 
   const startSpaceId = definition.map.spaces[0].index
@@ -243,8 +244,15 @@ export function settleMovement(
     }
   }
 
-  const landedOnEvent = definition.map.spaces.find((space) => space.index === movingPlayer.spaceId)?.kind === 'event'
-  return { state, events, cues, landedOnEvent }
+  const landedSpace = definition.map.spaces.find((space) => space.index === movingPlayer.spaceId)
+  const landedOnEvent = landedSpace?.kind === 'event'
+  return {
+    state,
+    events,
+    cues,
+    landedOnEvent,
+    landedEventLandmarkId: landedOnEvent ? landedSpace.landmarkId ?? null : null,
+  }
 }
 
 function mergeSettlement(state: WorkingState, settlement: MovementSettlement, events: RuleEvent[], cues: RuleCue[]) {
@@ -278,11 +286,24 @@ function weightedPick<T extends { id: string }>(
   return selected
 }
 
-export function drawEventChoices(definition: GameDefinition, recentEventIds: readonly string[], random: RandomSource) {
+export function drawEventChoices(
+  definition: GameDefinition,
+  recentEventIds: readonly string[],
+  random: RandomSource,
+  landmarkId?: string,
+) {
   const allowedIds = definition.map.allowedEventIds
     ? new Set(definition.map.allowedEventIds)
     : new Set(definition.ruleset.eventPoolIds)
-  const pool = definition.events.filter((event) => allowedIds.has(event.id) && definition.ruleset.eventPoolIds.includes(event.id))
+  const configuredPoolIds = landmarkId
+    ? definition.map.landmarkEventPoolIds?.[landmarkId]
+    : definition.map.genericEventPoolIds
+  const activePoolIds = new Set(configuredPoolIds ?? allowedIds)
+  const pool = definition.events.filter((event) => (
+    activePoolIds.has(event.id)
+    && allowedIds.has(event.id)
+    && definition.ruleset.eventPoolIds.includes(event.id)
+  ))
   const choices = weightedPick(pool, 3, random, (event) => (event.weight ?? 1) * (recentEventIds.includes(event.id) ? 0.25 : 1))
   if (choices.length !== 3) throw new Error('The active event pool must contain at least three events.')
   return choices as [EventDefinition, EventDefinition, EventDefinition]
@@ -296,8 +317,9 @@ function offerEvents(
   continuation: 'end-turn' | 'awaiting-action',
   events: RuleEvent[],
   cues: RuleCue[],
+  landmarkId?: string,
 ) {
-  const choices = drawEventChoices(definition, state.recentEventIds, random)
+  const choices = drawEventChoices(definition, state.recentEventIds, random, landmarkId)
   const ids: [string, string, string] = [choices[0].id, choices[1].id, choices[2].id]
   state.phase = 'awaiting-event-choice'
   state.pendingEventIds = ids
@@ -486,7 +508,9 @@ function useActiveItem(
       if (beach === undefined || player.spaceId >= beach) return reject('illegal_command', 'This item cannot be used from the current space.')
       const settlement = settleMovement(state, definition, playerId, beach - player.spaceId)
       mergeSettlement(state, settlement, events, cues)
-      if (settlement.landedOnEvent && state.phase !== 'game-over') offerEvents(state, definition, random, playerId, 'awaiting-action', events, cues)
+      if (settlement.landedOnEvent && state.phase !== 'game-over') {
+        offerEvents(state, definition, random, playerId, 'awaiting-action', events, cues, settlement.landedEventLandmarkId ?? undefined)
+      }
       break
     }
     case 'fixed-eight':
@@ -608,8 +632,9 @@ export function reduceGameCommand(
       const settlement = settleMovement(state, definition, actorPlayerId, movementTotal)
       mergeSettlement(state, settlement, events, cues)
       if (state.winnerPlayerId === null) {
-        if (settlement.landedOnEvent) offerEvents(state, definition, random, actorPlayerId, 'end-turn', events, cues)
-        else advanceTurn(state, events)
+        if (settlement.landedOnEvent) {
+          offerEvents(state, definition, random, actorPlayerId, 'end-turn', events, cues, settlement.landedEventLandmarkId ?? undefined)
+        } else advanceTurn(state, events)
       }
       break
     }

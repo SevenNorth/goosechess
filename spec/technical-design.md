@@ -229,6 +229,8 @@ interface MapDefinition {
   winningSpaceIds: number[]
   landmarks: LandmarkDefinition[]
   allowedEventIds?: string[]
+  genericEventPoolIds?: string[]
+  landmarkEventPoolIds?: Record<string, string[]>
   blockedItemIds?: string[]
   assets: MapAssetManifest
 }
@@ -337,7 +339,7 @@ interface OfflineMatchConfig {
 }
 ```
 
-离线模式组合器根据 `mode` 生成参与者清单，根据 `seed` 从固定主题昵称池确定性选择不重复的电脑名，并优先为电脑分配本地玩家未使用的皮肤；它不产生另一套规则分支。三个模式共享同一个 `RulesetDefinition`、地图、事件池、道具池和回合推进逻辑。
+离线模式组合器根据 `mode` 生成参与者清单，根据 `seed` 从固定主题昵称池确定性选择不重复的电脑名，并优先为电脑分配本地玩家未使用的皮肤；它不产生另一套规则分支。三个模式共享同一个 `RulesetDefinition`、地图事件池配置、道具池和回合推进逻辑；普通事件格与地标事件格的选池只由最终落点定义决定。
 
 ### 7.1 联机协议边界
 

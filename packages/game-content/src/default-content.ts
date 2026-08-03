@@ -8,7 +8,7 @@ import type {
   SkinContentDefinition,
 } from './types.js'
 
-export const CONTENT_VERSION = '2026.08.03.2'
+export const CONTENT_VERSION = '2026.08.03.3'
 
 export const LANDMARK_DEFINITIONS = [
   { id: 'repair-room', title: '维修室', spaceIds: [0] },
@@ -40,13 +40,34 @@ export const SKINS = [
 
 export const DEFAULT_RULESET = {
   id: 'classic-race',
-  version: 6,
+  version: 7,
   playerCount: { min: 2, max: 4 },
   mapIds: [DEFAULT_MAP_CONTENT.id],
   eventPoolIds: EVENTS.map((event) => event.id),
   itemPoolIds: ITEMS.map((item) => item.id),
   skinIds: SKINS.map((skin) => skin.id),
 } as const satisfies RulesetContentDefinition
+
+export const GENERIC_EVENT_POOL_IDS = [
+  'tailwind',
+  'wrong-way',
+  'shortcut',
+  'slippery-deck',
+  'ferry-ticket',
+  'storm-lantern',
+  'dock-crane',
+  'heavy-fog',
+] as const
+
+export const LANDMARK_EVENT_POOL_IDS = {
+  'snack-stand': ['snack', 'friendly-cook', 'fishing'],
+  'scavenger-beach': ['crab', 'fishing', 'lost-cat', 'lost-map'],
+  'sailors-home': ['sailor', 'argument', 'same-boat', 'harbor-bell'],
+  'yellow-dog': ['echo', 'lost-cat', 'quiet'],
+  madhouse: ['madhouse', 'slow-goose', 'turning-tide'],
+  'grand-boil': ['cook', 'friendly-cook', 'snack'],
+  mixologist: ['mixologist-special', 'wrong-glass', 'sparkling-tonic'],
+} as const satisfies Readonly<Record<string, readonly string[]>>
 
 export const DEFAULT_CONTENT_MANIFEST = {
   contentVersion: CONTENT_VERSION,
@@ -137,6 +158,8 @@ export const DEFAULT_MAP_DEFINITION = {
     ...LANDMARK_PLACEMENTS[landmark.id],
   })) satisfies readonly LandmarkDefinition[],
   allowedEventIds: DEFAULT_RULESET.eventPoolIds,
+  genericEventPoolIds: GENERIC_EVENT_POOL_IDS,
+  landmarkEventPoolIds: LANDMARK_EVENT_POOL_IDS,
   blockedItemIds: [],
   assets: {
     background: 'assets/maps/aup-port/paper-board.png',

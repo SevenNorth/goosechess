@@ -35,6 +35,8 @@ export interface MapDefinition {
   readonly winningSpaceIds: readonly number[]
   readonly landmarks: readonly LandmarkDefinition[]
   readonly allowedEventIds?: readonly string[]
+  readonly genericEventPoolIds?: readonly string[]
+  readonly landmarkEventPoolIds?: Readonly<Record<string, readonly string[]>>
   readonly blockedItemIds?: readonly string[]
   readonly assets: MapAssetManifest
 }

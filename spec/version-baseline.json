@@ -6,17 +6,17 @@
     }
   },
   "rules": {
-    "version": 6,
+    "version": 7,
     "files": {
-      "packages/game-core/src/rules.ts": "3a2e6fdf5f3bbbe6b111e64259296595755618cd6bf5337b65108dba961f08c7",
+      "packages/game-core/src/rules.ts": "bb021cb2ccda4be018ccb146ef864cd8f1a7af983726d475597b70f3d751b2d1",
       "packages/game-core/src/state.ts": "14a77f9cef78aaca01deaef26ef8f2411e8cfc301d4ae6ac4c84985e3eed55cd"
     }
   },
   "content": {
-    "version": "2026.08.03.2",
+    "version": "2026.08.03.3",
     "files": {
-      "packages/game-content/src/default-content.ts": "abcec793e777c310a6a21ce04557c0d9315891d70f9e5a0f5c61577638e96b3d",
-      "packages/game-content/src/legacy-content.ts": "1fb3811f7f1f49984720237f196ae090aed7aa6f48b76b0e03bd51f886e22cb6"
+      "packages/game-content/src/default-content.ts": "5b7041868d870aec79fed22a8eae81e27e0134a27979177354c76a4a5de14d97",
+      "packages/game-content/src/legacy-content.ts": "2ca76d0d3afdc9bb63209737f853188a91d7009ed5108380e4c11abe8ddc8f6d"
     }
   }
 }

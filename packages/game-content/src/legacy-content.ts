@@ -213,4 +213,17 @@ export const EVENTS: EventCard[] = [
     id: 'heavy-fog', title: '浓雾封港', flavor: '所有人都只能摸着栏杆慢慢前进。',
     kind: '常规事件', effect: [{ type: 'world-max-die', value: 3, rounds: 1 }], successText: '未来 1 轮，每颗骰子最多掷出 3 点。', accent: 'coral', aiValue: 3,
   },
+  {
+    id: 'mixologist-special', title: '调饮师特调', flavor: '杯子里冒着细密气泡，调饮师示意你一口喝完。',
+    kind: '骰子检定', threshold: 8, success: [{ type: 'extra-turn' }], failure: [{ type: 'move', spaces: -2 }],
+    successText: '精神一振，立即再行动一次。', failureText: '脚步发飘，后退 2 格。', accent: 'gold', aiValue: 6,
+  },
+  {
+    id: 'wrong-glass', title: '拿错杯子', flavor: '两只杯子长得一模一样，喝完才发现对方也拿错了。',
+    kind: '奇遇事件', effect: [{ type: 'swap' }], successText: '与下一位对手交换位置。', accent: 'coral', aiValue: 5,
+  },
+  {
+    id: 'sparkling-tonic', title: '气泡补剂', flavor: '酸甜气泡一路冲到鼻尖，腿脚忽然轻快起来。',
+    kind: '常规事件', effect: [{ type: 'move', spaces: 4 }], successText: '前进 4 格。', accent: 'teal', aiValue: 7,
+  },
 ]

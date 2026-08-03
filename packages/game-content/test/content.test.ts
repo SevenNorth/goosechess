@@ -6,8 +6,10 @@ import {
   DEFAULT_MAP_DEFINITION,
   DEFAULT_MAP_CONTENT,
   EVENTS,
+  GENERIC_EVENT_POOL_IDS,
   ITEMS,
   LANDMARK_DEFINITIONS,
+  LANDMARK_EVENT_POOL_IDS,
   TEST_MAP_DEFINITION,
 } from '../src/index.js'
 
@@ -21,7 +23,7 @@ describe('default content manifest', () => {
     expect(hasUniqueIds(ITEMS)).toBe(true)
     expect(hasUniqueIds(LANDMARK_DEFINITIONS)).toBe(true)
     expect(JSON.parse(JSON.stringify(DEFAULT_CONTENT_MANIFEST))).toEqual(DEFAULT_CONTENT_MANIFEST)
-    expect(EVENTS).toHaveLength(24)
+    expect(EVENTS).toHaveLength(27)
     expect(ITEMS).toHaveLength(12)
   })
 
@@ -57,6 +59,19 @@ describe('default content manifest', () => {
     const yellowDogSpace = DEFAULT_MAP_DEFINITION.spaces.find((space) => space.landmarkId === 'yellow-dog')
     expect(yellowDogSpace).toMatchObject({ index: 42, kind: 'event' })
     expect(EVENTS.some((event) => event.id === 'echo')).toBe(true)
+  })
+
+  it('separates generic events from every themed landmark pool', () => {
+    const genericIds = new Set(GENERIC_EVENT_POOL_IDS)
+    const themedIds = new Set(Object.values(LANDMARK_EVENT_POOL_IDS).flat())
+    expect(GENERIC_EVENT_POOL_IDS.length).toBeGreaterThanOrEqual(3)
+    expect([...genericIds].every((eventId) => !themedIds.has(eventId))).toBe(true)
+
+    const eventLandmarkIds = DEFAULT_MAP_DEFINITION.spaces
+      .filter((space) => space.kind === 'event' && space.landmarkId)
+      .map((space) => space.landmarkId!)
+    expect(Object.keys(LANDMARK_EVENT_POOL_IDS).sort()).toEqual([...new Set(eventLandmarkIds)].sort())
+    expect(Object.values(LANDMARK_EVENT_POOL_IDS).every((poolIds) => new Set(poolIds).size >= 3)).toBe(true)
   })
 
   it('loads the ordered 0-65 map and validates every content reference', () => {

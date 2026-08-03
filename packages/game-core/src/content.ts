@@ -11,6 +11,23 @@ function duplicateIds(entries: readonly { id: string }[], label: string) {
   return issues
 }
 
+function validateEventPool(
+  label: string,
+  poolIds: readonly string[],
+  eventIds: ReadonlySet<string>,
+  rulesetEventIds: ReadonlySet<string>,
+  allowedEventIds: ReadonlySet<string>,
+) {
+  const issues: string[] = []
+  if (new Set(poolIds).size < 3) issues.push(`${label} must contain at least three unique events.`)
+  for (const eventId of poolIds) {
+    if (!eventIds.has(eventId)) issues.push(`${label} references unknown event ${eventId}.`)
+    else if (!rulesetEventIds.has(eventId)) issues.push(`${label} references event ${eventId} outside the ruleset pool.`)
+    else if (!allowedEventIds.has(eventId)) issues.push(`${label} references event ${eventId} blocked by the map.`)
+  }
+  return issues
+}
+
 function validateEffect(effect: GameEffect, eventId: string): string[] {
   switch (effect.type) {
     case 'move':
@@ -74,11 +91,52 @@ export function validateGameDefinition(definition: GameDefinition): string[] {
     ...duplicateIds(definition.skins, 'skin'),
   ]
   const eventIds = new Set(definition.events.map((event) => event.id))
+  const rulesetEventIds = new Set(definition.ruleset.eventPoolIds)
+  const allowedEventIds = new Set(definition.map.allowedEventIds ?? definition.ruleset.eventPoolIds)
   const itemIds = new Set(definition.items.map((item) => item.id))
   const skinIds = new Set(definition.skins.map((skin) => skin.id))
 
   if (!definition.ruleset.mapIds.includes(definition.map.id)) issues.push(`Ruleset ${definition.ruleset.id} does not allow map ${definition.map.id}.`)
   for (const eventId of definition.ruleset.eventPoolIds) if (!eventIds.has(eventId)) issues.push(`Ruleset references unknown event ${eventId}.`)
+  for (const eventId of definition.map.allowedEventIds ?? []) {
+    if (!eventIds.has(eventId)) issues.push(`Map ${definition.map.id} allows unknown event ${eventId}.`)
+    else if (!rulesetEventIds.has(eventId)) issues.push(`Map ${definition.map.id} allows event ${eventId} outside the ruleset pool.`)
+  }
+  const usesScopedEventPools = Boolean(definition.map.genericEventPoolIds || definition.map.landmarkEventPoolIds)
+  if (usesScopedEventPools) {
+    if (definition.map.genericEventPoolIds) {
+      issues.push(...validateEventPool(
+        `Map ${definition.map.id} generic event pool`,
+        definition.map.genericEventPoolIds,
+        eventIds,
+        rulesetEventIds,
+        allowedEventIds,
+      ))
+    } else {
+      issues.push(`Map ${definition.map.id} uses landmark event pools without a generic event pool.`)
+    }
+    const configuredLandmarkPools = definition.map.landmarkEventPoolIds ?? {}
+    const eventLandmarkIds = new Set(definition.map.spaces
+      .filter((space) => space.kind === 'event' && space.landmarkId)
+      .map((space) => space.landmarkId!))
+    for (const landmarkId of eventLandmarkIds) {
+      if (!configuredLandmarkPools[landmarkId]) {
+        issues.push(`Map ${definition.map.id} event landmark ${landmarkId} has no dedicated event pool.`)
+      }
+    }
+  }
+  for (const [landmarkId, poolIds] of Object.entries(definition.map.landmarkEventPoolIds ?? {})) {
+    if (!definition.map.landmarks.some((landmark) => landmark.id === landmarkId)) {
+      issues.push(`Map ${definition.map.id} event pool references unknown landmark ${landmarkId}.`)
+    }
+    issues.push(...validateEventPool(
+      `Map ${definition.map.id} landmark ${landmarkId} event pool`,
+      poolIds,
+      eventIds,
+      rulesetEventIds,
+      allowedEventIds,
+    ))
+  }
   for (const itemId of definition.ruleset.itemPoolIds) if (!itemIds.has(itemId)) issues.push(`Ruleset references unknown item ${itemId}.`)
   const blockedItemIds = new Set(definition.map.blockedItemIds ?? [])
   const startingItemPoolSize = definition.ruleset.itemPoolIds.filter((itemId) => itemIds.has(itemId) && !blockedItemIds.has(itemId)).length
