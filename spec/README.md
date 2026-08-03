@@ -58,6 +58,7 @@
 - [reference-playthrough.md](./reference-playthrough.md)：完整对局录像中的流程观察与网页版取舍。
 - [online-multiplayer-plan.md](./online-multiplayer-plan.md)：后续在线房间、权威服务、同步与断线恢复规划。
 - [admin-content-platform.md](./admin-content-platform.md)：账号权限、地图/事件编辑、皮肤制作及内容发布后台规划。
+- [prompt.md](./prompt.md)：用于在新对话中恢复项目上下文、核对状态并继续开发的交接 Prompt。
 - [baseline-2026-07-28.md](./baseline-2026-07-28.md)：workspace 重构前的 Vite 原型环境、构建、内容和技术债基线。
 
 ## 第一阶段不包含
