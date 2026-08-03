@@ -116,7 +116,7 @@ describe('game server private lobby and room flow', () => {
       status: 'waiting',
       maxPlayers: 4,
       hostPlayerId: creator.playerId,
-      mapId: 'test-harbor-7',
+      mapId: 'aup-port-65',
     })
     expect(creator.room.players[0]).toMatchObject({ controller: 'remote', ready: false })
 
@@ -161,7 +161,11 @@ describe('game server private lobby and room flow', () => {
     await sendLobby(guestInbox, { type: 'set-ready', ready: true })
     expect(await sendLobby(host, { type: 'start-game' }, 'start-ready')).toMatchObject({ ok: true })
     const started = await guestInbox.next((message) => message.type === 'room-state' && message.room.status === 'playing')
-    expect(started.type === 'room-state' && started.snapshot?.state.players).toHaveLength(2)
+    expect(started.type).toBe('room-state')
+    if (started.type !== 'room-state') return
+    expect(started.snapshot?.state.players).toHaveLength(2)
+    expect(started.legalCommands.some((command) => command.type === 'request-order-roll')).toBe(false)
+    expect(started.legalCommands.some((command) => command.type === 'select-skin')).toBe(true)
   })
 
   it('adds and removes AI seats and runs AI commands on the server', async () => {
@@ -189,7 +193,9 @@ describe('game server private lobby and room flow', () => {
     await sendLobby(host, { type: 'start-game' }, 'start-with-ai')
     const started = await host.next((message) => message.type === 'room-state' && message.room.status === 'playing')
     if (started.type !== 'room-state' || !started.snapshot) throw new Error('Missing AI started snapshot.')
+    expect(started.snapshot.mapId).toBe('aup-port-65')
     expect(started.snapshot.state.players.map((player) => player.controller)).toEqual(['remote', 'ai'])
+    expect(started.legalCommands).toContainEqual({ type: 'request-order-roll' })
     const activeAi = started.room.players.find((player) => player.controller === 'ai')
     expect(activeAi).toBeDefined()
 

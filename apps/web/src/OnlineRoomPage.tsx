@@ -6,11 +6,9 @@ import {
   Circle,
   Copy,
   Crown,
-  Dices,
   LoaderCircle,
   MapPinned,
   Play,
-  RefreshCw,
   UserMinus,
   UserPlus,
   UsersRound,
@@ -18,7 +16,6 @@ import {
   WifiOff,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
-import { TECHNICAL_SAMPLE_GAME_DEFINITION } from '@goose-chess/game-content'
 import {
   PROTOCOL_SCHEMA_VERSION,
   ServerRoomMessageSchema,
@@ -29,28 +26,7 @@ import {
 } from '@goose-chess/game-protocol'
 import { loadOnlineIdentity, roomSocketUrl } from './online-room-client'
 import { playerSkinOption } from './player-profile'
-
-const PHASE_LABELS: Record<GameSnapshot['state']['phase'], string> = {
-  'determining-order': '投骰决定行动顺序',
-  'choosing-starting-item': '选择开局道具',
-  'awaiting-action': '等待投骰',
-  'awaiting-event-choice': '选择事件',
-  'awaiting-item-choice': '确认获得道具',
-  'game-over': '对局结束',
-}
-
-function eventText(event: { type: string; playerId?: string }, room: RoomState) {
-  const playerName = event.playerId
-    ? room.players.find((player) => player.playerId === event.playerId)?.displayName
-    : null
-  if (event.type === 'order-die-rolled') return `${playerName ?? '玩家'}完成了顺序投骰`
-  if (event.type === 'starting-item-chosen') return `${playerName ?? '玩家'}选好了开局道具`
-  if (event.type === 'dice-rolled') return `${playerName ?? '玩家'}投出了骰子`
-  if (event.type === 'token-moved') return `${playerName ?? '玩家'}完成移动`
-  if (event.type === 'turn-skipped') return `${playerName ?? '玩家'}跳过本回合`
-  if (event.type === 'game-won') return `${playerName ?? '玩家'}抵达终点`
-  return null
-}
+import { OnlineMatchStage, type OnlineQueuedUpdate } from './OnlineMatchStage'
 
 interface RoomRosterProps {
   readonly room: RoomState
@@ -126,14 +102,17 @@ export function OnlineRoomPage() {
   const roomCode = routeRoomCode.toUpperCase()
   const identity = loadOnlineIdentity(roomCode)
   const socketRef = useRef<WebSocket | null>(null)
-  const roomRef = useRef<RoomState | null>(null)
+  const snapshotRef = useRef<GameSnapshot | null>(null)
+  const updateIdRef = useRef(1)
   const playerId = identity?.playerId ?? ''
   const recoveryToken = identity?.recoveryToken ?? ''
   const [connection, setConnection] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
   const [room, setRoom] = useState<RoomState | null>(null)
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null)
   const [notice, setNotice] = useState('')
-  const [activity, setActivity] = useState<string[]>([])
+  const [legalCommands, setLegalCommands] = useState<readonly GameCommand[]>([])
+  const [pendingUpdates, setPendingUpdates] = useState<readonly OnlineQueuedUpdate[]>([])
+  const [commandBusy, setCommandBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const [lobbyBusy, setLobbyBusy] = useState(false)
   const [removed, setRemoved] = useState(false)
@@ -161,34 +140,39 @@ export function OnlineRoomPage() {
         }
         const message = parsed.data
         if (message.type === 'room-state') {
-          roomRef.current = message.room
           setRoom(message.room)
-          if (message.snapshot) setSnapshot(message.snapshot)
+          setLegalCommands(message.legalCommands)
+          if (message.snapshot) {
+            snapshotRef.current = message.snapshot
+            setSnapshot(message.snapshot)
+            setPendingUpdates([])
+          }
         } else if (message.type === 'authority-update') {
+          const previousSnapshot = snapshotRef.current
+          snapshotRef.current = message.update.snapshot
           setSnapshot(message.update.snapshot)
-          setActivity((current) => [
-            ...message.update.events.map((item) => eventText(item, roomRef.current ?? {
-              schemaVersion: PROTOCOL_SCHEMA_VERSION,
-              roomCode,
-              gameId: message.update.snapshot.gameId,
-              hostPlayerId: playerId,
-              mapId: message.update.snapshot.mapId,
-              maxPlayers: message.update.snapshot.state.players.length,
-              status: 'playing' as const,
-              players: [],
-            })).filter((item): item is string => Boolean(item)),
-            ...current,
-          ].slice(0, 5))
-        } else if (message.type === 'command-result' && !message.result.ok) {
-          setNotice(message.result.error.code === 'stale_revision'
-            ? '状态已更新，请按最新画面重新操作。'
-            : message.result.error.message)
-          if (message.result.error.code === 'stale_revision') socket.send(JSON.stringify({ type: 'sync-request' }))
+          setLegalCommands(message.legalCommands)
+          if (previousSnapshot && message.update.snapshot.revision > previousSnapshot.revision) {
+            setPendingUpdates((current) => [...current, {
+              id: updateIdRef.current++,
+              update: message.update,
+              previousSnapshot,
+            }])
+          }
+        } else if (message.type === 'command-result') {
+          setCommandBusy(false)
+          if (!message.result.ok) {
+            setNotice(message.result.error.code === 'stale_revision'
+              ? '状态已更新，请按最新画面重新操作。'
+              : message.result.error.message)
+            if (message.result.error.code === 'stale_revision') socket.send(JSON.stringify({ type: 'sync-request' }))
+          }
         } else if (message.type === 'lobby-result') {
           setLobbyBusy(false)
           if (!message.ok) setNotice(message.error?.message ?? '大厅操作失败。')
         } else if (message.type === 'room-error') {
           setLobbyBusy(false)
+          setCommandBusy(false)
           setNotice(message.message)
           if (message.code === 'removed_from_room') setRemoved(true)
         }
@@ -225,24 +209,15 @@ export function OnlineRoomPage() {
   }
 
   const ownRoomPlayer = room?.players.find((player) => player.playerId === identity.playerId)
-  const activePlayer = room?.players.find((player) => player.playerId === snapshot?.state.activePlayerId)
-  const ownSnapshot = snapshot?.state.players.find((player) => player.playerId === identity.playerId)
   const isHost = room?.hostPlayerId === identity.playerId
-  const isOwnTurn = snapshot?.state.activePlayerId === identity.playerId
   const canStart = Boolean(
     room
     && room.players.length >= 2
     && room.players.every((player) => player.ready),
   )
-  const itemName = (itemId: string | null | undefined) => (
-    TECHNICAL_SAMPLE_GAME_DEFINITION.items.find((item) => item.id === itemId)?.title ?? itemId ?? '暂无'
-  )
-  const eventName = (eventId: string) => (
-    TECHNICAL_SAMPLE_GAME_DEFINITION.events.find((event) => event.id === eventId)?.title ?? eventId
-  )
-
   const submit = (command: GameCommand) => {
-    if (!snapshot || socketRef.current?.readyState !== WebSocket.OPEN) return
+    if (commandBusy || !snapshot || socketRef.current?.readyState !== WebSocket.OPEN) return
+    setCommandBusy(true)
     setNotice('')
     socketRef.current.send(JSON.stringify({
       type: 'command',
@@ -278,7 +253,7 @@ export function OnlineRoomPage() {
     <header className="online-room-header">
       <Link to="/" aria-label="返回准备页面"><ArrowLeft /></Link>
       <div>
-        <small>{room?.status === 'waiting' ? '私人房间大厅' : '本地联机技术样片'}</small>
+        <small>{room?.status === 'waiting' ? '私人房间大厅' : '奥普港在线对局'}</small>
         <strong>房间 {roomCode}</strong>
       </div>
       <button type="button" onClick={copyCode} title="复制房间码" aria-label="复制房间码">
@@ -325,13 +300,13 @@ export function OnlineRoomPage() {
               <header><span><MapPinned /> 棋盘地图</span><small>开局后锁定</small></header>
               <article className="is-selected">
                 <div>
-                  <small>联机技术样片</small>
-                  <strong>测试港口</strong>
-                  <span>8 格路线 · 支持 2–4 名棋手</span>
+                  <small>经典竞速地图</small>
+                  <strong>奥普港</strong>
+                  <span>65 格路线 · 9 处地标 · 支持 2–4 名棋手</span>
                 </div>
                 <Check />
               </article>
-              <p>完整奥普港将在下一阶段接入现有 PixiJS 棋盘与表现队列。</p>
+              <p>开局后使用完整 PixiJS 棋盘，并按服务端权威事件播放骰子、路线和棋子移动。</p>
             </div>
 
             <div className="online-lobby-capacity">
@@ -405,109 +380,17 @@ export function OnlineRoomPage() {
   }
 
   return (
-    <main className="online-room-shell">
-      {header}
-      <section className="online-room-stage">
-        <RoomRoster
-          room={room}
-          snapshot={snapshot}
-          viewerPlayerId={identity.playerId}
-          canManage={false}
-          busy={false}
-          onRemove={() => undefined}
-        />
-
-        <section className="online-sample-board" aria-label="8 格联机技术样片棋盘">
-          <div className="online-board-heading">
-            <span>测试港口 · 8 格</span>
-            <strong>{PHASE_LABELS[snapshot.state.phase]}</strong>
-            <small>{`第 ${snapshot.state.round} 回合 · revision ${snapshot.revision}`}</small>
-          </div>
-          <div className="online-track">
-            {TECHNICAL_SAMPLE_GAME_DEFINITION.map.spaces.map((space) => (
-              <div className={`online-space is-${space.kind}`} key={space.index}>
-                <span>{space.index + 1}</span>
-                {room.players.map((player) => {
-                  const playerState = snapshot.state.players.find((candidate) => candidate.playerId === player.playerId)
-                  if (playerState?.spaceId !== space.index) return null
-                  const skin = playerSkinOption(player.skinId)
-                  return (
-                    <img
-                      className="online-track-token"
-                      style={{ '--seat-offset': player.seatIndex } as CSSProperties}
-                      src={skin.imageSrc}
-                      alt={player.displayName}
-                      title={player.displayName}
-                      key={player.playerId}
-                    />
-                  )
-                })}
-              </div>
-            ))}
-          </div>
-          <div className="online-turn-summary">
-            <div><small>当前行动</small><strong>{activePlayer?.displayName ?? '等待开局'}</strong></div>
-            <div><small>你的道具</small><strong>{itemName(ownSnapshot?.itemId)}</strong></div>
-            <div><small>上次骰点</small><strong>{snapshot.state.lastDice ? snapshot.state.lastDice.faces.join(' + ') : '尚未投掷'}</strong></div>
-          </div>
-        </section>
-
-        <aside className="online-activity">
-          <header><strong>对局记录</strong><RefreshCw /></header>
-          {activity.length ? activity.map((entry, index) => <p key={entry + index}>{entry}</p>) : <p>等待第一条权威事件。</p>}
-        </aside>
-      </section>
-
-      <footer className="online-command-dock">
-        {notice && <p role="alert">{notice}</p>}
-        {snapshot.state.phase === 'determining-order' && (
-          <button className="primary-command" type="button" disabled={!isOwnTurn} onClick={() => submit({ type: 'request-order-roll' })}>
-            <Dices /> {isOwnTurn ? '投骰决定顺序' : `等待 ${activePlayer?.displayName ?? '对方'} 投骰`}
-          </button>
-        )}
-        {snapshot.state.phase === 'choosing-starting-item' && (
-          <div className="online-choice-row">
-            {isOwnTurn
-              ? snapshot.state.startingItemOfferIds.map((itemId) => (
-                <button className="secondary-command" type="button" onClick={() => submit({ type: 'choose-starting-item', itemId })} key={itemId}>
-                  {itemName(itemId)}
-                </button>
-              ))
-              : <span>等待 {activePlayer?.displayName ?? '对方'} 选择开局道具</span>}
-          </div>
-        )}
-        {snapshot.state.phase === 'awaiting-action' && (
-          <button className="primary-command" type="button" disabled={!isOwnTurn} onClick={() => submit({ type: 'request-roll' })}>
-            <Dices /> {isOwnTurn ? '投掷骰子' : `等待 ${activePlayer?.displayName ?? '对方'} 行动`}
-          </button>
-        )}
-        {snapshot.state.phase === 'awaiting-event-choice' && (
-          <div className="online-choice-row">
-            {isOwnTurn
-              ? snapshot.state.pendingEventIds.map((eventId) => (
-                <button className="secondary-command" type="button" onClick={() => submit({ type: 'choose-event', eventId })} key={eventId}>
-                  {eventName(eventId)}
-                </button>
-              ))
-              : <span>等待 {activePlayer?.displayName ?? '对方'} 选择事件</span>}
-          </div>
-        )}
-        {snapshot.state.phase === 'awaiting-item-choice' && (
-          <div className="online-choice-row">
-            {isOwnTurn ? (
-              <>
-                <button className="primary-command" type="button" onClick={() => submit({ type: 'choose-item', itemId: snapshot.state.pendingItemId })}>
-                  保留 {itemName(snapshot.state.pendingItemId)}
-                </button>
-                <button className="secondary-command" type="button" onClick={() => submit({ type: 'choose-item', itemId: null })}>放弃</button>
-              </>
-            ) : <span>等待 {activePlayer?.displayName ?? '对方'} 确认道具</span>}
-          </div>
-        )}
-        {snapshot.state.phase === 'game-over' && (
-          <strong>{room.players.find((player) => player.playerId === snapshot.state.winnerPlayerId)?.displayName} 获胜</strong>
-        )}
-      </footer>
-    </main>
+    <OnlineMatchStage
+      room={room}
+      snapshot={snapshot}
+      viewerPlayerId={identity.playerId}
+      legalCommands={legalCommands}
+      pendingUpdates={pendingUpdates}
+      connection={connection}
+      commandBusy={commandBusy}
+      notice={notice}
+      onSubmit={submit}
+      onPresented={(id) => setPendingUpdates((current) => current.filter((queued) => queued.id !== id))}
+    />
   )
 }

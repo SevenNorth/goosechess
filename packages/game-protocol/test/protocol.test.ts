@@ -4,6 +4,7 @@ import {
   GameSnapshotSchema,
   PresentationCueSchema,
   PROTOCOL_SCHEMA_VERSION,
+  ServerRoomMessageSchema,
   parseCommandEnvelope,
   parseGameSnapshot,
   validateCommandContext,
@@ -111,6 +112,29 @@ describe('game protocol', () => {
       seenCommandIds: new Set(),
       content,
     })).toMatchObject({ code: 'stale_revision', retryable: true })
+  })
+
+  it('requires viewer-specific legal commands in room messages', () => {
+    const message = {
+      type: 'room-state' as const,
+      room: {
+        schemaVersion: PROTOCOL_SCHEMA_VERSION,
+        roomCode: 'ABC123',
+        gameId: 'game-1',
+        hostPlayerId: 'player-1',
+        mapId: 'aup-port-65',
+        maxPlayers: 4,
+        status: 'waiting' as const,
+        players: [{
+          playerId: 'player-1', displayName: '玩家', skinId: 'goose-white', seatIndex: 0,
+          controller: 'remote' as const, connected: true, ready: false,
+        }],
+      },
+      legalCommands: [{ type: 'request-roll' as const }],
+    }
+
+    expect(ServerRoomMessageSchema.parse(JSON.parse(JSON.stringify(message)))).toEqual(message)
+    expect(() => ServerRoomMessageSchema.parse({ ...message, legalCommands: undefined })).toThrow()
   })
 
   it('serializes explicit item targets and authoritative dice adjustments', () => {

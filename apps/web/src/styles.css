@@ -607,3 +607,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .lobby-readiness strong { margin-top: 3px; font-size: 24px; }
 .lobby-readiness span { margin-top: 4px; color: #aeb4aa; font-size: var(--font-static-min); }
 .lobby-add-ai { width: 100%; margin-top: 16px; }
+
+.online-match-connection { display: flex; align-items: center; gap: 8px; color: #c8cec4; font-size: var(--font-static-min); font-weight: 800; }
+.online-match-connection > svg { width: 17px; color: var(--teal); }
+.online-match-connection .icon-command { margin-left: 5px; }
+.online-match-notice { position: absolute; z-index: 42; top: 78px; left: 50%; max-width: min(560px, calc(100vw - 620px)); margin: 0; padding: 10px 16px; transform: translateX(-50%); border: 1px solid #bd5966; color: #fff0e8; background: rgba(102,38,48,.94); font-size: var(--font-static-min); font-weight: 800; text-align: center; }

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const PROTOCOL_SCHEMA_VERSION = 7 as const
+export const PROTOCOL_SCHEMA_VERSION = 8 as const
 
 const IdSchema = z.string().trim().min(1).max(128)
 const RevisionSchema = z.number().int().nonnegative()
@@ -209,13 +209,22 @@ export const ClientRoomMessageSchema = z.discriminatedUnion('type', [
 ])
 
 export const ServerRoomMessageSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('room-state'), room: RoomStateSchema, snapshot: GameSnapshotSchema.optional() }).strict(),
+  z.object({
+    type: z.literal('room-state'),
+    room: RoomStateSchema,
+    snapshot: GameSnapshotSchema.optional(),
+    legalCommands: z.array(GameCommandSchema),
+  }).strict(),
   z.object({ type: z.literal('command-result'), commandId: IdSchema, result: CommandResultSchema }).strict(),
   z.object({
     type: z.literal('lobby-result'), requestId: IdSchema, ok: z.boolean(),
     error: z.object({ code: IdSchema, message: z.string().min(1).max(256) }).strict().optional(),
   }).strict(),
-  z.object({ type: z.literal('authority-update'), update: AuthorityUpdateSchema }).strict(),
+  z.object({
+    type: z.literal('authority-update'),
+    update: AuthorityUpdateSchema,
+    legalCommands: z.array(GameCommandSchema),
+  }).strict(),
   z.object({ type: z.literal('room-error'), code: IdSchema, message: z.string().min(1).max(256) }).strict(),
 ])
 

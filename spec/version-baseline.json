@@ -1,8 +1,8 @@
 {
   "protocol": {
-    "version": 7,
+    "version": 8,
     "files": {
-      "packages/game-protocol/src/schemas.ts": "c5e7c14a76c9521e595dd345648c387ccc04cca52f251591189661d87adfe3c6"
+      "packages/game-protocol/src/schemas.ts": "8e38b4a06bbc064ce1bb8a664c7fd4c70264f58573be01a3a38b0d58c138e469"
     }
   },
   "rules": {

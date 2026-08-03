@@ -1,7 +1,7 @@
 import { randomBytes, randomInt, randomUUID } from 'node:crypto'
 import { createGooseAiStrategy } from '@goose-chess/game-ai'
 import { DeterministicRandom, type ParticipantSetup } from '@goose-chess/game-core'
-import { TECHNICAL_SAMPLE_GAME_DEFINITION } from '@goose-chess/game-content'
+import { DEFAULT_GAME_DEFINITION } from '@goose-chess/game-content'
 import {
   GameCommandSchema,
   LocalAuthority,
@@ -56,7 +56,7 @@ export interface LobbyCommandResult {
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const COLOR_IDS = ['pink', 'blue', 'gold', 'teal'] as const
-const SUPPORTED_MAP_IDS = [TECHNICAL_SAMPLE_GAME_DEFINITION.map.id] as const
+const SUPPORTED_MAP_IDS = [DEFAULT_GAME_DEFINITION.map.id] as const
 const aiStrategy = createGooseAiStrategy()
 
 function createRoomCode() {
@@ -121,7 +121,7 @@ export class RoomStore {
       members: [member],
       subscribers: new Map(),
       hostPlayerId: member.playerId,
-      mapId: TECHNICAL_SAMPLE_GAME_DEFINITION.map.id,
+      mapId: DEFAULT_GAME_DEFINITION.map.id,
       maxPlayers: 4,
       authority: null,
       commandQueue: Promise.resolve(),
@@ -282,7 +282,7 @@ export class RoomStore {
     const displayName = availableNames.length
       ? availableNames[randomInt(availableNames.length)]
       : `港口棋手${room.members.length + 1}`
-    const skinIds = TECHNICAL_SAMPLE_GAME_DEFINITION.ruleset.skinIds
+    const skinIds = DEFAULT_GAME_DEFINITION.ruleset.skinIds
     const usedSkinIds = new Set(room.members.map((member) => member.skinId))
     const skinId = skinIds.find((candidate) => !usedSkinIds.has(candidate))
       ?? skinIds[room.members.length % skinIds.length]
@@ -299,7 +299,7 @@ export class RoomStore {
   }
 
   private validateProfile(profile: RoomProfile) {
-    if (!TECHNICAL_SAMPLE_GAME_DEFINITION.ruleset.skinIds.some((skinId) => skinId === profile.skinId)) {
+    if (!DEFAULT_GAME_DEFINITION.ruleset.skinIds.some((skinId) => skinId === profile.skinId)) {
       throw new RoomStoreError('invalid_profile', '未知的棋子外观。')
     }
     const displayName = profile.displayName.trim()
@@ -317,7 +317,7 @@ export class RoomStore {
     }))
     room.authority = LocalAuthority.create({
       gameId: room.gameId,
-      definition: TECHNICAL_SAMPLE_GAME_DEFINITION,
+      definition: DEFAULT_GAME_DEFINITION,
       participants,
       seed: randomInt(0x1_0000_0000),
     })
@@ -329,6 +329,7 @@ export class RoomStore {
         const message: ServerRoomMessage = {
           type: 'authority-update',
           update: projectUpdate(update, member.playerId),
+          legalCommands: this.legalCommands(room, member),
         }
         subscribers.forEach((subscriber) => subscriber(message))
       })
@@ -390,7 +391,13 @@ export class RoomStore {
       type: 'room-state',
       room: this.publicState(room),
       ...(snapshot ? { snapshot: projectSnapshot(snapshot, member.playerId) } : {}),
+      legalCommands: this.legalCommands(room, member),
     })
+  }
+
+  private legalCommands(room: RoomSession, member: RoomMember) {
+    if (!room.authority) return []
+    return room.authority.getDecisionView(member.playerId).legalCommands.map((command) => GameCommandSchema.parse(command))
   }
 
   private broadcastRoomState(room: RoomSession) {

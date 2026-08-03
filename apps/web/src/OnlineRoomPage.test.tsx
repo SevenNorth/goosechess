@@ -63,15 +63,16 @@ function roomState(players: RoomPlayer[] = [host]) {
   return {
     type: 'room-state' as const,
     room: {
-      schemaVersion: 7 as const,
+      schemaVersion: 8 as const,
       roomCode: 'ABC123',
       gameId: 'game-room',
       hostPlayerId: host.playerId,
-      mapId: 'test-harbor-7',
+      mapId: 'aup-port-65',
       maxPlayers: 4,
       status: 'waiting' as const,
       players,
     },
+    legalCommands: [],
   }
 }
 
