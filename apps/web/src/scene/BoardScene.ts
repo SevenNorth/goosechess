@@ -284,24 +284,78 @@ export class BoardScene implements BoardSceneController {
     const border = new Graphics()
       .rect(35, 27, worldWidth - 70, worldHeight - 54)
       .stroke({ color: 0x5c5a50, width: 7, alpha: 0.55 })
-    const baseRoute = new Graphics()
-    const first = this.map.spaces[0]
-    baseRoute.moveTo(first.x, first.y)
-    this.map.spaces.slice(1).forEach((space) => baseRoute.lineTo(space.x, space.y))
-    baseRoute.stroke({ color: 0x77766c, width: 4, alpha: 0.28 })
-    this.boardLayer.addChild(border, baseRoute)
+    const routeOutline = new Graphics()
+    const routePaper = new Graphics()
+    const routePoints = this.map.spaces.map(({ x, y }) => ({ x, y }))
+    const traceSmoothRoute = (graphic: Graphics) => {
+      graphic.moveTo(routePoints[0].x, routePoints[0].y)
+      for (let index = 0; index < routePoints.length - 1; index += 1) {
+        const before = routePoints[Math.max(0, index - 1)]
+        const from = routePoints[index]
+        const to = routePoints[index + 1]
+        const after = routePoints[Math.min(routePoints.length - 1, index + 2)]
+        graphic.bezierCurveTo(
+          from.x + (to.x - before.x) * 0.12,
+          from.y + (to.y - before.y) * 0.12,
+          to.x - (after.x - from.x) * 0.12,
+          to.y - (after.y - from.y) * 0.12,
+          to.x,
+          to.y,
+        )
+      }
+    }
+    traceSmoothRoute(routeOutline)
+    traceSmoothRoute(routePaper)
+    routeOutline.stroke({ color: 0x555449, width: 47, alpha: 0.24 })
+    routePaper.stroke({ color: 0xc9b783, width: 39, alpha: 0.72 })
+    this.boardLayer.addChild(border, routeOutline, routePaper)
 
     const compact = this.map.spaces.length > 24
     for (const space of this.map.spaces) {
+      const landmark = space.landmarkId
+        ? this.map.landmarks.find((candidate) => candidate.id === space.landmarkId)
+        : undefined
+      if (landmark?.pathIntegrated) continue
+
       const cellContainer = new Container()
       const cell = new Graphics()
-      const size = compact ? (space.kind === 'start' || space.kind === 'finish' ? 36 : 29) : (space.kind === 'start' || space.kind === 'finish' ? 58 : 48)
-      const fill = space.kind === 'event' ? 0xc96850 : space.kind === 'finish' ? 0x4b4f46 : 0xe2ddcb
-      cell.roundRect(-size / 2, -size / 2, size, size, 5)
-        .fill({ color: fill, alpha: 0.96 })
-        .stroke({ color: space.kind === 'event' ? 0x713d34 : space.kind === 'finish' ? 0xd5ad43 : 0x55584e, width: 3, alpha: 0.85 })
+      const previous = this.map.spaces[Math.max(0, space.index - 1)]
+      const next = this.map.spaces[Math.min(this.map.spaces.length - 1, space.index + 1)]
+      const width = compact ? 61 : (space.kind === 'start' || space.kind === 'finish' ? 58 : 48)
+      const height = compact ? (space.kind === 'finish' ? 42 : 39) : width
+      const paperColors = [0xd9c38b, 0xe1ce9e, 0xcfb77e]
+      const fill = space.kind === 'event'
+        ? 0xc96850
+        : space.kind === 'finish'
+          ? 0x4b4f46
+          : paperColors[space.index % paperColors.length]
+      if (compact) {
+        const topLeft = ((space.index * 7) % 5) - 2
+        const topRight = ((space.index * 3) % 5) - 2
+        const bottomRight = ((space.index * 5) % 5) - 2
+        const bottomLeft = ((space.index * 11) % 5) - 2
+        cell.poly([
+          -width / 2, -height / 2 + topLeft,
+          width / 2, -height / 2 + topRight,
+          width / 2 - 2, height / 2 + bottomRight,
+          -width / 2 + 2, height / 2 + bottomLeft,
+        ])
+      } else {
+        cell.roundRect(-width / 2, -height / 2, width, height, 5)
+      }
+      cell.fill({ color: fill, alpha: 0.97 })
+        .stroke({ color: space.kind === 'event' ? 0x713d34 : space.kind === 'finish' ? 0xd5ad43 : 0x5e594b, width: compact ? 2.5 : 3, alpha: 0.9 })
       cellContainer.position.set(space.x, space.y)
-      cellContainer.rotation = space.rotation * Math.PI / 180
+      const incomingX = space.index === 0 ? next.x - space.x : space.x - previous.x
+      const incomingY = space.index === 0 ? next.y - space.y : space.y - previous.y
+      const outgoingX = space.index === this.map.spaces.length - 1 ? incomingX : next.x - space.x
+      const outgoingY = space.index === this.map.spaces.length - 1 ? incomingY : next.y - space.y
+      const incomingLength = Math.hypot(incomingX, incomingY) || 1
+      const outgoingLength = Math.hypot(outgoingX, outgoingY) || 1
+      const routeAngle = compact
+        ? Math.atan2(incomingY / incomingLength + outgoingY / outgoingLength, incomingX / incomingLength + outgoingX / outgoingLength)
+        : 0
+      cellContainer.rotation = routeAngle + space.rotation * Math.PI / 720
       const number = new Text({
         text: space.kind === 'event' ? '!' : String(space.index),
         style: {
@@ -312,6 +366,7 @@ export class BoardScene implements BoardSceneController {
         },
       })
       number.anchor.set(0.5)
+      number.rotation = -cellContainer.rotation
       cellContainer.addChild(cell, number)
       this.spaceLayer.addChild(cellContainer)
     }
@@ -332,18 +387,10 @@ export class BoardScene implements BoardSceneController {
       text: `${this.map.name} · 65 格竞速`,
       style: { fontFamily: 'Microsoft YaHei', fontSize: 22, fill: 0x55584f, fontWeight: '700', letterSpacing: 0 },
     })
-    title.position.set(520, 385)
+    title.position.set(520, 425)
     title.rotation = -0.02
-    const eventLegend = new Container({ x: 535, y: 425 })
-    const eventLegendMark = new Graphics().roundRect(0, 0, 24, 24, 4).fill({ color: 0xc96850 }).stroke({ color: 0x713d34, width: 2 })
-    const eventLegendBang = new Text({ text: '!', style: { fontFamily: 'Arial', fontSize: 14, fill: 0xfff4df, fontWeight: '900' } })
-    eventLegendBang.anchor.set(0.5)
-    eventLegendBang.position.set(12, 12)
-    const eventLegendLabel = new Text({ text: '事件格', style: { fontFamily: 'Microsoft YaHei', fontSize: 14, fill: 0x55584f, fontWeight: '700' } })
-    eventLegendLabel.position.set(32, 4)
-    eventLegend.addChild(eventLegendMark, eventLegendBang, eventLegendLabel)
-    this.foregroundLayer.addChild(title, eventLegend)
-    this.staticBoardLayer.cacheAsTexture({ resolution: 1, antialias: true })
+    this.foregroundLayer.addChild(title)
+    this.staticBoardLayer.cacheAsTexture({ resolution: Math.min(window.devicePixelRatio || 1, 2), antialias: true })
   }
 
   private addLandmark(texture: Texture, x: number, y: number, size: number, label: string, isFinish = false) {

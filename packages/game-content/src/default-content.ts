@@ -8,7 +8,7 @@ import type {
   SkinContentDefinition,
 } from './types.js'
 
-export const CONTENT_VERSION = '2026.07.31.1'
+export const CONTENT_VERSION = '2026.08.03.1'
 
 export const LANDMARK_DEFINITIONS = [
   { id: 'repair-room', title: '维修室', spaceIds: [0] },
@@ -63,35 +63,52 @@ const landmarkBySpaceId: ReadonlyMap<number, string> = new Map(
 )
 
 const DEFAULT_SPACE_POINTS = Array.from({ length: 66 }, (_, index) => {
-  const line = (start: number, end: number, from: number, to: number, fixed: number, horizontal = true) => {
-    const progress = (index - from) / Math.max(1, to - from)
-    return horizontal
-      ? { x: start + (end - start) * progress, y: fixed }
-      : { x: fixed, y: start + (end - start) * progress }
-  }
-  const percent = index === 0
-    ? { x: 5.5, y: 86 }
-    : index <= 15 ? line(11, 81, 1, 15, 86)
-      : index <= 20 ? line(78, 46, 16, 20, 85, false)
-        : index <= 34 ? line(80, 18, 21, 34, 17)
-          : index <= 40 ? line(23, 52, 35, 40, 14, false)
-            : index <= 52 ? line(19, 77, 41, 52, 57)
-              : index <= 56 ? line(52, 34, 53, 56, 82, false)
-                : line(76, 31, 57, 65, 35)
-  if (index === 21) return { x: 1120, y: 139 }
-  return { x: Math.round(percent.x * 12.8), y: Math.round(percent.y * 8.2) }
+  const horizontal = (start: number, end: number, from: number, to: number, y: number) => ({
+    x: Math.round(start + (end - start) * ((index - from) / Math.max(1, to - from))),
+    y,
+  })
+  if (index === 0) return { x: 70, y: 640 }
+  if (index <= 15) return horizontal(141, 1037, 1, 15, 640)
+  const outerRight = [
+    { x: 1085, y: 576 },
+    { x: 1120, y: 512 },
+    { x: 1140, y: 448 },
+    { x: 1140, y: 384 },
+    { x: 1115, y: 320 },
+    { x: 1065, y: 255 },
+  ]
+  if (index <= 21) return outerRight[index - 16]
+  if (index <= 34) return horizontal(1015, 230, 22, 34, 190)
+  const outerLeft = [
+    { x: 190, y: 225 },
+    { x: 170, y: 275 },
+    { x: 170, y: 330 },
+    { x: 180, y: 385 },
+    { x: 205, y: 440 },
+    { x: 250, y: 485 },
+  ]
+  if (index <= 40) return outerLeft[index - 35]
+  if (index <= 52) return horizontal(310, 986, 41, 52, 520)
+  const innerRight = [
+    { x: 1038, y: 492 },
+    { x: 1065, y: 447 },
+    { x: 1065, y: 397 },
+    { x: 1035, y: 357 },
+  ]
+  if (index <= 56) return innerRight[index - 53]
+  return horizontal(970, 430, 57, 65, 340)
 })
 
 const LANDMARK_PLACEMENTS: Readonly<Record<string, { x: number; y: number; size: number }>> = {
-  'repair-room': { x: 105, y: 660, size: 112 },
-  'snack-stand': { x: 520, y: 650, size: 104 },
-  'scavenger-beach': { x: 1160, y: 500, size: 108 },
-  'sailors-home': { x: 360, y: 205, size: 108 },
-  'yellow-dog': { x: 315, y: 450, size: 108 },
-  madhouse: { x: 1050, y: 410, size: 108 },
-  'grand-boil': { x: 930, y: 270, size: 108 },
-  mixologist: { x: 715, y: 270, size: 104 },
-  'noise-house': { x: 469, y: 330, size: 210 },
+  'repair-room': { x: 70, y: 656, size: 112 },
+  'snack-stand': { x: 461, y: 658, size: 104 },
+  'scavenger-beach': { x: 1140, y: 458, size: 108 },
+  'sailors-home': { x: 426, y: 207, size: 108 },
+  'yellow-dog': { x: 371, y: 530, size: 108 },
+  madhouse: { x: 986, y: 535, size: 108 },
+  'grand-boil': { x: 903, y: 353, size: 108 },
+  mixologist: { x: 700, y: 358, size: 104 },
+  'noise-house': { x: 498, y: 383, size: 210 },
 }
 
 export const DEFAULT_MAP_DEFINITION = {
@@ -116,6 +133,7 @@ export const DEFAULT_MAP_DEFINITION = {
     id: landmark.id,
     name: landmark.title,
     spaceIds: landmark.spaceIds,
+    pathIntegrated: landmark.id !== 'noise-house',
     ...LANDMARK_PLACEMENTS[landmark.id],
   })) satisfies readonly LandmarkDefinition[],
   allowedEventIds: DEFAULT_RULESET.eventPoolIds,

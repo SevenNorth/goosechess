@@ -30,6 +30,35 @@ describe('default content manifest', () => {
     expect(LANDMARK_DEFINITIONS.find((landmark) => landmark.id === 'noise-house')?.spaceIds).toEqual([63, 64, 65])
   })
 
+  it('integrates single-space landmark art into the route without hiding finish spaces', () => {
+    const pathLandmarks = DEFAULT_MAP_DEFINITION.landmarks.filter((landmark) => landmark.pathIntegrated)
+    expect(pathLandmarks).toHaveLength(8)
+    expect(pathLandmarks.every((landmark) => landmark.spaceIds.length === 1)).toBe(true)
+    expect(pathLandmarks.every((landmark) => {
+      const space = DEFAULT_MAP_DEFINITION.spaces[landmark.spaceIds[0]]
+      return landmark.x === space.x && space.landmarkId === landmark.id
+    })).toBe(true)
+
+    const noiseHouse = DEFAULT_MAP_DEFINITION.landmarks.find((landmark) => landmark.id === 'noise-house')
+    expect(noiseHouse?.pathIntegrated).toBe(false)
+    expect(DEFAULT_MAP_DEFINITION.spaces.slice(63).map((space) => space.kind)).toEqual(['finish', 'finish', 'finish'])
+  })
+
+  it('keeps neighboring route spaces visually even', () => {
+    const distances = DEFAULT_MAP_DEFINITION.spaces.slice(1).map((space, index) => {
+      const previous = DEFAULT_MAP_DEFINITION.spaces[index]
+      return Math.hypot(space.x - previous.x, space.y - previous.y)
+    })
+    expect(Math.min(...distances)).toBeGreaterThanOrEqual(48)
+    expect(Math.max(...distances)).toBeLessThanOrEqual(85)
+  })
+
+  it('treats the yellow dog landmark as an event space', () => {
+    const yellowDogSpace = DEFAULT_MAP_DEFINITION.spaces.find((space) => space.landmarkId === 'yellow-dog')
+    expect(yellowDogSpace).toMatchObject({ index: 42, kind: 'event' })
+    expect(EVENTS.some((event) => event.id === 'echo')).toBe(true)
+  })
+
   it('loads the ordered 0-65 map and validates every content reference', () => {
     expect(DEFAULT_MAP_DEFINITION.spaces.map((space) => space.index)).toEqual(Array.from({ length: 66 }, (_, index) => index))
     expect(DEFAULT_MAP_DEFINITION.spaces.slice(63).map((space) => space.landmarkId)).toEqual(['noise-house', 'noise-house', 'noise-house'])

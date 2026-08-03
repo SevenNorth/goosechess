@@ -14,7 +14,7 @@ export const LANDMARKS: Record<number, string> = {
   65: '喧声屋',
 }
 
-export const LEGACY_EVENT_SPACE_IDS = [6, 11, 18, 22, 27, 31, 34, 41, 46, 52, 55, 58, 61] as const
+export const LEGACY_EVENT_SPACE_IDS = [6, 11, 18, 22, 27, 31, 34, 41, 42, 46, 52, 55, 58, 61] as const
 
 export const ITEMS: ItemCard[] = [
   {

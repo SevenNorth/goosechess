@@ -15,6 +15,7 @@ export interface LandmarkDefinition {
   readonly id: string
   readonly name: string
   readonly spaceIds: readonly number[]
+  readonly pathIntegrated?: boolean
   readonly x?: number
   readonly y?: number
   readonly size?: number
