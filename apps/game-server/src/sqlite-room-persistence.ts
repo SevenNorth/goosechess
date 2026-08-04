@@ -1,16 +1,27 @@
 import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { parsePersistedRoom, type PersistedRoom, type RoomPersistence } from './room-persistence.js'
+import {
+  parsePersistedRoom,
+  type PersistedRoom,
+  type RoomClaimResult,
+  type RoomCreateResult,
+  type RoomLease,
+  type RoomOwner,
+  type RoomPersistence,
+} from './room-persistence.js'
 
 interface StoredRoomRow {
   readonly payload: string
 }
 
 export class SqliteRoomPersistence implements RoomPersistence {
+  readonly shared = false
   private readonly database: DatabaseSync
   private readonly saveStatement
+  private readonly createStatement
   private readonly loadStatement
+  private readonly getStatement
   private readonly deleteStatement
   private readonly deleteExpiredStatement
   private closed = false
@@ -36,34 +47,78 @@ export class SqliteRoomPersistence implements RoomPersistence {
         updated_at = excluded.updated_at,
         expires_at = excluded.expires_at
     `)
+    this.createStatement = this.database.prepare(`
+      INSERT INTO rooms (room_code, payload, updated_at, expires_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(room_code) DO NOTHING
+    `)
     this.loadStatement = this.database.prepare('SELECT payload FROM rooms WHERE expires_at > ? ORDER BY updated_at')
+    this.getStatement = this.database.prepare('SELECT payload FROM rooms WHERE room_code = ? AND expires_at > ?')
     this.deleteStatement = this.database.prepare('DELETE FROM rooms WHERE room_code = ?')
     this.deleteExpiredStatement = this.database.prepare('DELETE FROM rooms WHERE expires_at <= ?')
   }
 
-  loadActive(now: number) {
+  async loadActive(now: number) {
     this.ensureOpen()
     return (this.loadStatement.all(now) as unknown as StoredRoomRow[])
       .map((row) => parsePersistedRoom(JSON.parse(row.payload)))
   }
 
-  save(room: PersistedRoom) {
+  async create(room: PersistedRoom, owner: RoomOwner, leaseExpiresAt: number): Promise<RoomCreateResult> {
+    this.ensureOpen()
+    const persisted = parsePersistedRoom(room)
+    const result = this.createStatement.run(
+      persisted.roomCode,
+      JSON.stringify(persisted),
+      persisted.updatedAt,
+      persisted.expiresAt,
+    ) as unknown as { changes: number }
+    if (result.changes !== 1) return { status: 'conflict' }
+    return {
+      status: 'created',
+      lease: { ...owner, fencingToken: 1, expiresAt: leaseExpiresAt },
+    }
+  }
+
+  async claim(roomCode: string, owner: RoomOwner, now: number, leaseExpiresAt: number): Promise<RoomClaimResult> {
+    this.ensureOpen()
+    const row = this.getStatement.get(roomCode, now) as unknown as StoredRoomRow | undefined
+    return row
+      ? {
+          status: 'acquired',
+          room: parsePersistedRoom(JSON.parse(row.payload)),
+          lease: { ...owner, fencingToken: 1, expiresAt: leaseExpiresAt },
+        }
+      : { status: 'not_found' }
+  }
+
+  async save(room: PersistedRoom, lease: RoomLease | null, _now: number, leaseExpiresAt: number) {
     this.ensureOpen()
     const persisted = parsePersistedRoom(room)
     this.saveStatement.run(persisted.roomCode, JSON.stringify(persisted), persisted.updatedAt, persisted.expiresAt)
+    return lease ? { ...lease, expiresAt: leaseExpiresAt } : null
   }
 
-  delete(roomCode: string) {
+  async renew(_roomCode: string, lease: RoomLease, _now: number, leaseExpiresAt: number) {
+    this.ensureOpen()
+    return { ...lease, expiresAt: leaseExpiresAt }
+  }
+
+  async delete(roomCode: string) {
     this.ensureOpen()
     this.deleteStatement.run(roomCode)
   }
 
-  deleteExpired(now: number) {
+  async deleteExpired(now: number) {
     this.ensureOpen()
     this.deleteExpiredStatement.run(now)
   }
 
-  close() {
+  async release() {
+    this.ensureOpen()
+  }
+
+  async close() {
     if (this.closed) return
     this.closed = true
     this.database.close()

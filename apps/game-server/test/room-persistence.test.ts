@@ -184,7 +184,7 @@ describe('SQLite room persistence', () => {
     await closeSocket(recoveredInbox.socket)
   })
 
-  it('removes expired rooms before restoring them', () => {
+  it('removes expired rooms before restoring them', async () => {
     const databasePath = temporaryDatabase()
     let now = 1_000
     const firstStore = new RoomStore({
@@ -194,8 +194,8 @@ describe('SQLite room persistence', () => {
       cleanupIntervalMs: 60_000,
       now: () => now,
     })
-    const created = firstStore.createRoom({ displayName: '过期棋手', skinId: 'goose-white' })
-    firstStore.close()
+    const created = await firstStore.createRoom({ displayName: '过期棋手', skinId: 'goose-white' })
+    await firstStore.close()
 
     now = 1_101
     const restoredStore = new RoomStore({
@@ -205,10 +205,10 @@ describe('SQLite room persistence', () => {
       cleanupIntervalMs: 60_000,
       now: () => now,
     })
-    expect(() => restoredStore.joinRoom(created.room.roomCode, {
+    await expect(restoredStore.joinRoom(created.room.roomCode, {
       displayName: '过期棋手',
       skinId: 'goose-white',
-    }, created.recoveryToken)).toThrowError(expect.objectContaining({ code: 'room_not_found' }))
-    restoredStore.close()
+    }, created.recoveryToken)).rejects.toMatchObject({ code: 'room_not_found' })
+    await restoredStore.close()
   })
 })

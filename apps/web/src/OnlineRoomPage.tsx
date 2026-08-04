@@ -25,7 +25,7 @@ import {
   type RoomPlayer,
   type RoomState,
 } from '@goose-chess/game-protocol'
-import { loadOnlineIdentity, roomSocketUrl } from './online-room-client'
+import { gameServerUrl, loadOnlineIdentity, roomSocketUrl, updateOnlineIdentityServerUrl } from './online-room-client'
 import { playerSkinOption } from './player-profile'
 import { OnlineMatchStage, type OnlineQueuedUpdate } from './OnlineMatchStage'
 
@@ -125,6 +125,7 @@ export function OnlineRoomPage() {
   const { roomCode: routeRoomCode = '' } = useParams()
   const roomCode = routeRoomCode.toUpperCase()
   const identity = loadOnlineIdentity(roomCode)
+  const [serverUrl, setServerUrl] = useState(identity?.serverUrl ?? gameServerUrl())
   const socketRef = useRef<WebSocket | null>(null)
   const snapshotRef = useRef<GameSnapshot | null>(null)
   const updateIdRef = useRef(1)
@@ -171,7 +172,7 @@ export function OnlineRoomPage() {
     const connect = () => {
       if (stopped) return
       setConnection('connecting')
-      const socket = new WebSocket(roomSocketUrl(roomCode, recoveryToken))
+      const socket = new WebSocket(roomSocketUrl(roomCode, recoveryToken, serverUrl))
       socketRef.current = socket
       socket.addEventListener('open', () => {
         setConnection('connected')
@@ -219,6 +220,11 @@ export function OnlineRoomPage() {
         } else if (message.type === 'room-error') {
           setLobbyBusy(false)
           setCommandBusy(false)
+          if (message.ownerUrl) {
+            updateOnlineIdentityServerUrl(roomCode, message.ownerUrl)
+            setServerUrl(message.ownerUrl)
+            socket.close()
+          }
           setNotice(message.message)
           if (message.code === 'removed_from_room') setRemoved(true)
         }
@@ -238,7 +244,7 @@ export function OnlineRoomPage() {
       if (retryTimer) window.clearTimeout(retryTimer)
       socketRef.current?.close()
     }
-  }, [playerId, recoveryToken, roomCode, removed])
+  }, [playerId, recoveryToken, roomCode, removed, serverUrl])
 
   if (!identity || removed) {
     return (

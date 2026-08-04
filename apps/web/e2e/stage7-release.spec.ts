@@ -5,21 +5,25 @@ async function waitForBoard(page: Page) {
   await expect(page.getByText('正在铺设奥普港棋盘')).toHaveCount(0)
 }
 
-async function completeOrderRolls(page: Page) {
+async function completeOrderRolls(page: Page, enterStartingItems = true) {
   for (let attempt = 0; attempt < 80; attempt += 1) {
     const confirm = page.getByRole('button', { name: '选择起始道具' })
     if (await confirm.isVisible()) {
-      await confirm.click()
+      if (enterStartingItems) await confirm.click()
       return
     }
-    const tieContinue = page.getByRole('button', { name: /再次投掷|继续/ })
-    if (await tieContinue.count() > 0 && await tieContinue.isEnabled()) {
-      await tieContinue.click()
+    const tieNotice = page.getByRole('alertdialog', { name: '需要再次投掷' })
+    if (await tieNotice.isVisible()) {
+      const tieContinue = tieNotice.getByRole('button', { name: /再次投掷|继续/ })
+      if (await tieContinue.isEnabled()) await tieContinue.click()
       continue
     }
     const roll = page.getByRole('button', { name: '投掷单骰' })
-    if (await roll.count() > 0 && await roll.isEnabled()) await roll.click()
-    else await page.waitForTimeout(30)
+    if (await roll.count() > 0 && await roll.isEnabled()) {
+      await roll.click({ timeout: 1_000 }).catch(() => undefined)
+    } else {
+      await page.waitForTimeout(30)
+    }
   }
   throw new Error('Turn-order rolls did not finish.')
 }
@@ -109,18 +113,8 @@ test('starts every offline mode with mouse controls only', async ({ page }) => {
 test('lists the in-game player HUD in final action order', async ({ page }) => {
   await page.goto('/play?mode=1v3&seed=17&speed=20')
   await waitForBoard(page)
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-    const confirm = page.getByRole('button', { name: '选择起始道具' })
-    if (await confirm.isVisible()) break
-    const tieContinue = page.getByRole('button', { name: /再次投掷|继续/ })
-    if (await tieContinue.count() > 0 && await tieContinue.isEnabled()) {
-      await tieContinue.click()
-      continue
-    }
-    const roll = page.getByRole('button', { name: '投掷单骰' })
-    if (await roll.count() > 0 && await roll.isEnabled()) await roll.click()
-    else await page.waitForTimeout(30)
-  }
+  await completeOrderRolls(page, false)
+
   const orderNames = await page.locator('.order-player strong').allTextContents()
   expect(orderNames).toHaveLength(4)
   await page.getByRole('button', { name: '选择起始道具' }).click()
@@ -136,7 +130,7 @@ test('returns from a selected match to the preparation page', async ({ page }) =
   await page.getByRole('button', { name: '返回首页' }).click()
 
   await expect(page).toHaveURL('/')
-  await expect(page.getByRole('heading', { name: '选择人机模式' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '配置本局棋手' })).toBeVisible()
 })
 
 test('keeps a full desktop board fixed at its native scale', async ({ page }) => {
@@ -201,7 +195,7 @@ test('confirms item use in the center and highlights the retained item', async (
   expect(Math.abs(dialogBox!.x + dialogBox!.width / 2 - 960)).toBeLessThan(2)
   await useDialog.getByRole('button', { name: '取消' }).click()
   await page.getByRole('button', { name: '投掷双骰' }).click()
-  await page.getByRole('button', { name: /走失的猫/ }).click()
+  await page.getByRole('button', { name: /多盛的一碗/ }).click()
   await page.getByRole('button', { name: '继续' }).click()
 
   const itemDialog = page.getByRole('dialog', { name: '选择保留的道具' })
@@ -235,7 +229,7 @@ test('confirms a directly gained event item locally and closes after three secon
   await useDialog.getByRole('button', { name: '确认使用' }).click()
   await expect(page.getByRole('status', { name: '玩家使用坏藤壶' })).toHaveCount(0, { timeout: 5_000 })
   await page.getByRole('button', { name: '投掷双骰' }).click()
-  await page.getByRole('button', { name: /走失的猫/ }).click()
+  await page.getByRole('button', { name: /多盛的一碗/ }).click()
   await page.getByRole('button', { name: '继续' }).click()
 
   const gainDialog = page.getByRole('dialog', { name: '确认收下道具' })
@@ -320,7 +314,7 @@ test('keeps opponent items private and tears a used item card vertically', async
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await startGame(page, '1v1', 12, 1, /轻便靴子/)
 
-  const opponents = page.locator('.hud-player').filter({ hasText: '电脑' })
+  const opponents = page.locator('.hud-player:not(:has(.hud-player-copy strong[title="玩家"]))')
   await expect(opponents).toHaveCount(1)
   await expect(opponents.locator('.hud-player-copy > small')).toHaveCount(0)
   await expect(opponents).not.toContainText(/轻便靴子|四叶草|漂流木盾/)
@@ -366,11 +360,15 @@ test('keeps the current player highlighted until their move presentation finishe
   await page.setViewportSize({ width: 1600, height: 900 })
   await startGame(page, '1v1', 1, 1)
   const activePlayerName = page.locator('.hud-player.is-active .hud-player-copy strong')
+  const opponentName = await page.locator(
+    '.hud-player:not(:has(.hud-player-copy strong[title="玩家"])) .hud-player-copy strong',
+  ).textContent()
+  expect(opponentName).toBeTruthy()
   await expect(activePlayerName).toHaveText('玩家')
   await page.getByRole('button', { name: '投掷双骰' }).click()
   await expect(page.locator('.three-dice-layer')).toHaveClass(/is-rolling/)
   await expect(activePlayerName).toHaveText('玩家')
-  await expect(activePlayerName).toHaveText('电脑 1', { timeout: 20_000 })
+  await expect(activePlayerName).toHaveText(opponentName!, { timeout: 20_000 })
 })
 
 test('shows a clear warning below the supported landscape size', async ({ page }) => {

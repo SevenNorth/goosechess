@@ -25,10 +25,10 @@
 | 动画 | PixiJS ticker + tween.js、Three.js | PixiJS 负责棋盘与棋子；Three.js 负责透明画布中的立体骰子，二者共享同一表现队列顺序 |
 | 游戏服务端 | 独立 Node.js + TypeScript 服务 | 常驻承载房间、WebSocket、在线 AI 和权威结算 |
 | 协议校验 | Zod | 从运行时 schema 推导 TypeScript 类型并校验网络/快照数据 |
-| 房间持久化 | Node `node:sqlite` | 单实例同步提交房间检查点，使用 WAL 支持进程重启恢复 |
+| 房间持久化 | SQLite `node:sqlite` / PostgreSQL `pg` | SQLite 支持单实例重启恢复；PostgreSQL 提供多实例共享租约、owner 路由与 fencing |
 | 音频 | 自定义 `AudioPort` | 第一阶段只建立接口与无声音实现，不引入播放库 |
 | 单元测试 | Vitest | 复用现有测试环境，支持规则模拟 |
-| 端到端测试 | Playwright | 验证 Vite SPA、Canvas、交互流程和桌面分辨率截图 |
+| 端到端测试 | Playwright | Chromium 验证完整 Vite SPA、Canvas、交互和桌面发布门禁；Firefox/WebKit 验证在线双客户端、刷新恢复与高延迟链路 |
 
 离线首阶段没有运行时后端依赖。联机阶段 1 已在 `apps/game-server` 接入轻量 WebSocket 服务；协议数据结构和权威端接口仍位于共享包，离线关键路径不依赖该服务。
 
@@ -49,13 +49,30 @@ Vite 负责开发服务器和浏览器静态资源构建，不作为生产后端
 
 ### 2.2 联机房间协议
 
-协议 v10 延续 v9 的 `reconnectGraceMs`、`reconnectDeadlineAt` 和按查看者 `legalCommands`，新增可持久化的 `AuthorityCheckpoint`：完整权威快照与已处理命令信封/结果共同保存，使服务重启后重复 `commandId` 仍返回原结果而不重复推进 revision。在线 authority 继续使用完整 `aup-port-65` 定义。HTTP 只创建或加入房间；WebSocket 接受 `CommandEnvelope`、同步请求和带 `requestId` 的大厅命令。大厅命令覆盖准备、容量、地图、添加 AI、移除成员和开始游戏。服务端对每个房间串行调用共享 `LocalAuthority`，旧 `expectedRevision` 返回 `stale_revision`；AI 决策也进入同一房间命令队列。浏览器只从每条 `room-state` 或 `authority-update` 的合法命令生成控件，不在在线 UI 中复制行动权、目标或阶段判断。
+协议 v11 延续 v10 的 `AuthorityCheckpoint`、`reconnectGraceMs`、`reconnectDeadlineAt` 和按查看者 `legalCommands`，并在 `RoomJoinResponse` 中加入实例 `serverUrl`、在 `room-error` 中加入可选 `ownerUrl`。HTTP 只创建或加入房间；WebSocket 接受 `CommandEnvelope`、同步请求和带 `requestId` 的大厅命令。非 owner 实例以 `409 room_owned_elsewhere` 或 WebSocket 迁移错误返回当前 owner，浏览器按房间保存并切换服务地址。大厅命令覆盖准备、容量、地图、添加 AI、移除成员和开始游戏。服务端对每个房间串行调用共享 `LocalAuthority`，旧 `expectedRevision` 返回 `stale_revision`；AI 决策和完整同步也进入同一房间命令队列。浏览器只从每条 `room-state` 或 `authority-update` 的合法命令生成控件，不在在线 UI 中复制行动权、目标或阶段判断。
 
 发给浏览器的在线快照是按查看者投影后的合法 `GameSnapshot`：其他玩家的持有道具为 `null`，非本人回合不下发开局道具候选和待确认道具，相关私有领域事件不广播，真实 RNG 种子与游标不下发。该投影只用于显示和恢复客户端画面，服务端始终保留完整权威快照。
 
 在线客户端分别保存最新权威快照和当前表现快照。前者收到消息后立即推进，并用于下一条命令的 `expectedRevision`；后者按 `AuthorityUpdate` 顺序交给现有 `BoardScene.playUpdate`，复用 3D 骰子、路线、棋子移动、道具撕裂和暂停沙漏，动画结束后才更新 HUD、行动者和轮次。失焦、异常或 12 秒超时会同步到该更新的权威快照并继续消费队列，不能让本地表现阻塞服务端或其他客户端。最后一条连接断开时服务端保留座位并开始 30 秒宽限；房主超时后只转交给最早入座且在线的真人。重连收到 `room-state` 后，客户端清空尚未播放的旧表现更新，直接用最新投影快照重建棋盘。
 
-`RoomStore` 通过可替换的持久化端口保存房间。当前单实例适配器使用 SQLite WAL 与 `synchronous = FULL`，每次大厅变更和 authority 更新后写入完整检查点；默认活跃房间租约为 24 小时，终局房间为 6 小时，并周期清理过期记录。恢复令牌明文不落盘，只保存 SHA-256 摘要。服务启动时先删除过期记录，再恢复房间、AI 命令序号和幂等缓存；所有真人座位重新进入断线宽限。该适配器不提供多实例互斥，多实例部署前必须增加共享租约或房间分片。
+`RoomStore` 通过异步、可替换的持久化端口保存房间。未设置 `DATABASE_URL` 时使用 SQLite WAL 与 `synchronous = FULL`，恢复房间、AI 命令序号和幂等缓存，明确只支持单实例。设置 `DATABASE_URL` 时使用 PostgreSQL 共享行：payload 与 `ownerId`、`ownerUrl`、租约到期时间、单调递增 fencing token 一起原子更新；只有 token 和 owner 匹配且租约仍有效的实例才能保存或续租。authority 更新与 `sync-request` 都排在房间命令队列中，带 fencing 的保存成功后才广播或发送完整快照；失败时立即移除本地 session 并通知客户端迁移。共享模式要求 `INSTANCE_URL` 或 `PUBLIC_SERVER_URL`，可用 `INSTANCE_ID`、`ROOM_LEASE_DURATION_MS` 和 `ROOM_LEASE_RENEW_INTERVAL_MS` 配置实例与租约。恢复令牌明文不落盘，只保存 SHA-256 摘要。
+
+### 2.3 可观测性、限流与诊断
+
+游戏服务提供两个不包含玩家私密数据的运维端点：
+
+- `GET /health`：返回服务状态、协议版本、运行时间，以及等待中/进行中/已结束房间、真人/AI、重连和待处理命令的汇总。
+- `GET /metrics`：返回 Prometheus 文本格式的 HTTP 请求量与耗时、WebSocket 连接、协议消息、命令结果、限流拒绝、诊断事件、房间状态、当前租约数和所有权事件指标。所有 label 使用规范化路由、有限消息类型和错误码，禁止使用 `roomCode`、`gameId`、`playerId` 或 `commandId` 作为指标 label，避免高基数。
+
+生产入口默认执行三层令牌桶限流：同一来源每分钟最多 20 次建房/入房请求、每分钟最多 30 次 WebSocket 升级、每条 WebSocket 连接每 10 秒最多 80 条消息。部署可以通过 `HTTP_RATE_LIMIT_*`、`WS_UPGRADE_RATE_LIMIT_*` 和 `WS_MESSAGE_RATE_LIMIT_*` 环境变量调整。默认只使用 TCP 对端地址；仅当服务位于会清理并重写 `X-Forwarded-For` 的受信任反向代理后时，才设置 `TRUST_PROXY=true`。
+
+异常诊断以单行 JSON 输出，覆盖无效协议、连接拒绝、限流、非法大厅/authority 命令和内部处理错误。诊断上下文可以包含请求号、房间号、游戏号、命令 ID/类型、预期与实际 revision、权威阶段、当前行动者及待处理命令数，但不得包含：
+
+- 恢复凭证或其明文派生数据。
+- 原始 HTTP/WebSocket 载荷、昵称和聊天等用户输入。
+- 完整快照、隐藏道具、RNG 种子或游标。
+
+指标和日志覆盖单实例与多实例房间所有权诊断；告警规则、Prometheus 集中采集和 PostgreSQL 高可用仍属于部署层工作。
 
 ## 3. 模块边界
 

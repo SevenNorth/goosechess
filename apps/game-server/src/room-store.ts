@@ -23,6 +23,8 @@ import {
 import {
   ROOM_PERSISTENCE_VERSION,
   type PersistedRoom,
+  type RoomLease,
+  type RoomOwner,
   type RoomPersistence,
 } from './room-persistence.js'
 
@@ -54,7 +56,9 @@ interface RoomSession {
   maxPlayers: number
   authority: LocalAuthority | null
   commandQueue: Promise<void>
+  pendingCommands: number
   aiCommandSequence: number
+  lease: RoomLease | null
   readonly createdAt: number
   updatedAt: number
   expiresAt: number
@@ -64,6 +68,15 @@ export interface LobbyCommandResult {
   readonly ok: boolean
   readonly error?: { readonly code: string; readonly message: string }
 }
+
+export interface RoomOwnershipEvent {
+  readonly type: 'acquired' | 'lost' | 'released' | 'renewed'
+  readonly roomCode: string
+  readonly fencingToken: number
+  readonly ownerUrl?: string
+}
+
+type OwnershipListener = (event: RoomOwnershipEvent) => void
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const COLOR_IDS = ['pink', 'blue', 'gold', 'teal'] as const
@@ -75,8 +88,38 @@ export interface RoomStoreOptions {
   readonly roomTtlMs?: number
   readonly finishedRoomTtlMs?: number
   readonly cleanupIntervalMs?: number
+  readonly leaseDurationMs?: number
+  readonly leaseRenewIntervalMs?: number
+  readonly ownerId?: string
+  readonly ownerUrl?: string
   readonly persistence?: RoomPersistence
   readonly now?: () => number
+}
+
+export interface RoomStoreDiagnostics {
+  readonly totalRooms: number
+  readonly waitingRooms: number
+  readonly playingRooms: number
+  readonly finishedRooms: number
+  readonly remotePlayers: number
+  readonly aiPlayers: number
+  readonly reconnectingPlayers: number
+  readonly connections: number
+  readonly pendingCommands: number
+  readonly leasedRooms: number
+}
+
+export interface MatchDiagnosticContext {
+  readonly roomCode: string
+  readonly gameId: string
+  readonly status: 'waiting' | 'playing' | 'finished'
+  readonly revision: number
+  readonly phase: string | null
+  readonly activePlayerId: string | null
+  readonly playerCount: number
+  readonly connections: number
+  readonly pendingCommands: number
+  readonly fencingToken: number | null
 }
 
 function hashRecoveryToken(recoveryToken: string) {
@@ -85,6 +128,14 @@ function hashRecoveryToken(recoveryToken: string) {
 
 function createRoomCode() {
   return Array.from({ length: 6 }, () => ROOM_ALPHABET[randomInt(ROOM_ALPHABET.length)]).join('')
+}
+
+function normalizeOwnerUrl(ownerUrl: string) {
+  const url = new URL(ownerUrl)
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('ownerUrl must use http or https.')
+  }
+  return url.toString().replace(/\/$/, '')
 }
 
 function projectSnapshot(snapshot: GameSnapshot, viewerPlayerId: string): GameSnapshot {
@@ -134,18 +185,33 @@ function aiDecisionSeed(snapshot: GameSnapshot, playerId: string) {
 
 export class RoomStore {
   private readonly rooms = new Map<string, RoomSession>()
+  private readonly pendingRoomLoads = new Map<string, Promise<RoomSession>>()
+  private readonly ownershipListeners = new Set<OwnershipListener>()
+  private readonly maintenanceTasks = new Set<Promise<void>>()
   private readonly disconnectGraceMs: number
   private readonly roomTtlMs: number
   private readonly finishedRoomTtlMs: number
+  private readonly leaseDurationMs: number
+  private readonly owner: RoomOwner
   private readonly persistence: RoomPersistence | null
   private readonly now: () => number
   private readonly cleanupTimer: ReturnType<typeof setInterval> | null
+  private readonly leaseRenewTimer: ReturnType<typeof setInterval> | null
+  private readonly initialized: Promise<void>
+  private renewingLeases = false
+  private cleaningRooms = false
   private closed = false
 
   constructor(options: RoomStoreOptions = {}) {
     this.disconnectGraceMs = options.disconnectGraceMs ?? 30_000
     this.roomTtlMs = options.roomTtlMs ?? 24 * 60 * 60 * 1_000
     this.finishedRoomTtlMs = options.finishedRoomTtlMs ?? 6 * 60 * 60 * 1_000
+    this.leaseDurationMs = options.leaseDurationMs ?? 15_000
+    const leaseRenewIntervalMs = options.leaseRenewIntervalMs ?? 5_000
+    this.owner = {
+      ownerId: options.ownerId ?? randomUUID(),
+      ownerUrl: normalizeOwnerUrl(options.ownerUrl ?? 'http://127.0.0.1:8787'),
+    }
     this.persistence = options.persistence ?? null
     this.now = options.now ?? Date.now
     const cleanupIntervalMs = options.cleanupIntervalMs ?? 60_000
@@ -154,149 +220,188 @@ export class RoomStore {
       roomTtlMs: this.roomTtlMs,
       finishedRoomTtlMs: this.finishedRoomTtlMs,
       cleanupIntervalMs,
+      leaseDurationMs: this.leaseDurationMs,
+      leaseRenewIntervalMs,
     })) {
       if (!Number.isInteger(value) || value <= 0) throw new Error(`${name} must be a positive integer.`)
     }
-    this.persistence?.deleteExpired(this.now())
-    this.persistence?.loadActive(this.now()).forEach((persisted) => {
-      const room = this.restoreRoom(persisted)
-      this.rooms.set(room.roomCode, room)
-      this.attachAuthority(room)
-      room.members.forEach((member) => this.beginDisconnectGrace(room, member))
-    })
-    this.cleanupTimer = setInterval(() => this.cleanupExpiredRooms(), cleanupIntervalMs)
+    if (leaseRenewIntervalMs >= this.leaseDurationMs) {
+      throw new Error('leaseRenewIntervalMs must be shorter than leaseDurationMs.')
+    }
+    this.initialized = this.initialize()
+    this.cleanupTimer = setInterval(() => this.scheduleMaintenance(() => this.cleanupExpiredRooms()), cleanupIntervalMs)
     this.cleanupTimer.unref?.()
+    this.leaseRenewTimer = this.persistence?.shared
+      ? setInterval(() => this.scheduleMaintenance(() => this.renewLeases()), leaseRenewIntervalMs)
+      : null
+    this.leaseRenewTimer?.unref?.()
   }
 
-  createRoom(profile: RoomProfile): RoomJoinResponse {
-    let roomCode = createRoomCode()
-    while (this.rooms.has(roomCode)) roomCode = createRoomCode()
+  ready() {
+    return this.initialized
+  }
+
+  subscribeOwnership(listener: OwnershipListener) {
+    this.ownershipListeners.add(listener)
+    return () => this.ownershipListeners.delete(listener)
+  }
+
+  async createRoom(profile: RoomProfile): Promise<RoomJoinResponse> {
+    await this.initialized
+    this.assertOpen()
     const { member, recoveryToken } = this.createRemoteMember(profile, 0)
-    const now = this.now()
-    const room: RoomSession = {
-      roomCode,
-      gameId: `online-${roomCode.toLowerCase()}`,
-      members: [member],
-      subscribers: new Map(),
-      hostPlayerId: member.playerId,
-      mapId: DEFAULT_GAME_DEFINITION.map.id,
-      maxPlayers: 4,
-      authority: null,
-      commandQueue: Promise.resolve(),
-      aiCommandSequence: 0,
-      createdAt: now,
-      updatedAt: now,
-      expiresAt: now + this.roomTtlMs,
+    for (let attempt = 0; attempt < 64; attempt += 1) {
+      const roomCode = createRoomCode()
+      if (this.rooms.has(roomCode)) continue
+      const now = this.now()
+      const room: RoomSession = {
+        roomCode,
+        gameId: `online-${roomCode.toLowerCase()}`,
+        members: [member],
+        subscribers: new Map(),
+        hostPlayerId: member.playerId,
+        mapId: DEFAULT_GAME_DEFINITION.map.id,
+        maxPlayers: 4,
+        authority: null,
+        commandQueue: Promise.resolve(),
+        pendingCommands: 0,
+        aiCommandSequence: 0,
+        lease: null,
+        createdAt: now,
+        updatedAt: now,
+        expiresAt: now + this.roomTtlMs,
+      }
+      if (this.persistence) {
+        const created = await this.persistence.create(
+          this.toPersistedRoom(room, now),
+          this.owner,
+          now + this.leaseDurationMs,
+        )
+        if (created.status === 'conflict') continue
+        room.lease = created.lease
+        this.emitOwnership({ type: 'acquired', roomCode, fencingToken: created.lease.fencingToken })
+      }
+      this.rooms.set(roomCode, room)
+      return this.joinResponse(room, member, recoveryToken)
     }
-    this.rooms.set(roomCode, room)
-    this.persistRoom(room)
-    return this.joinResponse(room, member, recoveryToken)
+    throw new RoomStoreError('room_code_exhausted', '暂时无法分配房间码，请稍后重试。')
   }
 
-  joinRoom(roomCodeInput: string, profile: RoomProfile, recoveryToken?: string): RoomJoinResponse {
-    const room = this.requireRoom(roomCodeInput)
-    const recovered = recoveryToken
-      ? room.members.find((member) => member.recoveryTokenHash === hashRecoveryToken(recoveryToken))
-      : undefined
-    if (recovered) {
-      this.persistRoom(room)
-      return this.joinResponse(room, recovered, recoveryToken!)
-    }
-    if (room.authority) throw new RoomStoreError('game_started', '对局已经开始，无法占用新座位。')
-    if (room.members.length >= room.maxPlayers) throw new RoomStoreError('room_full', '房间已经满员。')
-    const { member, recoveryToken: createdRecoveryToken } = this.createRemoteMember(profile, room.members.length)
-    room.members.push(member)
-    this.persistRoom(room)
-    this.broadcastRoomState(room)
-    return this.joinResponse(room, member, createdRecoveryToken)
+  async joinRoom(roomCodeInput: string, profile: RoomProfile, recoveryToken?: string): Promise<RoomJoinResponse> {
+    const room = await this.requireRoom(roomCodeInput)
+    return this.enqueueRoom(room, async () => {
+      const recovered = recoveryToken
+        ? room.members.find((member) => member.recoveryTokenHash === hashRecoveryToken(recoveryToken))
+        : undefined
+      if (recovered) {
+        await this.persistRoom(room)
+        return this.joinResponse(room, recovered, recoveryToken!)
+      }
+      if (room.authority) throw new RoomStoreError('game_started', '对局已经开始，无法占用新座位。')
+      if (room.members.length >= room.maxPlayers) throw new RoomStoreError('room_full', '房间已经满员。')
+      const { member, recoveryToken: createdRecoveryToken } = this.createRemoteMember(profile, room.members.length)
+      room.members.push(member)
+      await this.persistRoom(room)
+      this.broadcastRoomState(room)
+      return this.joinResponse(room, member, createdRecoveryToken)
+    })
   }
 
-  subscribe(roomCodeInput: string, recoveryToken: string, subscriber: Subscriber) {
-    const room = this.requireRoom(roomCodeInput)
-    const member = room.members.find((candidate) => candidate.recoveryTokenHash === hashRecoveryToken(recoveryToken) && candidate.controller === 'remote')
-    if (!member) throw new RoomStoreError('invalid_recovery_token', '恢复凭证无效。')
-    const memberSubscribers = room.subscribers.get(member.playerId) ?? new Set()
-    memberSubscribers.add(subscriber)
-    room.subscribers.set(member.playerId, memberSubscribers)
-    member.connections += 1
-    this.cancelDisconnectTimer(member)
-    this.transferExpiredHost(room)
-    this.persistRoom(room)
-    this.sendRoomState(room, member, subscriber)
-    this.broadcastRoomState(room)
+  async subscribe(roomCodeInput: string, recoveryToken: string, subscriber: Subscriber) {
+    const room = await this.requireRoom(roomCodeInput)
+    const member = this.requireRemoteMember(room, recoveryToken)
+    await this.enqueueRoom(room, async () => {
+      const memberSubscribers = room.subscribers.get(member.playerId) ?? new Set()
+      memberSubscribers.add(subscriber)
+      room.subscribers.set(member.playerId, memberSubscribers)
+      member.connections += 1
+      this.cancelDisconnectTimer(member)
+      this.transferExpiredHost(room)
+      await this.persistRoom(room)
+      this.sendRoomState(room, member, subscriber)
+      this.broadcastRoomState(room)
+    })
 
     let subscribed = true
     return () => {
       if (!subscribed) return
       subscribed = false
-      memberSubscribers.delete(subscriber)
-      member.connections = Math.max(0, member.connections - 1)
-      if (!memberSubscribers.size) room.subscribers.delete(member.playerId)
-      if (member.connections === 0) this.beginDisconnectGrace(room, member)
-      this.persistRoom(room)
-      this.broadcastRoomState(room)
+      void this.enqueueRoom(room, async () => {
+        const memberSubscribers = room.subscribers.get(member.playerId)
+        memberSubscribers?.delete(subscriber)
+        member.connections = Math.max(0, member.connections - 1)
+        if (!memberSubscribers?.size) room.subscribers.delete(member.playerId)
+        if (member.connections === 0) this.beginDisconnectGrace(room, member)
+        await this.persistRoom(room)
+        this.broadcastRoomState(room)
+      }).catch(() => undefined)
     }
   }
 
-  submitLobby(roomCodeInput: string, recoveryToken: string, command: LobbyCommand): LobbyCommandResult {
+  async submitLobby(roomCodeInput: string, recoveryToken: string, command: LobbyCommand): Promise<LobbyCommandResult> {
     try {
-      const room = this.requireRoom(roomCodeInput)
-      const member = this.requireRemoteMember(room, recoveryToken)
-      if (room.authority) throw new RoomStoreError('game_started', '对局已经开始，大厅配置已锁定。')
+      const room = await this.requireRoom(roomCodeInput)
+      return await this.enqueueRoom(room, async () => {
+        const member = this.requireRemoteMember(room, recoveryToken)
+        if (room.authority) throw new RoomStoreError('game_started', '对局已经开始，大厅配置已锁定。')
 
-      switch (command.type) {
-        case 'set-ready':
-          member.ready = command.ready
-          break
-        case 'set-capacity':
-          this.requireHost(room, member)
-          if (command.maxPlayers < room.members.length) {
-            throw new RoomStoreError('capacity_too_small', '房间容量不能小于当前座位数。')
+        switch (command.type) {
+          case 'set-ready':
+            member.ready = command.ready
+            break
+          case 'set-capacity':
+            this.requireHost(room, member)
+            if (command.maxPlayers < room.members.length) {
+              throw new RoomStoreError('capacity_too_small', '房间容量不能小于当前座位数。')
+            }
+            room.maxPlayers = command.maxPlayers
+            break
+          case 'set-map':
+            this.requireHost(room, member)
+            if (!SUPPORTED_MAP_IDS.some((mapId) => mapId === command.mapId)) {
+              throw new RoomStoreError('unsupported_map', '该地图尚未接入在线房间。')
+            }
+            room.mapId = command.mapId
+            room.members.forEach((candidate) => {
+              if (candidate.controller === 'remote') candidate.ready = false
+            })
+            break
+          case 'add-ai':
+            this.requireHost(room, member)
+            if (room.members.length >= room.maxPlayers) throw new RoomStoreError('room_full', '房间已经满员。')
+            room.members.push(this.createAiMember(room))
+            break
+          case 'remove-player': {
+            this.requireHost(room, member)
+            if (command.playerId === member.playerId) throw new RoomStoreError('cannot_remove_host', '房主不能移除自己。')
+            const targetIndex = room.members.findIndex((candidate) => candidate.playerId === command.playerId)
+            if (targetIndex < 0) throw new RoomStoreError('unknown_player', '找不到要移除的玩家。')
+            const target = room.members[targetIndex]
+            if (target.controller === 'remote' && target.ready) {
+              throw new RoomStoreError('player_ready', '不能移除已经准备的玩家。')
+            }
+            this.notifyRemoved(room, target)
+            room.members.splice(targetIndex, 1)
+            this.reindexMembers(room)
+            break
           }
-          room.maxPlayers = command.maxPlayers
-          break
-        case 'set-map':
-          this.requireHost(room, member)
-          if (!SUPPORTED_MAP_IDS.some((mapId) => mapId === command.mapId)) {
-            throw new RoomStoreError('unsupported_map', '该地图尚未接入在线房间。')
-          }
-          room.mapId = command.mapId
-          room.members.forEach((candidate) => {
-            if (candidate.controller === 'remote') candidate.ready = false
-          })
-          break
-        case 'add-ai':
-          this.requireHost(room, member)
-          if (room.members.length >= room.maxPlayers) throw new RoomStoreError('room_full', '房间已经满员。')
-          room.members.push(this.createAiMember(room))
-          break
-        case 'remove-player': {
-          this.requireHost(room, member)
-          if (command.playerId === member.playerId) throw new RoomStoreError('cannot_remove_host', '房主不能移除自己。')
-          const targetIndex = room.members.findIndex((candidate) => candidate.playerId === command.playerId)
-          if (targetIndex < 0) throw new RoomStoreError('unknown_player', '找不到要移除的玩家。')
-          const target = room.members[targetIndex]
-          if (target.controller === 'remote' && target.ready) {
-            throw new RoomStoreError('player_ready', '不能移除已经准备的玩家。')
-          }
-          this.notifyRemoved(room, target)
-          room.members.splice(targetIndex, 1)
-          this.reindexMembers(room)
-          break
+          case 'start-game':
+            this.requireHost(room, member)
+            if (room.members.length < 2) throw new RoomStoreError('not_enough_players', '至少需要两名棋手。')
+            if (room.members.some((candidate) => !candidate.ready)) {
+              throw new RoomStoreError('players_not_ready', '所有真人玩家准备后才能开始。')
+            }
+            this.startGame(room)
+            break
         }
-        case 'start-game':
-          this.requireHost(room, member)
-          if (room.members.length < 2) throw new RoomStoreError('not_enough_players', '至少需要两名棋手。')
-          if (room.members.some((candidate) => !candidate.ready)) {
-            throw new RoomStoreError('players_not_ready', '所有真人玩家准备后才能开始。')
-          }
-          this.startGame(room)
-          break
-      }
-      this.persistRoom(room)
-      this.broadcastRoomState(room)
-      return { ok: true }
+        await this.persistRoom(room)
+        this.broadcastRoomState(room)
+        return { ok: true }
+      })
     } catch (error) {
+      if (error instanceof RoomStoreError && (error.code === 'room_owned_elsewhere' || error.code === 'room_lease_lost')) {
+        throw error
+      }
       const known = error instanceof RoomStoreError
       return {
         ok: false,
@@ -309,7 +414,7 @@ export class RoomStore {
   }
 
   async submit(roomCodeInput: string, recoveryToken: string, envelope: CommandEnvelope): Promise<CommandResult> {
-    const room = this.requireRoom(roomCodeInput)
+    const room = await this.requireRoom(roomCodeInput)
     const member = room.members.find((candidate) => candidate.recoveryTokenHash === hashRecoveryToken(recoveryToken))
     if (!member || envelope.playerId !== member.playerId) {
       return { ok: false, error: createAuthorityError('unauthorized_player', '命令提交者与当前房间座位不匹配。') }
@@ -318,23 +423,110 @@ export class RoomStore {
       return { ok: false, error: createAuthorityError('illegal_command', '房主尚未开始对局。') }
     }
 
-    let result: CommandResult | undefined
-    const submitted = room.commandQueue.then(async () => {
-      result = await room.authority!.submit(envelope)
-      if (result.ok) await this.runAiTurns(room)
-    })
-    room.commandQueue = submitted.then(() => undefined, () => undefined)
-    await submitted
-    if (!result) throw new Error('Room command finished without a result.')
-    if (result.ok && room.authority.getSnapshot().state.phase === 'game-over') this.broadcastRoomState(room)
-    return result
+    room.pendingCommands += 1
+    try {
+      return await this.enqueueRoom(room, async () => {
+        const result = await room.authority!.submit(envelope)
+        if (!result.ok) return result
+        await this.persistRoom(room)
+        this.broadcastAuthorityUpdate(room, result.update)
+        await this.runAiTurns(room)
+        if (room.authority!.getSnapshot().state.phase === 'game-over') this.broadcastRoomState(room)
+        return result
+      })
+    } finally {
+      room.pendingCommands = Math.max(0, room.pendingCommands - 1)
+    }
   }
 
-  sync(roomCodeInput: string, recoveryToken: string) {
-    const room = this.requireRoom(roomCodeInput)
-    const member = this.requireRemoteMember(room, recoveryToken)
-    const subscribers = room.subscribers.get(member.playerId)
-    subscribers?.forEach((subscriber) => this.sendRoomState(room, member, subscriber))
+  async sync(roomCodeInput: string, recoveryToken: string) {
+    const room = await this.requireRoom(roomCodeInput)
+    return this.enqueueRoom(room, async () => {
+      if (this.rooms.get(room.roomCode) !== room) {
+        throw new RoomStoreError('room_lease_lost', '房间所有权已转移，请重新连接。')
+      }
+      const member = this.requireRemoteMember(room, recoveryToken)
+      const subscribers = room.subscribers.get(member.playerId)
+      subscribers?.forEach((subscriber) => this.sendRoomState(room, member, subscriber))
+    })
+  }
+
+  private async initialize() {
+    if (!this.persistence) return
+    const now = this.now()
+    await this.persistence.deleteExpired(now)
+    if (this.persistence.shared) return
+    const persistedRooms = await this.persistence.loadActive(now)
+    for (const persisted of persistedRooms) {
+      const claimed = await this.persistence.claim(
+        persisted.roomCode,
+        this.owner,
+        now,
+        now + this.leaseDurationMs,
+      )
+      if (claimed.status !== 'acquired') continue
+      const room = this.restoreRoom(claimed.room, claimed.lease)
+      this.rooms.set(room.roomCode, room)
+      room.members.forEach((member) => this.beginDisconnectGrace(room, member))
+      this.emitOwnership({
+        type: 'acquired',
+        roomCode: room.roomCode,
+        fencingToken: claimed.lease.fencingToken,
+      })
+    }
+  }
+
+  private async requireRoom(roomCodeInput: string) {
+    await this.initialized
+    this.assertOpen()
+    const roomCode = roomCodeInput.trim().toUpperCase()
+    const local = this.rooms.get(roomCode)
+    if (local) return local
+    if (!this.persistence?.shared) throw new RoomStoreError('room_not_found', '找不到这个房间。')
+
+    const pending = this.pendingRoomLoads.get(roomCode)
+    if (pending) return pending
+    const loading = this.claimRoom(roomCode)
+    this.pendingRoomLoads.set(roomCode, loading)
+    try {
+      return await loading
+    } finally {
+      if (this.pendingRoomLoads.get(roomCode) === loading) this.pendingRoomLoads.delete(roomCode)
+    }
+  }
+
+  private async claimRoom(roomCode: string) {
+    const now = this.now()
+    const claimed = await this.persistence!.claim(roomCode, this.owner, now, now + this.leaseDurationMs)
+    if (claimed.status === 'not_found') throw new RoomStoreError('room_not_found', '找不到这个房间。')
+    if (claimed.status === 'owned_elsewhere') {
+      throw new RoomStoreError(
+        'room_owned_elsewhere',
+        '房间由其他服务实例承载。',
+        claimed.ownerUrl,
+      )
+    }
+    if (this.closed) {
+      await this.persistence!.release(roomCode, claimed.lease, this.now())
+      throw new RoomStoreError('server_shutting_down', '游戏服务正在关闭。')
+    }
+    const existing = this.rooms.get(roomCode)
+    if (existing) return existing
+    const restored = this.restoreRoom(claimed.room, claimed.lease)
+    this.rooms.set(roomCode, restored)
+    restored.members.forEach((member) => this.beginDisconnectGrace(restored, member))
+    this.emitOwnership({
+      type: 'acquired',
+      roomCode,
+      fencingToken: claimed.lease.fencingToken,
+    })
+    return restored
+  }
+
+  private enqueueRoom<T>(room: RoomSession, operation: () => Promise<T>): Promise<T> {
+    const result = room.commandQueue.then(operation)
+    room.commandQueue = result.then(() => undefined, () => undefined)
+    return result
   }
 
   private createRemoteMember(profile: RoomProfile, seatIndex: number) {
@@ -402,10 +594,9 @@ export class RoomStore {
       participants,
       seed: randomInt(0x1_0000_0000),
     })
-    this.attachAuthority(room)
   }
 
-  private restoreRoom(persisted: PersistedRoom): RoomSession {
+  private restoreRoom(persisted: PersistedRoom, lease: RoomLease | null): RoomSession {
     if (!SUPPORTED_MAP_IDS.some((mapId) => mapId === persisted.mapId)) {
       throw new Error(`Cannot restore unsupported map ${persisted.mapId}.`)
     }
@@ -434,36 +625,20 @@ export class RoomStore {
       maxPlayers: persisted.maxPlayers,
       authority,
       commandQueue: Promise.resolve(),
+      pendingCommands: 0,
       aiCommandSequence: persisted.aiCommandSequence,
+      lease,
       createdAt: persisted.createdAt,
       updatedAt: persisted.updatedAt,
       expiresAt: persisted.expiresAt,
     }
   }
 
-  private attachAuthority(room: RoomSession) {
-    room.authority?.subscribe((update) => {
-      this.persistRoom(room)
-      room.members.forEach((member) => {
-        if (member.controller !== 'remote') return
-        const subscribers = room.subscribers.get(member.playerId)
-        if (!subscribers) return
-        const message: ServerRoomMessage = {
-          type: 'authority-update',
-          update: projectUpdate(update, member.playerId),
-          legalCommands: this.legalCommands(room, member),
-        }
-        subscribers.forEach((subscriber) => subscriber(message))
-      })
-    })
-  }
-
-  private persistRoom(room: RoomSession) {
-    const now = this.now()
+  private toPersistedRoom(room: RoomSession, now: number): PersistedRoom {
     const finished = room.authority?.getSnapshot().state.phase === 'game-over'
     room.updatedAt = now
     room.expiresAt = now + (finished ? this.finishedRoomTtlMs : this.roomTtlMs)
-    this.persistence?.save({
+    return {
       persistenceVersion: ROOM_PERSISTENCE_VERSION,
       roomCode: room.roomCode,
       gameId: room.gameId,
@@ -484,22 +659,90 @@ export class RoomStore {
       createdAt: room.createdAt,
       updatedAt: room.updatedAt,
       expiresAt: room.expiresAt,
-    })
+    }
   }
 
-  private cleanupExpiredRooms() {
+  private async persistRoom(room: RoomSession) {
     const now = this.now()
-    this.rooms.forEach((room, roomCode) => {
-      if (room.expiresAt > now) return
-      if (room.members.some((member) => member.controller === 'remote' && member.connections > 0)) {
-        this.persistRoom(room)
-        return
+    const persisted = this.toPersistedRoom(room, now)
+    if (!this.persistence) return
+    const renewedLease = await this.persistence.save(
+      persisted,
+      room.lease,
+      now,
+      now + this.leaseDurationMs,
+    )
+    if (!renewedLease) {
+      const ownerUrl = await this.findCurrentOwner(room.roomCode)
+      this.loseOwnership(room, ownerUrl)
+      throw new RoomStoreError('room_lease_lost', '房间所有权已转移，请重新连接。', ownerUrl)
+    }
+    room.lease = renewedLease
+  }
+
+  private async findCurrentOwner(roomCode: string) {
+    if (!this.persistence?.shared || !this.persistence.lookupOwner) return undefined
+    const now = this.now()
+    return (await this.persistence.lookupOwner(roomCode, now))?.ownerUrl
+  }
+
+  private scheduleMaintenance(operation: () => Promise<void>) {
+    const task = operation().catch(() => undefined)
+    this.maintenanceTasks.add(task)
+    void task.finally(() => this.maintenanceTasks.delete(task))
+  }
+
+  private async cleanupExpiredRooms() {
+    if (this.cleaningRooms || this.closed) return
+    this.cleaningRooms = true
+    try {
+      await this.initialized
+      const now = this.now()
+      for (const [roomCode, room] of this.rooms) {
+        if (room.expiresAt > now) continue
+        if (room.members.some((member) => member.controller === 'remote' && member.connections > 0)) {
+          await this.enqueueRoom(room, () => this.persistRoom(room))
+          continue
+        }
+        room.members.forEach((member) => this.cancelDisconnectTimer(member))
+        this.rooms.delete(roomCode)
+        await this.persistence?.delete(roomCode, room.lease)
       }
-      room.members.forEach((member) => this.cancelDisconnectTimer(member))
-      this.rooms.delete(roomCode)
-      this.persistence?.delete(roomCode)
-    })
-    this.persistence?.deleteExpired(now)
+      await this.persistence?.deleteExpired(now)
+    } finally {
+      this.cleaningRooms = false
+    }
+  }
+
+  private async renewLeases() {
+    if (this.renewingLeases || this.closed || !this.persistence?.shared) return
+    this.renewingLeases = true
+    try {
+      await this.initialized
+      for (const room of [...this.rooms.values()]) {
+        if (!room.lease) continue
+        const now = this.now()
+        const renewed = await this.persistence.renew(
+          room.roomCode,
+          room.lease,
+          now,
+          now + this.leaseDurationMs,
+        )
+        if (!renewed) {
+          const ownerUrl = await this.findCurrentOwner(room.roomCode)
+          this.loseOwnership(room, ownerUrl)
+          continue
+        }
+        room.lease = renewed
+        this.emitOwnership({
+          type: 'renewed',
+          roomCode: room.roomCode,
+          fencingToken: renewed.fencingToken,
+        })
+      }
+    } finally {
+      this.renewingLeases = false
+    }
   }
 
   private async runAiTurns(room: RoomSession) {
@@ -525,6 +768,8 @@ export class RoomStore {
         command: GameCommandSchema.parse(decision.command),
       })
       if (!result.ok) throw new Error(`AI command rejected: ${result.error.code} ${result.error.message}`)
+      await this.persistRoom(room)
+      this.broadcastAuthorityUpdate(room, result.update)
     }
     throw new Error('AI exceeded the per-turn command limit.')
   }
@@ -576,6 +821,20 @@ export class RoomStore {
     })
   }
 
+  private broadcastAuthorityUpdate(room: RoomSession, update: AuthorityUpdate) {
+    room.members.forEach((member) => {
+      if (member.controller !== 'remote') return
+      const subscribers = room.subscribers.get(member.playerId)
+      if (!subscribers) return
+      const message: ServerRoomMessage = {
+        type: 'authority-update',
+        update: projectUpdate(update, member.playerId),
+        legalCommands: this.legalCommands(room, member),
+      }
+      subscribers.forEach((subscriber) => subscriber(message))
+    })
+  }
+
   private notifyRemoved(room: RoomSession, member: RoomMember) {
     this.cancelDisconnectTimer(member)
     const subscribers = room.subscribers.get(member.playerId)
@@ -585,6 +844,24 @@ export class RoomStore {
       message: '你已被房主移出房间。',
     }))
     room.subscribers.delete(member.playerId)
+  }
+
+  private loseOwnership(room: RoomSession, ownerUrl?: string) {
+    if (!this.rooms.delete(room.roomCode)) return
+    room.members.forEach((member) => this.cancelDisconnectTimer(member))
+    room.subscribers.forEach((subscribers) => subscribers.forEach((subscriber) => subscriber({
+      type: 'room-error',
+      code: 'room_lease_lost',
+      message: '房间已迁移到其他服务实例，正在重新连接。',
+      ...(ownerUrl ? { ownerUrl } : {}),
+    })))
+    room.subscribers.clear()
+    this.emitOwnership({
+      type: 'lost',
+      roomCode: room.roomCode,
+      fencingToken: room.lease?.fencingToken ?? 0,
+      ...(ownerUrl ? { ownerUrl } : {}),
+    })
   }
 
   private reindexMembers(room: RoomSession) {
@@ -598,14 +875,13 @@ export class RoomStore {
     member.reconnectDeadlineAt = this.now() + this.disconnectGraceMs
     member.reconnectTimer = setTimeout(() => {
       member.reconnectTimer = null
-      if (member.connections > 0) return
-      if (room.hostPlayerId === member.playerId) {
-        this.transferExpiredHost(room)
-      } else {
-        member.reconnectDeadlineAt = null
-      }
-      this.persistRoom(room)
-      this.broadcastRoomState(room)
+      void this.enqueueRoom(room, async () => {
+        if (member.connections > 0) return
+        if (room.hostPlayerId === member.playerId) this.transferExpiredHost(room)
+        else member.reconnectDeadlineAt = null
+        await this.persistRoom(room)
+        this.broadcastRoomState(room)
+      }).catch(() => undefined)
     }, this.disconnectGraceMs)
   }
 
@@ -626,12 +902,85 @@ export class RoomStore {
     this.cancelDisconnectTimer(host)
   }
 
-  close() {
+  getDiagnostics(): RoomStoreDiagnostics {
+    const diagnostics = {
+      totalRooms: this.rooms.size,
+      waitingRooms: 0,
+      playingRooms: 0,
+      finishedRooms: 0,
+      remotePlayers: 0,
+      aiPlayers: 0,
+      reconnectingPlayers: 0,
+      connections: 0,
+      pendingCommands: 0,
+      leasedRooms: 0,
+    }
+    this.rooms.forEach((room) => {
+      const snapshot = room.authority?.getSnapshot()
+      if (!snapshot) diagnostics.waitingRooms += 1
+      else if (snapshot.state.phase === 'game-over') diagnostics.finishedRooms += 1
+      else diagnostics.playingRooms += 1
+      diagnostics.remotePlayers += room.members.filter((member) => member.controller === 'remote').length
+      diagnostics.aiPlayers += room.members.filter((member) => member.controller === 'ai').length
+      diagnostics.reconnectingPlayers += room.members.filter((member) => (
+        member.controller === 'remote' && member.connections === 0 && member.reconnectDeadlineAt !== null
+      )).length
+      diagnostics.connections += room.members.reduce((total, member) => total + member.connections, 0)
+      diagnostics.pendingCommands += room.pendingCommands
+      if (room.lease) diagnostics.leasedRooms += 1
+    })
+    return diagnostics
+  }
+
+  getMatchDiagnostic(roomCodeInput: string): MatchDiagnosticContext | null {
+    const room = this.rooms.get(roomCodeInput.trim().toUpperCase())
+    if (!room) return null
+    const snapshot = room.authority?.getSnapshot()
+    return {
+      roomCode: room.roomCode,
+      gameId: room.gameId,
+      status: !snapshot ? 'waiting' : snapshot.state.phase === 'game-over' ? 'finished' : 'playing',
+      revision: snapshot?.revision ?? 0,
+      phase: snapshot?.state.phase ?? null,
+      activePlayerId: snapshot?.state.activePlayerId ?? null,
+      playerCount: room.members.length,
+      connections: room.members.reduce((total, member) => total + member.connections, 0),
+      pendingCommands: room.pendingCommands,
+      fencingToken: room.lease?.fencingToken ?? null,
+    }
+  }
+
+  async close() {
     if (this.closed) return
     this.closed = true
     if (this.cleanupTimer) clearInterval(this.cleanupTimer)
-    this.rooms.forEach((room) => room.members.forEach((member) => this.cancelDisconnectTimer(member)))
-    this.persistence?.close()
+    if (this.leaseRenewTimer) clearInterval(this.leaseRenewTimer)
+    try {
+      await this.initialized
+    } catch (error) {
+      await this.persistence?.close().catch(() => undefined)
+      throw error
+    }
+    await Promise.allSettled(this.pendingRoomLoads.values())
+    await Promise.all(this.maintenanceTasks)
+    const rooms = [...this.rooms.values()]
+    rooms.forEach((room) => room.members.forEach((member) => this.cancelDisconnectTimer(member)))
+    await Promise.all(rooms.map((room) => room.commandQueue))
+    if (this.persistence) {
+      const now = this.now()
+      await Promise.all(rooms.flatMap((room) => room.lease
+        ? [this.persistence!.release(room.roomCode, room.lease, now)]
+        : []))
+      rooms.forEach((room) => {
+        if (room.lease) this.emitOwnership({
+          type: 'released',
+          roomCode: room.roomCode,
+          fencingToken: room.lease.fencingToken,
+        })
+      })
+      await this.persistence.close()
+    }
+    this.rooms.clear()
   }
 
   private joinResponse(room: RoomSession, member: RoomMember, recoveryToken: string) {
@@ -640,6 +989,7 @@ export class RoomStore {
       room: this.publicState(room),
       playerId: member.playerId,
       recoveryToken,
+      serverUrl: this.owner.ownerUrl,
     })
   }
 
@@ -653,16 +1003,21 @@ export class RoomStore {
     return member
   }
 
-  private requireRoom(roomCodeInput: string) {
-    const roomCode = roomCodeInput.trim().toUpperCase()
-    const room = this.rooms.get(roomCode)
-    if (!room) throw new RoomStoreError('room_not_found', '找不到这个房间。')
-    return room
+  private emitOwnership(event: RoomOwnershipEvent) {
+    this.ownershipListeners.forEach((listener) => listener(event))
+  }
+
+  private assertOpen() {
+    if (this.closed) throw new RoomStoreError('server_shutting_down', '游戏服务正在关闭。')
   }
 }
 
 export class RoomStoreError extends Error {
-  constructor(readonly code: string, message: string) {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly ownerUrl?: string,
+  ) {
     super(message)
   }
 }

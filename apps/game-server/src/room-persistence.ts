@@ -31,12 +31,38 @@ export const PersistedRoomSchema = z.object({
 export type PersistedRoom = z.infer<typeof PersistedRoomSchema>
 export type PersistedRoomMember = z.infer<typeof PersistedRoomMemberSchema>
 
+export interface RoomOwner {
+  readonly ownerId: string
+  readonly ownerUrl: string
+}
+
+export interface RoomLease extends RoomOwner {
+  readonly fencingToken: number
+  readonly expiresAt: number
+}
+
+export type RoomClaimResult =
+  | { readonly status: 'acquired'; readonly room: PersistedRoom; readonly lease: RoomLease }
+  | { readonly status: 'owned_elsewhere'; readonly ownerUrl: string; readonly leaseExpiresAt: number }
+  | { readonly status: 'not_found' }
+
+export type RoomCreateResult =
+  | { readonly status: 'created'; readonly lease: RoomLease }
+  | { readonly status: 'conflict' }
+
 export interface RoomPersistence {
-  loadActive(now: number): readonly PersistedRoom[]
-  save(room: PersistedRoom): void
-  delete(roomCode: string): void
-  deleteExpired(now: number): void
-  close(): void
+  readonly shared: boolean
+  loadActive(now: number): Promise<readonly PersistedRoom[]>
+  create(room: PersistedRoom, owner: RoomOwner, leaseExpiresAt: number): Promise<RoomCreateResult>
+  claim(roomCode: string, owner: RoomOwner, now: number, leaseExpiresAt: number): Promise<RoomClaimResult>
+  save(room: PersistedRoom, lease: RoomLease | null, now: number, leaseExpiresAt: number): Promise<RoomLease | null>
+  renew(roomCode: string, lease: RoomLease, now: number, leaseExpiresAt: number): Promise<RoomLease | null>
+  delete(roomCode: string, lease: RoomLease | null): Promise<void>
+  deleteExpired(now: number): Promise<void>
+  release(roomCode: string, lease: RoomLease, now: number): Promise<void>
+  /** Read the current owner without attempting to acquire or renew its lease. */
+  lookupOwner?(roomCode: string, now: number): Promise<RoomOwner | null>
+  close(): Promise<void>
 }
 
 export function parsePersistedRoom(value: unknown) {

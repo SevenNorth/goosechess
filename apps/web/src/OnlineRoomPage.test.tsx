@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { DEFAULT_GAME_DEFINITION } from '@goose-chess/game-content'
-import { LocalAuthority, type RoomPlayer } from '@goose-chess/game-protocol'
+import { LocalAuthority, PROTOCOL_SCHEMA_VERSION, type RoomPlayer } from '@goose-chess/game-protocol'
 import { OnlineRoomPage } from './OnlineRoomPage'
 
 vi.mock('./OnlineMatchStage', () => ({
@@ -89,7 +89,7 @@ function roomState(players: RoomPlayer[] = [host]) {
   return {
     type: 'room-state' as const,
     room: {
-      schemaVersion: 10 as const,
+      schemaVersion: PROTOCOL_SCHEMA_VERSION,
       roomCode: 'ABC123',
       gameId: 'game-room',
       hostPlayerId: host.playerId,

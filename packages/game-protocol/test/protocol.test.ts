@@ -4,6 +4,7 @@ import {
   GameSnapshotSchema,
   PresentationCueSchema,
   PROTOCOL_SCHEMA_VERSION,
+  RoomJoinResponseSchema,
   ServerRoomMessageSchema,
   parseCommandEnvelope,
   parseGameSnapshot,
@@ -136,6 +137,24 @@ describe('game protocol', () => {
 
     expect(ServerRoomMessageSchema.parse(JSON.parse(JSON.stringify(message)))).toEqual(message)
     expect(() => ServerRoomMessageSchema.parse({ ...message, legalCommands: undefined })).toThrow()
+    expect(RoomJoinResponseSchema.parse({
+      room: message.room,
+      playerId: 'player-1',
+      recoveryToken: 'recovery-player-1',
+      serverUrl: 'https://game-a.example.com',
+    }).serverUrl).toBe('https://game-a.example.com')
+    expect(ServerRoomMessageSchema.parse({
+      type: 'room-error',
+      code: 'room_lease_lost',
+      message: '房间所有权已转移。',
+      ownerUrl: 'https://game-b.example.com',
+    })).toMatchObject({ ownerUrl: 'https://game-b.example.com' })
+    expect(() => RoomJoinResponseSchema.parse({
+      room: message.room,
+      playerId: 'player-1',
+      recoveryToken: 'recovery-player-1',
+      serverUrl: 'not-a-url',
+    })).toThrow()
   })
 
   it('serializes explicit item targets and authoritative dice adjustments', () => {
