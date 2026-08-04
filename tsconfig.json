@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "./apps/game-server/tsconfig.json" },
+    { "path": "./apps/content-server/tsconfig.json" },
     { "path": "./apps/web/tsconfig.json" }
   ]
 }

@@ -8,3 +8,4 @@ playwright-report/
 test-results/
 data/*.sqlite*
 apps/game-server/data/*.sqlite*
+apps/content-server/data/*.sqlite*
