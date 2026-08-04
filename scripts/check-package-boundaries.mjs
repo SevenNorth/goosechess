@@ -6,6 +6,7 @@ const workspaceRoot = resolve(import.meta.dirname, '..')
 const packageRules = {
   'game-core': new Set(),
   'game-content': new Set(['@goose-chess/game-core']),
+  'content-tools': new Set(['@goose-chess/game-core', '@goose-chess/game-content', 'node:crypto']),
   'game-ai': new Set(['@goose-chess/game-core']),
   'game-protocol': new Set(['@goose-chess/game-core', 'zod']),
 }

@@ -12,7 +12,8 @@
     "types": ["node"]
   },
   "references": [
-    { "path": "../../packages/content-tools" }
+    { "path": "../game-core" },
+    { "path": "../game-content" }
   ],
   "include": ["src"]
 }
