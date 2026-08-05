@@ -129,13 +129,29 @@ export function appendLocationAt(map: MapDefinition, x: number, y: number): MapD
 }
 
 export function moveMarkerTo(map: MapDefinition, markerId: string, x: number, y: number): MapDefinition {
+  return transformMarker(map, markerId, { x, y })
+}
+
+export function transformMarker(
+  map: MapDefinition,
+  markerId: string,
+  values: Partial<NonNullable<MapDefinition['markers']>[number]['transform']>,
+): MapDefinition {
   const markers = (map.markers ?? []).map((marker) => marker.id === markerId
-    ? { ...marker, transform: { ...marker.transform, x, y } }
+    ? { ...marker, transform: { ...marker.transform, ...values } }
     : marker)
+  const transformed = markers.find((marker) => marker.id === markerId)
   return {
     ...map,
     markers,
-    landmarks: map.landmarks.map((landmark) => landmark.id === markerId ? { ...landmark, x, y } : landmark),
+    landmarks: map.landmarks.map((landmark) => landmark.id === markerId && transformed
+      ? {
+          ...landmark,
+          x: transformed.transform.x,
+          y: transformed.transform.y,
+          size: transformed.transform.scale * 108,
+        }
+      : landmark),
   }
 }
 export function localMapIssues(map: MapDefinition) {

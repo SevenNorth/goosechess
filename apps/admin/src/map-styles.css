@@ -30,6 +30,9 @@
 .canvas-history-control label { display: inline-flex; flex-direction: row; align-items: center; gap: 5px; margin-left: auto; color: #4d554c; font-size: 14px; font-weight: 700; }
 .canvas-history-control label input { width: 16px; height: 16px; }.map-preview-host { position: relative; min-height: 270px; overflow: hidden; background: #252a25; }
 .map-preview-canvas { width: 100%; height: 100%; display: block; }
+.map-zoom-status { position: absolute; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 7px; padding: 5px 8px; color: #f5f6f2; border: 1px solid #747a70; background: rgba(31, 36, 31, .88); pointer-events: none; }
+.map-zoom-status span { min-width: 38px; font-size: 14px; font-weight: 800; }
+.map-zoom-status small { color: #cbd0c7; font-size: 14px; }
 .path-simulator { padding: 14px 16px; border-top: 1px solid #bfc5bb; background: #f2f3ef; }
 .path-simulator > strong { font-size: var(--font-min); }
 .path-simulator > div { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 10px; }

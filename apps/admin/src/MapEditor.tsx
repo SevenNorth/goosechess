@@ -28,7 +28,7 @@ import { ApiError, contentApi } from './api'
 import { useAuth } from './auth-context'
 import './map-styles.css'
 import { MapPreview, type MapCanvasMode } from './MapPreview'
-import { appendLocationAt, appendSpaceAt, createDefaultMap, csvValues, integerCsvValues, localMapIssues, mapFromUnknown, moveMarkerTo, moveSpaceTo, simulateMapPath } from './map-model'
+import { appendLocationAt, appendSpaceAt, createDefaultMap, csvValues, integerCsvValues, localMapIssues, mapFromUnknown, moveMarkerTo, moveSpaceTo, simulateMapPath, transformMarker } from './map-model'
 import type { ContentDraft, DraftStatus } from './types'
 
 const statusLabels: Record<DraftStatus, string> = {
@@ -281,18 +281,25 @@ function MapInspector({ map, selectedSpaceId, onSelectSpace, validation, editabl
 }) {
   const [fromSpaceId, setFromSpaceId] = useState(0)
   const [distance, setDistance] = useState(6)
+  const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null)
+  useEffect(() => { setSelectedMarkerId(null) }, [map.id])
   const simulation = useMemo(() => {
     try { return simulateMapPath(map, fromSpaceId, distance) } catch { return null }
   }, [distance, fromSpaceId, map])
   const localIssues = useMemo(() => localMapIssues(map), [map])
-  const select = useCallback((id: number) => onSelectSpace(id), [onSelectSpace])
+  const select = useCallback((id: number) => {
+    setSelectedMarkerId(null)
+    onSelectSpace(id)
+  }, [onSelectSpace])
   const addSpace = useCallback((point: { x: number; y: number }) => {
     const next = appendSpaceAt(map, point.x, point.y)
     onMapChange(next)
     onSelectSpace(next.spaces.length - 1)
   }, [map, onMapChange, onSelectSpace])
   const addLocation = useCallback((point: { x: number; y: number }) => {
-    onMapChange(appendLocationAt(map, point.x, point.y))
+    const next = appendLocationAt(map, point.x, point.y)
+    onMapChange(next)
+    setSelectedMarkerId(next.markers?.at(-1)?.id ?? null)
   }, [map, onMapChange])
   const moveSpace = useCallback((spaceId: number, point: { x: number; y: number }) => {
     onMapChange(moveSpaceTo(map, spaceId, point.x, point.y))
@@ -300,6 +307,9 @@ function MapInspector({ map, selectedSpaceId, onSelectSpace, validation, editabl
   }, [map, onMapChange, onSelectSpace])
   const moveMarker = useCallback((markerId: string, point: { x: number; y: number }) => {
     onMapChange(moveMarkerTo(map, markerId, point.x, point.y))
+  }, [map, onMapChange])
+  const changeMarkerTransform = useCallback((markerId: string, values: { scale?: number; rotation?: number }) => {
+    onMapChange(transformMarker(map, markerId, values))
   }, [map, onMapChange])
 
   const modes: Array<{ id: MapCanvasMode; label: string; icon: typeof MousePointer2 }> = [
@@ -323,7 +333,7 @@ function MapInspector({ map, selectedSpaceId, onSelectSpace, validation, editabl
           <label title="网格吸附"><input type="checkbox" checked={snapToGrid} onChange={(event) => onSnapChange(event.target.checked)} /><Grid3X3 /><span>吸附</span></label>
         </div>
       </div>
-      <MapPreview map={map} selectedSpaceId={selectedSpaceId} path={simulation?.path ?? []} mode={editable ? mode : 'pan'} snapToGrid={snapToGrid} onSelectSpace={select} onAddSpace={addSpace} onAddLocation={addLocation} onMoveSpace={moveSpace} onMoveMarker={moveMarker} />
+      <MapPreview map={map} selectedSpaceId={selectedSpaceId} selectedMarkerId={selectedMarkerId} path={simulation?.path ?? []} mode={editable ? mode : 'pan'} snapToGrid={snapToGrid} onSelectSpace={select} onSelectMarker={setSelectedMarkerId} onAddSpace={addSpace} onAddLocation={addLocation} onMoveSpace={moveSpace} onMoveMarker={moveMarker} onTransformMarker={changeMarkerTransform} />
       <section className="path-simulator"><strong>固定路径模拟</strong><div><label><span>起点</span><input type="number" min="0" max={map.spaces.length - 1} value={fromSpaceId} onChange={(event) => setFromSpaceId(Number(event.target.value))} /></label><label><span>步数</span><input type="number" value={distance} onChange={(event) => setDistance(Number(event.target.value))} /></label></div>{simulation ? <p><span>终点 #{simulation.toSpaceId}</span><strong>{simulation.bounced ? '发生折返' : '未折返'}</strong><small>{simulation.path.join(' → ') || '原地'}</small></p> : <p className="form-error">起点或路径参数无效。</p>}</section>
       <section className={(validation?.valid ?? localIssues.length === 0) ? 'validation-panel is-valid' : 'validation-panel'}><div>{(validation?.valid ?? localIssues.length === 0) ? <CheckCircle2 /> : <AlertCircle />}<strong>{validation ? (validation.valid ? '服务端校验通过' : `${validation.issues.length} 项待修正`) : (localIssues.length ? `${localIssues.length} 项本地问题` : '核心地图校验通过')}</strong></div>{(validation?.issues.map((issue) => `${issue.path || 'content'}: ${issue.message}`) ?? localIssues).map((message) => <p key={message}><span>{message}</span></p>)}</section>
     </aside>

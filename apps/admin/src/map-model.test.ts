@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appendLocationAt, appendSpaceAt, createDefaultMap, csvValues, integerCsvValues, localMapIssues, mapFromUnknown, moveMarkerTo, moveSpaceTo, simulateMapPath } from './map-model'
+import { appendLocationAt, appendSpaceAt, createDefaultMap, csvValues, integerCsvValues, localMapIssues, mapFromUnknown, moveMarkerTo, moveSpaceTo, simulateMapPath, transformMarker } from './map-model'
 
 describe('map model', () => {
   it('clones the default map and passes core validation', () => {
@@ -55,6 +55,10 @@ describe('map model', () => {
     const movedMarker = moveMarkerTo(withLocation, location!.id, 520, 410)
     expect(movedMarker.markers?.at(-1)?.transform).toMatchObject({ x: 520, y: 410 })
     expect(movedMarker.landmarks.at(-1)).toMatchObject({ x: 520, y: 410 })
+
+    const transformedMarker = transformMarker(movedMarker, location!.id, { scale: 1.5, rotation: 35 })
+    expect(transformedMarker.markers?.at(-1)?.transform).toMatchObject({ x: 520, y: 410, scale: 1.5, rotation: 35 })
+    expect(transformedMarker.landmarks.at(-1)).toMatchObject({ x: 520, y: 410, size: 162 })
   })
   it('uses the authoritative bounce path calculation', () => {
     const map = createDefaultMap()
