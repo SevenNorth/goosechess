@@ -62,7 +62,7 @@ describe('deterministic rule kernel', () => {
     const state = createInitialGameState({ definition, participants: makeParticipants(2), seed: 3 })
     expect(settleMovement(state, definition, 'p0', 3)).toMatchObject({
       landedOnEvent: true,
-      landedEventLandmarkId: 'market',
+      landedEventPoolId: 'market',
     })
   })
 

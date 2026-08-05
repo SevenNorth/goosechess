@@ -231,7 +231,8 @@ interface BoardSpace {
   y: number
   rotation: number
   kind: 'start' | 'normal' | 'event' | 'finish'
-  landmarkId?: string
+  markerId?: string
+  eventPoolId?: string
 }
 ```
 
@@ -244,20 +245,43 @@ interface MapDefinition {
   logicalSize: { width: number; height: number }
   spaces: BoardSpace[]
   winningSpaceIds: number[]
-  landmarks: LandmarkDefinition[]
+  markers: MapMarkerDefinition[]
+  eventPools: EventPoolDefinition[]
   allowedEventIds?: string[]
-  genericEventPoolIds?: string[]
-  landmarkEventPoolIds?: Record<string, string[]>
   blockedItemIds?: string[]
   assets: MapAssetManifest
 }
 ```
 
+```ts
+interface EventPoolDefinition {
+  id: string
+  name: string
+  eventIds: string[]
+}
+
+interface MapMarkerDefinition {
+  id: string
+  kind: 'start' | 'location' | 'finish'
+  name: string
+  spaceIds: number[]
+  eventPoolId?: string
+  asset: string
+  transform: { x: number; y: number; scale: number; rotation: number }
+}
+```
+
+`EventPoolDefinition` 是版本化内容实体，不使用编译期 TypeScript enum。管理端从当前草稿/发布包读取可选项，服务端校验引用。只有 `location` 可以设置 `eventPoolId`；`start` 和 `finish` 设置该字段必须拒绝发布。普通事件格可以直接设置 `eventPoolId`，从而不依赖任何表现标记。
+
 规则引擎通过 `spaces` 的顺序计算移动和折返，不读取默认地图常量。地图切换发生在创建游戏会话之前；运行中的状态机只持有当前地图的只读定义。
 
-第 63、64、65 格都应设置 `landmarkId: 'noise-house'`。规则配置同时明确设置 `winningSpaceIds: [63, 64, 65]`，移动和事件效果完成后根据最终落点进行胜利判断。
+第 63、64、65 格都应设置 `markerId: 'noise-house'`。规则配置同时明确设置 `winningSpaceIds: [63, 64, 65]`，移动和事件效果完成后根据最终落点进行胜利判断。
 
 虽然当前喧声屋范围与胜利格集合相同，两个概念仍需分开建模，避免以后调整地标范围或胜利规则时修改场景数据。
+
+旧草稿使用的 `landmarks / genericEventPoolIds / landmarkEventPoolIds` 由 `packages/content-tools` 的显式迁移器读取，转换后保存为新修订；运行时不长期维护两套选池逻辑。奥普港迁移必须保持所有格子坐标、贴图位置和现有事件数组不变，只更新引用关系。内容版本和规则集版本随迁移递增，已经开始的房间继续锁定旧版本。
+
+地图校验至少覆盖：标记和池 ID 唯一、格子/标记/池引用存在、起点与终点不关联池、地点池至少三张有效事件、贴图路径非空、变换值有限、`scale > 0`、旋转可序列化、胜利格存在且可达。规则层的“移动到下一个地点”只遍历 `kind === 'location'` 的标记。
 
 ## 7. 数据模型
 

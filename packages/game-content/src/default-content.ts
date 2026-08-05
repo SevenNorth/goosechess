@@ -1,5 +1,5 @@
 import { EVENTS, ITEMS, LEGACY_EVENT_SPACE_IDS } from './legacy-content.js'
-import type { GameDefinition, LandmarkDefinition, MapDefinition } from '@goose-chess/game-core'
+import type { EventPoolDefinition, GameDefinition, LandmarkDefinition, MapDefinition, MapMarkerDefinition } from '@goose-chess/game-core'
 import type {
   ContentManifest,
   LandmarkContentDefinition,
@@ -8,7 +8,7 @@ import type {
   SkinContentDefinition,
 } from './types.js'
 
-export const CONTENT_VERSION = '2026.08.05.1'
+export const CONTENT_VERSION = '2026.08.05.2'
 
 export const LANDMARK_DEFINITIONS = [
   { id: 'repair-room', title: '维修室', spaceIds: [0] },
@@ -28,6 +28,7 @@ export const DEFAULT_MAP_CONTENT = {
   title: '奥普港',
   spaceCount: 66,
   winningSpaceIds: [63, 64, 65],
+  markerIds: LANDMARK_DEFINITIONS.map((landmark) => landmark.id),
   landmarkIds: LANDMARK_DEFINITIONS.map((landmark) => landmark.id),
 } as const satisfies MapContentDefinition
 
@@ -40,7 +41,7 @@ export const SKINS = [
 
 export const DEFAULT_RULESET = {
   id: 'classic-race',
-  version: 8,
+  version: 9,
   playerCount: { min: 2, max: 4 },
   mapIds: [DEFAULT_MAP_CONTENT.id],
   eventPoolIds: EVENTS.map((event) => event.id),
@@ -69,10 +70,32 @@ export const LANDMARK_EVENT_POOL_IDS = {
   mixologist: ['mixologist-special', 'wrong-glass', 'sparkling-tonic'],
 } as const satisfies Readonly<Record<string, readonly string[]>>
 
+export const DEFAULT_EVENT_POOLS = [
+  { id: 'general', name: '通用', eventIds: GENERIC_EVENT_POOL_IDS },
+  { id: 'aup-food', name: '餐饮', eventIds: LANDMARK_EVENT_POOL_IDS['snack-stand'] },
+  { id: 'aup-exploration', name: '探索', eventIds: LANDMARK_EVENT_POOL_IDS['scavenger-beach'] },
+  { id: 'aup-sailors', name: '水手社交', eventIds: LANDMARK_EVENT_POOL_IDS['sailors-home'] },
+  { id: 'aup-yellow-dog', name: '大黄狗', eventIds: LANDMARK_EVENT_POOL_IDS['yellow-dog'] },
+  { id: 'aup-madhouse', name: '疯人院', eventIds: LANDMARK_EVENT_POOL_IDS.madhouse },
+  { id: 'aup-cooking', name: '烹饪', eventIds: LANDMARK_EVENT_POOL_IDS['grand-boil'] },
+  { id: 'aup-mixology', name: '调饮', eventIds: LANDMARK_EVENT_POOL_IDS.mixologist },
+] as const satisfies readonly EventPoolDefinition[]
+
+const LOCATION_EVENT_POOL_IDS = {
+  'snack-stand': 'aup-food',
+  'scavenger-beach': 'aup-exploration',
+  'sailors-home': 'aup-sailors',
+  'yellow-dog': 'aup-yellow-dog',
+  madhouse: 'aup-madhouse',
+  'grand-boil': 'aup-cooking',
+  mixologist: 'aup-mixology',
+} as const satisfies Readonly<Record<string, string>>
+
 export const DEFAULT_CONTENT_MANIFEST = {
   contentVersion: CONTENT_VERSION,
   maps: [DEFAULT_MAP_CONTENT],
   landmarks: LANDMARK_DEFINITIONS,
+  eventPools: DEFAULT_EVENT_POOLS,
   events: EVENTS,
   items: ITEMS,
   skins: SKINS,
@@ -132,6 +155,36 @@ const LANDMARK_PLACEMENTS: Readonly<Record<string, { x: number; y: number; size:
   'noise-house': { x: 498, y: 383, size: 210 },
 }
 
+export const DEFAULT_MAP_MARKERS = LANDMARK_DEFINITIONS.map((landmark) => {
+  const placement = LANDMARK_PLACEMENTS[landmark.id]
+  const kind = landmark.id === 'repair-room'
+    ? 'start' as const
+    : landmark.id === 'noise-house'
+      ? 'finish' as const
+      : 'location' as const
+  const eventPoolId = kind === 'location'
+    ? LOCATION_EVENT_POOL_IDS[landmark.id as keyof typeof LOCATION_EVENT_POOL_IDS]
+    : undefined
+  return {
+    id: landmark.id,
+    kind,
+    name: landmark.title,
+    spaceIds: landmark.spaceIds,
+    ...(eventPoolId ? { eventPoolId } : {}),
+    asset: `assets/maps/aup-port/${landmark.id}.png`,
+    transform: {
+      x: placement.x,
+      y: placement.y,
+      scale: placement.size / 108,
+      rotation: 0,
+    },
+  }
+}) satisfies readonly MapMarkerDefinition[]
+
+const markerBySpaceId: ReadonlyMap<number, MapMarkerDefinition> = new Map(
+  DEFAULT_MAP_MARKERS.flatMap((marker) => marker.spaceIds.map((spaceId) => [spaceId, marker] as const)),
+)
+
 export const DEFAULT_MAP_DEFINITION = {
   id: DEFAULT_MAP_CONTENT.id,
   name: DEFAULT_MAP_CONTENT.title,
@@ -147,9 +200,17 @@ export const DEFAULT_MAP_DEFINITION = {
         : LEGACY_EVENT_SPACE_IDS.includes(index as typeof LEGACY_EVENT_SPACE_IDS[number])
           ? 'event' as const
           : 'normal' as const,
-    ...(landmarkBySpaceId.has(index) ? { landmarkId: landmarkBySpaceId.get(index) } : {}),
+    ...(landmarkBySpaceId.has(index) ? {
+      landmarkId: landmarkBySpaceId.get(index),
+      markerId: landmarkBySpaceId.get(index),
+    } : {}),
+    ...(LEGACY_EVENT_SPACE_IDS.includes(index as typeof LEGACY_EVENT_SPACE_IDS[number])
+      ? { eventPoolId: markerBySpaceId.get(index)?.eventPoolId ?? 'general' }
+      : {}),
   })),
   winningSpaceIds: DEFAULT_MAP_CONTENT.winningSpaceIds,
+  markers: DEFAULT_MAP_MARKERS,
+  eventPools: DEFAULT_EVENT_POOLS,
   landmarks: LANDMARK_DEFINITIONS.map((landmark) => ({
     id: landmark.id,
     name: landmark.title,

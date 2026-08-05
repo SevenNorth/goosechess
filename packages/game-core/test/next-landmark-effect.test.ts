@@ -10,18 +10,52 @@ import { makeDefinition, makeMap, makeParticipants } from './fixtures.js'
 
 function landmarkMap() {
   const base = makeMap(12, [11])
+  const marker = (
+    id: string,
+    kind: 'start' | 'location' | 'finish',
+    spaceIds: readonly number[],
+    eventPoolId?: string,
+  ) => ({
+    id,
+    kind,
+    name: id,
+    spaceIds,
+    ...(eventPoolId ? { eventPoolId } : {}),
+    asset: `test/${id}.png`,
+    transform: { x: 0, y: 0, scale: 1, rotation: 0 },
+  })
   return {
     ...base,
-    spaces: base.spaces.map((space) => ({
-      ...space,
-      ...(space.index === 3
-        ? { landmarkId: 'snack-stand' }
-        : space.index === 7 || space.index === 8
-          ? { landmarkId: 'madhouse' }
-          : space.index === 10
-            ? { landmarkId: 'lighthouse' }
-            : {}),
-    })),
+    spaces: base.spaces.map((space) => {
+      const markerId = space.index === 0
+        ? 'start'
+        : space.index === 3
+          ? 'snack-stand'
+          : space.index === 7 || space.index === 8
+            ? 'madhouse'
+            : space.index === 10
+              ? 'lighthouse'
+              : space.index === 11
+                ? 'finish'
+                : undefined
+      return {
+        ...space,
+        ...(markerId ? { markerId } : {}),
+        ...(markerId && markerId !== 'start' && markerId !== 'finish' ? { landmarkId: markerId } : {}),
+      }
+    }),
+    eventPools: [
+      { id: 'food', name: 'Food', eventIds: ['move-one', 'extra', 'gain'] },
+      { id: 'hospital', name: 'Hospital', eventIds: ['move-one', 'extra', 'gain'] },
+      { id: 'exploration', name: 'Exploration', eventIds: ['move-one', 'extra', 'gain'] },
+    ],
+    markers: [
+      marker('start', 'start', [0]),
+      marker('snack-stand', 'location', [3], 'food'),
+      marker('madhouse', 'location', [7, 8], 'hospital'),
+      marker('lighthouse', 'location', [10], 'exploration'),
+      marker('finish', 'finish', [11]),
+    ],
     landmarks: [
       { id: 'snack-stand', name: 'Snack Stand', spaceIds: [3] },
       { id: 'madhouse', name: 'Madhouse', spaceIds: [7, 8] },
@@ -31,7 +65,7 @@ function landmarkMap() {
 }
 
 describe('move to next landmark effect', () => {
-  it('finds the next distinct map landmark and stays put after the last one', () => {
+  it('finds only the next distinct location and ignores start and finish markers', () => {
     const map = landmarkMap()
     expect(calculatePathToNextLandmark(map, 1)).toMatchObject({ path: [2, 3], toSpaceId: 3 })
     expect(calculatePathToNextLandmark(map, 3)).toMatchObject({ path: [4, 5, 6, 7], toSpaceId: 7 })

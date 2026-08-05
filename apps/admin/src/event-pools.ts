@@ -18,17 +18,18 @@ export function eventPoolOptions(
   const options = new Map<string, EventPoolOption>()
   options.set('general', { id: 'general', label: '通用事件池', source: 'general' })
 
-  for (const landmark of DEFAULT_MAP_DEFINITION.landmarks) {
-    options.set(landmark.id, {
-      id: landmark.id,
-      label: landmark.name,
+  for (const pool of DEFAULT_MAP_DEFINITION.eventPools ?? []) {
+    if (pool.id === 'general') continue
+    options.set(pool.id, {
+      id: pool.id,
+      label: pool.name,
       source: 'default-map',
     })
   }
 
   for (const draft of mapDrafts) {
-    if (draft.kind !== 'map' || !isRecord(draft.content) || !Array.isArray(draft.content.landmarks)) continue
-    for (const value of draft.content.landmarks) {
+    if (draft.kind !== 'map' || !isRecord(draft.content) || !Array.isArray(draft.content.eventPools)) continue
+    for (const value of draft.content.eventPools) {
       if (!isRecord(value) || typeof value.id !== 'string' || !value.id.trim()) continue
       const id = value.id.trim()
       options.set(id, {

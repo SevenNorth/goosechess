@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { calculateMovementPath, createMapRegistry, validateGameDefinition } from '@goose-chess/game-core'
 import {
   DEFAULT_CONTENT_MANIFEST,
+  DEFAULT_EVENT_POOLS,
   DEFAULT_GAME_DEFINITION,
   DEFAULT_MAP_DEFINITION,
   DEFAULT_MAP_CONTENT,
+  DEFAULT_MAP_MARKERS,
   EVENTS,
   GENERIC_EVENT_POOL_IDS,
   ITEMS,
@@ -30,6 +32,19 @@ describe('default content manifest', () => {
   it('records the three winning spaces separately from the noise house landmark', () => {
     expect(DEFAULT_MAP_CONTENT.winningSpaceIds).toEqual([63, 64, 65])
     expect(LANDMARK_DEFINITIONS.find((landmark) => landmark.id === 'noise-house')?.spaceIds).toEqual([63, 64, 65])
+  })
+  it('migrates Aup Port to semantic pools and typed map markers', () => {
+    expect(DEFAULT_EVENT_POOLS.map((pool) => pool.id)).toContain('general')
+    expect(DEFAULT_EVENT_POOLS.map((pool) => pool.id)).toContain('aup-food')
+    const start = DEFAULT_MAP_MARKERS.find((marker) => marker.id === 'repair-room')
+    const finish = DEFAULT_MAP_MARKERS.find((marker) => marker.id === 'noise-house')
+    expect(start).toMatchObject({ kind: 'start' })
+    expect(start).not.toHaveProperty('eventPoolId')
+    expect(finish).toMatchObject({ kind: 'finish' })
+    expect(finish).not.toHaveProperty('eventPoolId')
+    expect(DEFAULT_MAP_MARKERS.filter((marker) => marker.kind === 'location')).toHaveLength(7)
+    expect(DEFAULT_MAP_MARKERS.filter((marker) => marker.kind === 'location')
+      .every((marker) => DEFAULT_EVENT_POOLS.some((pool) => pool.id === marker.eventPoolId))).toBe(true)
   })
 
   it('integrates single-space landmark art into the route without hiding finish spaces', () => {

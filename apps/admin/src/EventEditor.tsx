@@ -235,7 +235,7 @@ function EventForm({
               </label>
             ))}
           </div>
-          <small>可同时归属多个事件池；地点选项来自默认地图和地图草稿。</small>
+          <small>可同时归属多个语义事件池；选项来自默认内容和地图草稿中的独立事件池定义。</small>
         </fieldset>
       </section>
       <section className="form-section">

@@ -8,9 +8,34 @@ export interface BoardSpace {
   readonly y: number
   readonly rotation: number
   readonly kind: 'start' | 'normal' | 'event' | 'finish'
+  readonly markerId?: string
+  readonly eventPoolId?: string
+  /** @deprecated Read old map drafts through the content migration layer. */
   readonly landmarkId?: string
 }
 
+export interface EventPoolDefinition {
+  readonly id: string
+  readonly name: string
+  readonly eventIds: readonly string[]
+}
+
+export interface MapMarkerDefinition {
+  readonly id: string
+  readonly kind: 'start' | 'location' | 'finish'
+  readonly name: string
+  readonly spaceIds: readonly number[]
+  readonly eventPoolId?: string
+  readonly asset: string
+  readonly transform: {
+    readonly x: number
+    readonly y: number
+    readonly scale: number
+    readonly rotation: number
+  }
+}
+
+/** @deprecated Use MapMarkerDefinition after migrating legacy map drafts. */
 export interface LandmarkDefinition {
   readonly id: string
   readonly name: string
@@ -33,6 +58,9 @@ export interface MapDefinition {
   readonly logicalSize: { readonly width: number; readonly height: number }
   readonly spaces: readonly BoardSpace[]
   readonly winningSpaceIds: readonly number[]
+  readonly markers?: readonly MapMarkerDefinition[]
+  readonly eventPools?: readonly EventPoolDefinition[]
+  /** @deprecated Retained temporarily for legacy drafts and renderers. */
   readonly landmarks: readonly LandmarkDefinition[]
   readonly allowedEventIds?: readonly string[]
   readonly genericEventPoolIds?: readonly string[]

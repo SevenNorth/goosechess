@@ -53,7 +53,13 @@ function validateEffect(effect: GameEffect, eventId: string): string[] {
 }
 
 export function validateMapDefinition(map: MapDefinition): string[] {
-  const issues = [...duplicateIds(map.landmarks, 'landmark')]
+  const issues = [
+    ...duplicateIds(map.landmarks, 'landmark'),
+    ...duplicateIds(map.markers ?? [], 'marker'),
+    ...duplicateIds(map.eventPools ?? [], 'event pool'),
+  ]
+  const markerIds = new Set((map.markers ?? []).map((marker) => marker.id))
+  const eventPoolIds = new Set((map.eventPools ?? []).map((pool) => pool.id))
   if (map.spaces.length < 2) issues.push(`Map ${map.id} must contain at least two spaces.`)
   map.spaces.forEach((space, index) => {
     if (space.index !== index) issues.push(`Map ${map.id} space order is invalid at index ${index}.`)
@@ -62,6 +68,12 @@ export function validateMapDefinition(map: MapDefinition): string[] {
     }
     if (space.landmarkId && !map.landmarks.some((landmark) => landmark.id === space.landmarkId)) {
       issues.push(`Map ${map.id} space ${space.index} references unknown landmark ${space.landmarkId}.`)
+    }
+    if (space.markerId && !markerIds.has(space.markerId)) {
+      issues.push(`Map ${map.id} space ${space.index} references unknown marker ${space.markerId}.`)
+    }
+    if (space.eventPoolId && !eventPoolIds.has(space.eventPoolId)) {
+      issues.push(`Map ${map.id} space ${space.index} references unknown event pool ${space.eventPoolId}.`)
     }
   })
   for (const winningSpaceId of map.winningSpaceIds) {
@@ -80,6 +92,25 @@ export function validateMapDefinition(map: MapDefinition): string[] {
       issues.push(`Landmark ${landmark.id} has invalid presentation coordinates.`)
     }
     if (map.assets.landmarks && !map.assets.landmarks[landmark.id]) issues.push(`Landmark ${landmark.id} has no asset path.`)
+  }
+  for (const marker of map.markers ?? []) {
+    for (const spaceId of marker.spaceIds) {
+      const space = map.spaces[spaceId]
+      if (!space || space.markerId !== marker.id) {
+        issues.push(`Marker ${marker.id} and space ${spaceId} are inconsistent.`)
+      }
+    }
+    if (marker.kind !== 'location' && marker.eventPoolId) {
+      issues.push(`Marker ${marker.id} of kind ${marker.kind} cannot reference an event pool.`)
+    }
+    if (marker.kind === 'location' && (!marker.eventPoolId || !eventPoolIds.has(marker.eventPoolId))) {
+      issues.push(`Location marker ${marker.id} must reference an existing event pool.`)
+    }
+    const transform = marker.transform
+    if (!marker.asset || !Number.isFinite(transform.x) || !Number.isFinite(transform.y)
+      || !Number.isFinite(transform.scale) || transform.scale <= 0 || !Number.isFinite(transform.rotation)) {
+      issues.push(`Marker ${marker.id} has invalid presentation data.`)
+    }
   }
   if (!map.assets.background || !map.assets.landmarkAtlas) issues.push(`Map ${map.id} has an invalid asset manifest.`)
   return issues
@@ -103,6 +134,15 @@ export function validateGameDefinition(definition: GameDefinition): string[] {
   for (const eventId of definition.map.allowedEventIds ?? []) {
     if (!eventIds.has(eventId)) issues.push(`Map ${definition.map.id} allows unknown event ${eventId}.`)
     else if (!rulesetEventIds.has(eventId)) issues.push(`Map ${definition.map.id} allows event ${eventId} outside the ruleset pool.`)
+  }
+  for (const eventPool of definition.map.eventPools ?? []) {
+    issues.push(...validateEventPool(
+      `Map ${definition.map.id} event pool ${eventPool.id}`,
+      eventPool.eventIds,
+      eventIds,
+      rulesetEventIds,
+      allowedEventIds,
+    ))
   }
   const usesScopedEventPools = Boolean(definition.map.genericEventPoolIds || definition.map.landmarkEventPoolIds)
   if (usesScopedEventPools) {

@@ -1,5 +1,6 @@
 import type {
   EventDefinition,
+  EventPoolDefinition,
   GameEffect,
   ItemBehavior,
   ItemDefinition,
@@ -32,6 +33,8 @@ export interface MapContentDefinition {
   title: string
   spaceCount: number
   winningSpaceIds: readonly number[]
+  markerIds: readonly string[]
+  /** @deprecated Use markerIds after legacy content migration. */
   landmarkIds: readonly string[]
 }
 
@@ -54,6 +57,7 @@ export interface ContentManifest {
   contentVersion: string
   maps: readonly MapContentDefinition[]
   landmarks: readonly LandmarkContentDefinition[]
+  eventPools: readonly EventPoolDefinition[]
   events: readonly EventCard[]
   items: readonly ItemCard[]
   skins: readonly SkinContentDefinition[]

@@ -62,18 +62,27 @@ export function calculateMovementPath(map: Pick<MapDefinition, 'spaces'>, fromSp
 }
 
 export function calculatePathToNextLandmark(
-  map: Pick<MapDefinition, 'spaces'>,
+  map: Pick<MapDefinition, 'spaces' | 'markers'>,
   fromSpaceId: number,
 ): MovementResult {
   const fromIndex = map.spaces.findIndex((space) => space.index === fromSpaceId)
   if (fromIndex < 0) throw new RangeError('Unknown starting space: ' + fromSpaceId + '.')
 
-  const currentLandmarkId = map.spaces[fromIndex].landmarkId
-  const targetIndex = map.spaces.findIndex((space, index) => (
-    index > fromIndex
-    && Boolean(space.landmarkId)
-    && space.landmarkId !== currentLandmarkId
-  ))
+  const locationIds = map.markers
+    ? new Set(map.markers.filter((marker) => marker.kind === 'location').map((marker) => marker.id))
+    : null
+  const markerIdOf = (space: MapDefinition['spaces'][number]) => space.markerId ?? space.landmarkId
+  const currentMarkerId = markerIdOf(map.spaces[fromIndex])
+  const currentLocationId = currentMarkerId && (!locationIds || locationIds.has(currentMarkerId))
+    ? currentMarkerId
+    : undefined
+  const targetIndex = map.spaces.findIndex((space, index) => {
+    const markerId = markerIdOf(space)
+    return index > fromIndex
+      && Boolean(markerId)
+      && markerId !== currentLocationId
+      && (!locationIds || locationIds.has(markerId!))
+  })
   if (targetIndex < 0) {
     return { fromSpaceId, path: [], toSpaceId: fromSpaceId, bounced: false }
   }

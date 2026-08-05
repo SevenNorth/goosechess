@@ -11,11 +11,11 @@ function mapDraft(content: unknown): ContentDraft {
 }
 
 describe('event pool options', () => {
-  it('combines the general pool, default landmarks and map draft landmarks', () => {
-    const options = eventPoolOptions([mapDraft({ landmarks: [{ id: 'lighthouse', name: '灯塔' }] })])
+  it('combines versioned default and map draft event pools', () => {
+    const options = eventPoolOptions([mapDraft({ eventPools: [{ id: 'mystery', name: '神秘' }] })])
     expect(options).toContainEqual(expect.objectContaining({ id: 'general', label: '通用事件池' }))
-    expect(options).toContainEqual(expect.objectContaining({ id: 'snack-stand', label: '小吃摊' }))
-    expect(options).toContainEqual(expect.objectContaining({ id: 'lighthouse', label: '灯塔', source: 'map-draft' }))
+    expect(options).toContainEqual(expect.objectContaining({ id: 'aup-food', label: '餐饮' }))
+    expect(options).toContainEqual(expect.objectContaining({ id: 'mystery', label: '神秘', source: 'map-draft' }))
   })
 
   it('preserves unknown selections from an existing event draft', () => {

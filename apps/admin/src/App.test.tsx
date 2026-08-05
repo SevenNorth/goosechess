@@ -4,6 +4,21 @@ import { MemoryRouter } from 'react-router-dom'
 import { AdminRoutes } from './App'
 import { AuthProvider } from './AuthProvider'
 
+vi.mock('./MapPreview', () => ({
+  MapPreview: ({
+    onAddSpace,
+    onAddLocation,
+  }: {
+    onAddSpace: (point: { x: number; y: number }) => void
+    onAddLocation: (point: { x: number; y: number }) => void
+  }) => (
+    <div aria-label="测试地图画布">
+      <button type="button" onClick={() => onAddSpace({ x: 320, y: 180 })}>画布添加格子</button>
+      <button type="button" onClick={() => onAddLocation({ x: 500, y: 400 })}>画布添加地点</button>
+    </div>
+  ),
+}))
+
 const admin = { id: 'admin-1', username: 'admin', displayName: '港口管理员', role: 'admin' }
 const player = { id: 'player-1', username: 'player', displayName: '普通玩家', role: 'player' }
 
@@ -78,5 +93,35 @@ describe('admin application access and event workflow', () => {
     expect(await screen.findByText('修订 1 已保存并完成自动校验。')).toBeTruthy()
     expect(screen.getByText('自动校验通过')).toBeTruthy()
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/admin/drafts', expect.objectContaining({ method: 'POST' })))
+  })
+  it('connects canvas tools to map history with undo and redo', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/auth/session') return json({ user: admin, expiresAt: Date.now() + 60_000 })
+      if (path === '/admin/me') return json({ user: admin, permissions: ['content:edit', 'content:review', 'content:publish'] })
+      if (path === '/admin/drafts') return json({ drafts: [] })
+      return json({ code: 'not_found', message: path }, 404)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderApp('/maps/new')
+
+    const undo = await screen.findByRole('button', { name: '撤销' }) as HTMLButtonElement
+    const redo = screen.getByRole('button', { name: '重做' }) as HTMLButtonElement
+    expect(undo.disabled).toBe(true)
+    expect(redo.disabled).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: '添加格子' }))
+    expect(screen.getByRole('button', { name: '添加格子' }).classList.contains('is-active')).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: '画布添加地点' }))
+    expect(screen.getByDisplayValue('新地点')).toBeTruthy()
+    expect(undo.disabled).toBe(false)
+
+    fireEvent.click(undo)
+    expect(screen.queryByDisplayValue('新地点')).toBeNull()
+    expect(redo.disabled).toBe(false)
+
+    fireEvent.click(redo)
+    expect(screen.getByDisplayValue('新地点')).toBeTruthy()
   })
 })
