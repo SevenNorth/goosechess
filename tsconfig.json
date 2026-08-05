@@ -3,6 +3,7 @@
   "references": [
     { "path": "./apps/game-server/tsconfig.json" },
     { "path": "./apps/content-server/tsconfig.json" },
+    { "path": "./apps/admin/tsconfig.json" },
     { "path": "./apps/web/tsconfig.json" },
     { "path": "./packages/content-tools/tsconfig.json" }
   ]

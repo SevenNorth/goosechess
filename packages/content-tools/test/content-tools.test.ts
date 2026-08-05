@@ -56,6 +56,19 @@ describe('content tools', () => {
     expect(() => compileManagedContent('event', invalidEvent)).toThrow('threshold')
   })
 
+  it('validates managed event pool membership when the editor supplies it', () => {
+    const event = {
+      ...DEFAULT_CONTENT_MANIFEST.events[0],
+      poolIds: [],
+    }
+    expect(validateManagedContent('event', event).issues).toContainEqual(expect.objectContaining({
+      path: 'poolIds',
+      code: 'required_event_pools',
+    }))
+
+    expect(validateManagedContent('event', { ...event, poolIds: ['general', 'repair-room'] }).valid).toBe(true)
+  })
+
   it('rejects non-JSON values and executable data', () => {
     expect(validateManagedContent('event', {
       id: 'bad-function',

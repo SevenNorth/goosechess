@@ -140,6 +140,18 @@ function validateEvent(content: Record<string, unknown>, issues: ContentValidati
     issue(issues, 'accent', 'invalid_accent', 'Event accent must be coral, teal, or gold.')
   }
 
+  if (content.poolIds !== undefined) {
+    if (!Array.isArray(content.poolIds) || content.poolIds.length === 0) {
+      issue(issues, 'poolIds', 'required_event_pools', 'Managed events must belong to at least one event pool.')
+    } else {
+      content.poolIds.forEach((poolId, index) => {
+        if (typeof poolId !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(poolId)) {
+          issue(issues, 'poolIds[' + index + ']', 'invalid_pool_id', 'Event pool ids must use lowercase letters, numbers, and hyphens.')
+        }
+      })
+    }
+  }
+
   if (kind === '骰子检定') {
     if (!Number.isInteger(content.threshold) || Number(content.threshold) < 2 || Number(content.threshold) > 12) {
       issue(issues, 'threshold', 'unreachable_threshold', 'Two-die thresholds must be integers from 2 to 12.')
