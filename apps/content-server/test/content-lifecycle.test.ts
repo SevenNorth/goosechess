@@ -5,6 +5,9 @@ import {
   type Role,
 } from '../src/auth.js'
 import { createContentServer } from '../src/server.js'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 function account(id: string, username: string, role: Role) {
   return createAccountRecord({
@@ -33,8 +36,10 @@ describe('content lifecycle API', () => {
   let server: ReturnType<typeof createContentServer>
   let baseUrl = ''
   let nextPort = 19088
+  let assetDirectory = ''
 
   beforeEach(async () => {
+    assetDirectory = await mkdtemp(join(tmpdir(), 'goose-content-assets-'))
     server = createContentServer({
       accounts: new InMemoryAccountRepository([
         account('player-1', 'player', 'player'),
@@ -42,6 +47,7 @@ describe('content lifecycle API', () => {
         account('admin-1', 'admin', 'admin'),
       ]),
       port: nextPort++,
+      assetDirectory,
     })
     const address = await server.listen()
     baseUrl = `http://${address.host}:${address.port}`
@@ -49,6 +55,7 @@ describe('content lifecycle API', () => {
 
   afterEach(async () => {
     await server.close()
+    await rm(assetDirectory, { recursive: true, force: true })
   })
 
   async function request(path: string, init: RequestInit = {}) {
@@ -90,6 +97,41 @@ describe('content lifecycle API', () => {
     const forbidden = await createDraft(playerCookie)
     expect(forbidden.status).toBe(403)
     expect(await forbidden.json()).toMatchObject({ code: 'forbidden' })
+  })
+
+  it('uploads authenticated image assets and serves immutable content URLs', async () => {
+    const editorCookie = await login('editor')
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
+
+    const unauthenticated = await request('/admin/assets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'image/png' },
+      body: png,
+    })
+    expect(unauthenticated.status).toBe(401)
+
+    const uploaded = await request('/admin/assets', {
+      method: 'POST',
+      headers: { Cookie: editorCookie, 'Content-Type': 'image/png' },
+      body: png,
+    })
+    expect(uploaded.status).toBe(201)
+    const body = await uploaded.json() as { asset: { url: string; size: number } }
+    expect(body.asset.url).toMatch(/^\/content-assets\/[a-f0-9]{64}\.png$/)
+    expect(body.asset.size).toBe(png.length)
+
+    const served = await request(body.asset.url)
+    expect(served.status).toBe(200)
+    expect(served.headers.get('content-type')).toBe('image/png')
+    expect(Buffer.from(await served.arrayBuffer())).toEqual(png)
+    expect(await readFile(join(assetDirectory, body.asset.url.split('/').at(-1)!))).toEqual(png)
+
+    const invalid = await request('/admin/assets', {
+      method: 'POST',
+      headers: { Cookie: editorCookie, 'Content-Type': 'image/png' },
+      body: Buffer.from('not an image'),
+    })
+    expect(invalid.status).toBe(400)
   })
 
   it('stores invalid drafts but blocks review submission until a valid revision exists', async () => {
@@ -139,6 +181,36 @@ describe('content lifecycle API', () => {
     })
     expect(staleUpdate.status).toBe(409)
     expect(await staleUpdate.json()).toMatchObject({ code: 'revision_conflict' })
+  })
+
+  it('deletes only editable drafts and records the deletion audit', async () => {
+    const editorCookie = await login('editor')
+    const adminCookie = await login('admin')
+    const createdResponse = await createDraft(editorCookie)
+    const created = (await createdResponse.json()) as { draft: { id: string } }
+
+    const deleted = await request(`/admin/drafts/${created.draft.id}`, {
+      method: 'DELETE',
+      headers: { Cookie: editorCookie },
+    })
+    expect(deleted.status).toBe(204)
+    expect((await request(`/admin/drafts/${created.draft.id}`, {
+      headers: { Cookie: editorCookie },
+    })).status).toBe(404)
+
+    const submittedResponse = await createDraft(editorCookie, { ...eventContent(), id: 'submitted-event' })
+    const submitted = (await submittedResponse.json()) as { draft: { id: string } }
+    await request(`/admin/drafts/${submitted.draft.id}/submit`, { method: 'POST', headers: { Cookie: editorCookie } })
+    const blocked = await request(`/admin/drafts/${submitted.draft.id}`, {
+      method: 'DELETE',
+      headers: { Cookie: editorCookie },
+    })
+    expect(blocked.status).toBe(409)
+
+    const audit = await request('/admin/audit?limit=100', { headers: { Cookie: adminCookie } })
+    expect(await audit.json()).toMatchObject({
+      audit: expect.arrayContaining([expect.objectContaining({ action: 'draft.deleted', entityId: created.draft.id })]),
+    })
   })
 
   it('reviews, publishes, supersedes, rolls back, and audits immutable releases', async () => {

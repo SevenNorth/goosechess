@@ -69,6 +69,7 @@ export interface ContentStorePort {
     readonly title?: string
     readonly content: unknown
   }, actorId: string): Promise<ContentDraft>
+  deleteDraft(id: string, actorId: string): Promise<void>
   submitDraft(id: string, actorId: string): Promise<ContentDraft>
   reviewDraft(id: string, decision: 'approve' | 'reject', reason: string | undefined, actorId: string): Promise<ContentDraft>
   publishDraft(id: string, actorId: string): Promise<ContentRelease>
@@ -316,6 +317,25 @@ export class SqliteContentStore implements ContentStorePort {
       }, timestamp)
     })
     return this.requireDraft(id)
+  }
+
+  async deleteDraft(id: string, actorId: string) {
+    this.ensureOpen()
+    const draft = this.requireDraft(id)
+    if (!['draft', 'rejected'].includes(draft.status)) {
+      throw new ContentStoreError(409, 'invalid_draft_state', '只有草稿或已驳回内容可以删除。')
+    }
+    const timestamp = this.now()
+    this.transaction(() => {
+      this.database.prepare('DELETE FROM content_reviews WHERE draft_id = ?').run(id)
+      this.database.prepare('DELETE FROM content_revisions WHERE draft_id = ?').run(id)
+      this.database.prepare('DELETE FROM content_drafts WHERE id = ?').run(id)
+      this.insertAudit(actorId, 'draft.deleted', 'draft', id, {
+        contentKey: draft.contentKey,
+        revision: draft.currentRevision,
+        status: draft.status,
+      }, timestamp)
+    })
   }
 
   async submitDraft(id: string, actorId: string) {

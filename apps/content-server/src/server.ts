@@ -1,4 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { createHash } from 'node:crypto'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import {
   MANAGED_CONTENT_KINDS,
   type ManagedContentKind,
@@ -20,7 +23,19 @@ import {
 } from './content-store.js'
 
 const JSON_LIMIT = 1024 * 1024
+const ASSET_LIMIT = 5 * 1024 * 1024
 const SESSION_COOKIE = 'goose_session'
+const IMAGE_EXTENSIONS = new Map([
+  ['image/png', 'png'],
+  ['image/jpeg', 'jpg'],
+  ['image/webp', 'webp'],
+])
+
+function matchesImageType(body: Buffer, contentType: string) {
+  if (contentType === 'image/png') return body.length >= 8 && body.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  if (contentType === 'image/jpeg') return body.length >= 3 && body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff
+  return body.length >= 12 && body.toString('ascii', 0, 4) === 'RIFF' && body.toString('ascii', 8, 12) === 'WEBP'
+}
 
 export interface ContentServerOptions {
   readonly host?: string
@@ -30,6 +45,7 @@ export interface ContentServerOptions {
   readonly contentStore?: ContentStorePort
   readonly cookieSecure?: boolean
   readonly allowedOrigin?: string
+  readonly assetDirectory?: string
 }
 
 function sendJson(
@@ -66,6 +82,18 @@ async function readJson(request: IncomingMessage) {
   } catch {
     throw new HttpError(400, 'invalid_request', '请求格式无效。')
   }
+}
+
+async function readBody(request: IncomingMessage, limit: number) {
+  const chunks: Buffer[] = []
+  let length = 0
+  for await (const chunk of request) {
+    const buffer = Buffer.from(chunk)
+    length += buffer.length
+    if (length > limit) throw new HttpError(413, 'payload_too_large', '图片不能超过 5 MB。')
+    chunks.push(buffer)
+  }
+  return Buffer.concat(chunks)
 }
 
 function requestRecord(body: unknown) {
@@ -191,6 +219,7 @@ export function createContentServer(options: ContentServerOptions = {}) {
   const sessions = options.sessions ?? new SessionStore()
   const contentStore: ContentStorePort = options.contentStore ?? new SqliteContentStore(':memory:')
   const cookieSecure = options.cookieSecure ?? false
+  const assetDirectory = resolve(options.assetDirectory ?? 'data/content-assets')
 
   async function getAuthContext(request: IncomingMessage): Promise<AuthContext | null> {
     const token = parseCookies(request.headers.cookie).get(SESSION_COOKIE)
@@ -241,6 +270,18 @@ export function createContentServer(options: ContentServerOptions = {}) {
       }
       if (method === 'GET' && pathname === '/health') {
         sendJson(response, 200, { ok: true })
+        return
+      }
+      const assetMatch = pathname.match(/^\/content-assets\/([a-f0-9]{64})\.(png|jpg|webp)$/)
+      if (method === 'GET' && assetMatch) {
+        try {
+          const body = await readFile(resolve(assetDirectory, `${assetMatch[1]}.${assetMatch[2]}`))
+          const contentType = assetMatch[2] === 'png' ? 'image/png' : assetMatch[2] === 'jpg' ? 'image/jpeg' : 'image/webp'
+          response.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=31536000, immutable' })
+          response.end(body)
+        } catch {
+          sendJson(response, 404, { code: 'asset_not_found', message: '贴图不存在。' })
+        }
         return
       }
       if (method === 'POST' && pathname === '/auth/login') {
@@ -295,6 +336,24 @@ export function createContentServer(options: ContentServerOptions = {}) {
               ? ['content:edit', 'content:review', 'content:publish', 'content:rollback']
               : ['content:edit', 'content:preview'],
         })
+        return
+      }
+
+      if (method === 'POST' && pathname === '/admin/assets') {
+        const auth = await requireRoles(request, response, ['content-editor', 'admin'])
+        if (!auth) return
+        const contentType = request.headers['content-type']?.split(';', 1)[0]?.trim().toLowerCase() ?? ''
+        const extension = IMAGE_EXTENSIONS.get(contentType)
+        if (!extension) throw new HttpError(415, 'unsupported_asset_type', '仅支持 PNG、JPEG 或 WebP 图片。')
+        const body = await readBody(request, ASSET_LIMIT)
+        if (body.length === 0) throw new HttpError(400, 'empty_asset', '图片内容为空。')
+        if (!matchesImageType(body, contentType)) throw new HttpError(400, 'invalid_asset', '图片内容与文件格式不匹配。')
+        const hash = createHash('sha256').update(body).digest('hex')
+        await mkdir(assetDirectory, { recursive: true })
+        await writeFile(resolve(assetDirectory, `${hash}.${extension}`), body, { flag: 'wx' }).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== 'EEXIST') throw error
+        })
+        sendJson(response, 201, { asset: { url: `/content-assets/${hash}.${extension}`, contentType, size: body.length } })
         return
       }
 
@@ -364,6 +423,13 @@ export function createContentServer(options: ContentServerOptions = {}) {
             auth.account.id,
           ),
         })
+        return
+      }
+      if (draftMatch && method === 'DELETE') {
+        const auth = await requireRoles(request, response, ['content-editor', 'admin'])
+        if (!auth) return
+        await contentStore.deleteDraft(decodeURIComponent(draftMatch[1]), auth.account.id)
+        sendEmpty(response, 204)
         return
       }
 

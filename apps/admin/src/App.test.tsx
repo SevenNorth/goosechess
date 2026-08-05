@@ -8,13 +8,16 @@ vi.mock('./MapPreview', () => ({
   MapPreview: ({
     onAddSpace,
     onAddLocation,
+    onSelectSpace,
   }: {
     onAddSpace: (point: { x: number; y: number }) => void
     onAddLocation: (point: { x: number; y: number }) => void
+    onSelectSpace: (id: number) => void
   }) => (
     <div aria-label="测试地图画布">
       <button type="button" onClick={() => onAddSpace({ x: 320, y: 180 })}>画布添加格子</button>
       <button type="button" onClick={() => onAddLocation({ x: 500, y: 400 })}>画布添加地点</button>
+      <button type="button" onClick={() => onSelectSpace(1)}>画布选择格子 1</button>
     </div>
   ),
 }))
@@ -94,12 +97,13 @@ describe('admin application access and event workflow', () => {
     expect(screen.getByText('自动校验通过')).toBeTruthy()
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/admin/drafts', expect.objectContaining({ method: 'POST' })))
   })
-  it('connects canvas tools to map history with undo and redo', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  it('uploads and places a marker image on the canvas with undo and redo', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input)
       if (path === '/auth/session') return json({ user: admin, expiresAt: Date.now() + 60_000 })
       if (path === '/admin/me') return json({ user: admin, permissions: ['content:edit', 'content:review', 'content:publish'] })
       if (path === '/admin/drafts') return json({ drafts: [] })
+      if (path === '/admin/assets' && init?.method === 'POST') return json({ asset: { url: '/content-assets/test.png', contentType: 'image/png', size: 8 } }, 201)
       return json({ code: 'not_found', message: path }, 404)
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -113,8 +117,11 @@ describe('admin application access and event workflow', () => {
     fireEvent.click(screen.getByRole('button', { name: '添加格子' }))
     expect(screen.getByRole('button', { name: '添加格子' }).classList.contains('is-active')).toBe(true)
 
+    fireEvent.change(screen.getByLabelText('添加贴图'), { target: { files: [new File(['image'], 'marker.png', { type: 'image/png' })] } })
+    expect(await screen.findByText('贴图已上传，请在画布上点击放置。')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '画布添加地点' }))
     expect(screen.getByDisplayValue('新地点')).toBeTruthy()
+    expect(screen.getByDisplayValue('/content-assets/test.png')).toBeTruthy()
     expect(undo.disabled).toBe(false)
 
     fireEvent.click(undo)
@@ -123,5 +130,54 @@ describe('admin application access and event workflow', () => {
 
     fireEvent.click(redo)
     expect(screen.getByDisplayValue('新地点')).toBeTruthy()
+  })
+
+  it('binds a winning space through the selected-space type', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/auth/session') return json({ user: admin, expiresAt: Date.now() + 60_000 })
+      if (path === '/admin/me') return json({ user: admin, permissions: ['content:edit', 'content:review', 'content:publish'] })
+      if (path === '/admin/drafts') return json({ drafts: [] })
+      return json({ code: 'not_found', message: path }, 404)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderApp('/maps/new')
+
+    expect(await screen.findByRole('button', { name: '画布选择格子 1' })).toBeTruthy()
+    expect(screen.queryByText('核心地图校验通过')).toBeNull()
+    expect(screen.queryByText('服务端校验通过')).toBeNull()
+    expect(screen.queryByLabelText('胜利格 ID')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '画布选择格子 1' }))
+    expect(screen.queryByRole('checkbox', { name: 'END 终点格' })).toBeNull()
+    const type = screen.getByRole('combobox', { name: '类型' }) as HTMLSelectElement
+    expect(type.value).toBe('normal')
+
+    fireEvent.change(type, { target: { value: 'finish' } })
+    expect(type.value).toBe('finish')
+    expect((screen.getByRole('button', { name: '撤销' }) as HTMLButtonElement).disabled).toBe(false)
+
+    fireEvent.change(type, { target: { value: 'normal' } })
+    expect(type.value).toBe('normal')
+  })
+
+  it('deletes an editable map draft after confirmation', async () => {
+    const map = { id: 'draft-map', name: '待删地图', logicalSize: { width: 640, height: 480 }, spaces: [{ index: 0, x: 20, y: 20, rotation: 0, kind: 'start' }, { index: 1, x: 60, y: 20, rotation: 0, kind: 'finish' }], winningSpaceIds: [1], markers: [], eventPools: [], landmarks: [], assets: { background: 'background.png', landmarkAtlas: 'atlas.png' } }
+    const draft = { id: 'map-draft-1', contentKey: 'map:draft-map', kind: 'map', title: '待删地图', status: 'draft', currentRevision: 1, contentHash: 'abc', createdBy: 'admin-1', createdAt: 1, updatedAt: 1, validation: { valid: false, issues: [] }, content: map }
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input)
+      if (path === '/auth/session') return json({ user: admin, expiresAt: Date.now() + 60_000 })
+      if (path === '/admin/me') return json({ user: admin, permissions: ['content:edit', 'content:review', 'content:publish'] })
+      if (path === '/admin/drafts/map-draft-1' && init?.method === 'DELETE') return new Response(null, { status: 204 })
+      if (path === '/admin/drafts/map-draft-1') return json({ draft })
+      if (path === '/admin/drafts') return json({ drafts: [draft] })
+      return json({ code: 'not_found', message: path }, 404)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    renderApp('/maps/map-draft-1')
+
+    fireEvent.click(await screen.findByRole('button', { name: '删除草稿 待删地图' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/admin/drafts/map-draft-1', expect.objectContaining({ method: 'DELETE' })))
+    expect(await screen.findByText('选择或创建地图草稿')).toBeTruthy()
   })
 })

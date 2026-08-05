@@ -99,7 +99,7 @@ export function moveSpaceTo(map: MapDefinition, spaceId: number, x: number, y: n
   }
 }
 
-export function appendLocationAt(map: MapDefinition, x: number, y: number): MapDefinition {
+export function appendLocationAt(map: MapDefinition, x: number, y: number, asset = ''): MapDefinition {
   const markers = map.markers ?? []
   const usedIds = new Set(markers.map((marker) => marker.id))
   let suffix = markers.length + 1
@@ -110,7 +110,7 @@ export function appendLocationAt(map: MapDefinition, x: number, y: number): MapD
     kind: 'location' as const,
     name: '新地点',
     spaceIds: [],
-    asset: '',
+    asset,
     transform: { x, y, scale: 1, rotation: 0 },
   }
   return {

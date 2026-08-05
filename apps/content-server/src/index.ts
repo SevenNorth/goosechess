@@ -44,6 +44,7 @@ const server = createContentServer({
   contentStore,
   cookieSecure: process.env.CONTENT_COOKIE_SECURE === 'true',
   allowedOrigin: process.env.ADMIN_ORIGIN?.trim() || undefined,
+  assetDirectory: process.env.CONTENT_ASSET_DIR?.trim() || 'data/content-assets',
 })
 let shuttingDown = false
 

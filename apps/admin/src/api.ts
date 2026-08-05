@@ -28,6 +28,20 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T
 }
 
+async function uploadAsset(file: File) {
+  const response = await fetch('/admin/assets', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': file.type },
+    body: file,
+  })
+  const body = await response.json() as Record<string, unknown>
+  if (!response.ok) {
+    throw new ApiError(response.status, typeof body.code === 'string' ? body.code : 'request_failed', typeof body.message === 'string' ? body.message : '上传失败。')
+  }
+  return body as { asset: { url: string; contentType: string; size: number } }
+}
+
 export const contentApi = {
   login: (username: string, password: string) => request<{ user: PublicUser; expiresAt: number }>('/auth/login', {
     method: 'POST', body: JSON.stringify({ username, password }),
@@ -37,6 +51,8 @@ export const contentApi = {
   me: () => request<{ user: PublicUser; permissions: string[] }>('/admin/me'),
   listDrafts: () => request<{ drafts: ContentDraft[] }>('/admin/drafts'),
   getDraft: (id: string) => request<{ draft: ContentDraft }>(`/admin/drafts/${encodeURIComponent(id)}`),
+  deleteDraft: (id: string) => request<void>(`/admin/drafts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  uploadAsset,
   createEvent: (title: string, content: ManagedEventContent) => request<{ draft: ContentDraft }>('/admin/drafts', {
     method: 'POST', body: JSON.stringify({ kind: 'event', title, content }),
   }),

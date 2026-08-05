@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Application, Container, Graphics, Text } from 'pixi.js'
+import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js'
 import type { MapDefinition } from '@goose-chess/game-core'
 
-export type MapCanvasMode = 'select' | 'add-space' | 'add-location' | 'pan'
+export type MapCanvasMode = 'select' | 'add-space' | 'add-marker' | 'pan'
 
 interface CanvasPoint {
   readonly x: number
@@ -11,20 +11,21 @@ interface CanvasPoint {
 
 interface MapPreviewProps {
   readonly map: MapDefinition
-  readonly selectedSpaceId: number
+  readonly selectedSpaceId: number | null
   readonly selectedMarkerId: string | null
   readonly path: readonly number[]
   readonly mode: MapCanvasMode
   readonly snapToGrid: boolean
   readonly onSelectSpace: (spaceId: number) => void
   readonly onSelectMarker: (markerId: string | null) => void
+  readonly onClearSelection: () => void
   readonly onAddSpace: (point: CanvasPoint) => void
   readonly onAddLocation: (point: CanvasPoint) => void
   readonly onMoveSpace: (spaceId: number, point: CanvasPoint) => void
   readonly onMoveMarker: (markerId: string, point: CanvasPoint) => void
   readonly onTransformMarker: (markerId: string, values: { scale?: number; rotation?: number }) => void
 }
-export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode, snapToGrid, onSelectSpace, onSelectMarker, onAddSpace, onAddLocation, onMoveSpace, onMoveMarker, onTransformMarker }: MapPreviewProps) {
+export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode, snapToGrid, onSelectSpace, onSelectMarker, onClearSelection, onAddSpace, onAddLocation, onMoveSpace, onMoveMarker, onTransformMarker }: MapPreviewProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const panOffsetRef = useRef({ x: 0, y: 0 })
   const zoomRef = useRef(1)
@@ -51,7 +52,7 @@ export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode,
       autoDensity: true,
       resolution: Math.min(window.devicePixelRatio || 1, 2),
       backgroundColor: 0x252a25,
-    }).then(() => {
+    }).then(async () => {
       initialized = true
       if (cancelled) {
         app.destroy(true)
@@ -81,7 +82,7 @@ export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode,
       app.stage.hitArea = app.screen
       app.stage.on('pointerdown', (event) => {
         didDrag = false
-        if (mode === 'select') onSelectMarker(null)
+        if (mode === 'select') onClearSelection()
         if (mode === 'pan') panOrigin = { x: event.global.x, y: event.global.y, worldX: world.x, worldY: world.y }
       })
       app.stage.on('globalpointermove', (event) => {
@@ -206,10 +207,29 @@ export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode,
         const visual = new Container({ x: definition.transform.x, y: definition.transform.y })
         visual.rotation = definition.transform.rotation * (Math.PI / 180)
         visual.scale.set(definition.transform.scale)
-        const badge = new Graphics().roundRect(-44, -16, 88, 32, 3).fill({ color: 0x3f463e, alpha: 0.92 })
-        const label = new Text({ text: definition.name, style: { fontFamily: 'Microsoft YaHei', fontSize: 14, fill: 0xffffff, fontWeight: '700' } })
-        label.anchor.set(0.5)
-        visual.addChild(badge, label)
+        let visualWidth = 108
+        let visualHeight = 108
+        try {
+          const source = definition.asset.startsWith('/') ? definition.asset : `/${definition.asset}`
+          const texture = definition.asset ? await Assets.load<Texture>(source) : Texture.EMPTY
+          if (cancelled) return
+          const sprite = new Sprite(texture)
+          const longestSide = Math.max(texture.width, texture.height)
+          const fitScale = longestSide > 0 ? 108 / longestSide : 1
+          visualWidth = texture.width * fitScale
+          visualHeight = texture.height * fitScale
+          sprite.anchor.set(0.5)
+          sprite.width = visualWidth
+          sprite.height = visualHeight
+          visual.addChild(sprite)
+        } catch {
+          const badge = new Graphics().roundRect(-54, -22, 108, 44, 3).fill({ color: 0x743f38, alpha: 0.94 })
+          const label = new Text({ text: definition.name, style: { fontFamily: 'Microsoft YaHei', fontSize: 14, fill: 0xffffff, fontWeight: '700' } })
+          label.anchor.set(0.5)
+          visualWidth = 108
+          visualHeight = 44
+          visual.addChild(badge, label)
+        }
         visual.eventMode = 'static'
         visual.cursor = mode === 'select' ? 'grab' : 'default'
         let dragging = false
@@ -242,8 +262,8 @@ export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode,
         if (selected && mode === 'select') {
           const overlay = new Container({ x: definition.transform.x, y: definition.transform.y })
           overlay.rotation = visual.rotation
-          const halfWidth = 50 * definition.transform.scale
-          const halfHeight = 23 * definition.transform.scale
+          const halfWidth = visualWidth * definition.transform.scale / 2
+          const halfHeight = visualHeight * definition.transform.scale / 2
           const outline = new Graphics()
           const stem = new Graphics()
           const scaleHandle = new Graphics()
@@ -255,8 +275,8 @@ export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode,
             .fill({ color: 0xd9a938 })
             .stroke({ color: 0xffffff, width: 2 })
           const drawSelection = (scale: number) => {
-            const width = 50 * scale
-            const height = 23 * scale
+            const width = visualWidth * scale / 2
+            const height = visualHeight * scale / 2
             outline.clear().rect(-width, -height, width * 2, height * 2).stroke({ color: 0xffffff, width: 2 / viewport.scale })
             stem.clear().moveTo(0, -height).lineTo(0, -height - 28).stroke({ color: 0xffffff, width: 2 / viewport.scale })
             scaleHandle.position.set(width, height)
@@ -344,7 +364,7 @@ export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode,
       if (initialized && app.canvas.parentElement === host) host.removeChild(app.canvas)
       if (initialized) app.destroy(true, { children: true })
     }
-  }, [map, mode, onAddLocation, onAddSpace, onMoveMarker, onMoveSpace, onSelectMarker, onSelectSpace, onTransformMarker, path, selectedMarkerId, selectedSpaceId, snapToGrid])
+  }, [map, mode, onAddLocation, onAddSpace, onClearSelection, onMoveMarker, onMoveSpace, onSelectMarker, onSelectSpace, onTransformMarker, path, selectedMarkerId, selectedSpaceId, snapToGrid])
 
   return <div className="map-preview-host" ref={hostRef} aria-label="Pixi 地图预览"><div className="map-zoom-status"><span>{zoomPercent}%</span><small>滚轮缩放</small></div></div>
 }
