@@ -73,7 +73,14 @@ export function mapFromUnknown(value: unknown): MapDefinition {
   if (typeof candidate.id !== 'string' || typeof candidate.name !== 'string' || !Array.isArray(candidate.spaces)) {
     return createDefaultMap()
   }
-  return migrateLegacyMap(candidate as MapDefinition)
+  const migrated = migrateLegacyMap(candidate as MapDefinition)
+  return {
+    ...migrated,
+    markers: migrated.markers?.map((marker) => ({
+      ...marker,
+      transform: { ...marker.transform, opacity: marker.transform.opacity ?? 1 },
+    })),
+  }
 }
 
 export function csvValues(value: string) {
@@ -92,6 +99,23 @@ export function appendSpaceAt(map: MapDefinition, x: number, y: number): MapDefi
   }
 }
 
+export function removeSpaceAt(map: MapDefinition, spaceId: number): MapDefinition {
+  if (spaceId === 0) throw new RangeError('The starting space cannot be deleted.')
+  if (map.spaces.length <= 2) throw new RangeError('A map must retain at least two spaces.')
+  if (!map.spaces.some((space) => space.index === spaceId)) throw new RangeError(`Unknown space: ${spaceId}.`)
+  const remap = (id: number) => id > spaceId ? id - 1 : id
+  const remapIds = (ids: readonly number[]) => ids.filter((id) => id !== spaceId).map(remap)
+  return {
+    ...map,
+    spaces: map.spaces
+      .filter((space) => space.index !== spaceId)
+      .map((space) => ({ ...space, index: remap(space.index) })),
+    winningSpaceIds: remapIds(map.winningSpaceIds),
+    markers: map.markers?.map((marker) => ({ ...marker, spaceIds: remapIds(marker.spaceIds) })),
+    landmarks: map.landmarks.map((landmark) => ({ ...landmark, spaceIds: remapIds(landmark.spaceIds) })),
+  }
+}
+
 export function moveSpaceTo(map: MapDefinition, spaceId: number, x: number, y: number): MapDefinition {
   return {
     ...map,
@@ -107,15 +131,19 @@ export function appendLocationAt(map: MapDefinition, x: number, y: number, asset
   const id = `location-${suffix}`
   const marker = {
     id,
-    kind: 'location' as const,
-    name: '新地点',
+    kind: 'decoration' as const,
+    name: '新贴图',
     spaceIds: [],
     asset,
-    transform: { x, y, scale: 1, rotation: 0 },
+    transform: { x, y, scale: 1, rotation: 0, opacity: 1 },
   }
   return {
     ...map,
     markers: [...markers, marker],
+    assets: {
+      ...map.assets,
+      landmarks: { ...map.assets.landmarks, [id]: asset },
+    },
     landmarks: [...map.landmarks, {
       id,
       name: marker.name,

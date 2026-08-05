@@ -22,7 +22,7 @@ export interface EventPoolDefinition {
 
 export interface MapMarkerDefinition {
   readonly id: string
-  readonly kind: 'start' | 'location' | 'finish'
+  readonly kind: 'decoration' | 'start' | 'location' | 'finish'
   readonly name: string
   readonly spaceIds: readonly number[]
   readonly eventPoolId?: string
@@ -32,6 +32,7 @@ export interface MapMarkerDefinition {
     readonly y: number
     readonly scale: number
     readonly rotation: number
+    readonly opacity?: number
   }
 }
 

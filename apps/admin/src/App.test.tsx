@@ -120,16 +120,23 @@ describe('admin application access and event workflow', () => {
     fireEvent.change(screen.getByLabelText('添加贴图'), { target: { files: [new File(['image'], 'marker.png', { type: 'image/png' })] } })
     expect(await screen.findByText('贴图已上传，请在画布上点击放置。')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '画布添加地点' }))
-    expect(screen.getByDisplayValue('新地点')).toBeTruthy()
+    expect(screen.getByDisplayValue('新贴图')).toBeTruthy()
     expect(screen.getByDisplayValue('/content-assets/test.png')).toBeTruthy()
+    expect((screen.getByRole('combobox', { name: '用途' }) as HTMLSelectElement).value).toBe('decoration')
+    const opacity = screen.getByRole('slider', { name: /透明度/ }) as HTMLInputElement
+    expect(opacity.value).toBe('100')
+    fireEvent.change(opacity, { target: { value: '45' } })
+    expect(opacity.value).toBe('45')
     expect(undo.disabled).toBe(false)
 
     fireEvent.click(undo)
-    expect(screen.queryByDisplayValue('新地点')).toBeNull()
+    expect((screen.getByRole('slider', { name: /透明度/ }) as HTMLInputElement).value).toBe('100')
+    fireEvent.click(undo)
+    expect(screen.queryByDisplayValue('新贴图')).toBeNull()
     expect(redo.disabled).toBe(false)
 
     fireEvent.click(redo)
-    expect(screen.getByDisplayValue('新地点')).toBeTruthy()
+    expect(screen.getByDisplayValue('新贴图')).toBeTruthy()
   })
 
   it('binds a winning space through the selected-space type', async () => {
@@ -151,6 +158,10 @@ describe('admin application access and event workflow', () => {
     expect(screen.queryByRole('checkbox', { name: 'END 终点格' })).toBeNull()
     const type = screen.getByRole('combobox', { name: '类型' }) as HTMLSelectElement
     expect(type.value).toBe('normal')
+    expect(screen.queryByText('固定路径模拟')).toBeNull()
+    const deleteSpace = screen.getByRole('button', { name: '删除格子' })
+    fireEvent.click(deleteSpace)
+    expect(screen.queryByRole('button', { name: '删除格子' })).toBeNull()
 
     fireEvent.change(type, { target: { value: 'finish' } })
     expect(type.value).toBe('finish')

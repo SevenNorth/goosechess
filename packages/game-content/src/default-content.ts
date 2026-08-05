@@ -177,6 +177,7 @@ export const DEFAULT_MAP_MARKERS = LANDMARK_DEFINITIONS.map((landmark) => {
       y: placement.y,
       scale: placement.size / 108,
       rotation: 0,
+      opacity: 1,
     },
   }
 }) satisfies readonly MapMarkerDefinition[]

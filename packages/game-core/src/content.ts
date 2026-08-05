@@ -106,9 +106,13 @@ export function validateMapDefinition(map: MapDefinition): string[] {
     if (marker.kind === 'location' && (!marker.eventPoolId || !eventPoolIds.has(marker.eventPoolId))) {
       issues.push(`Location marker ${marker.id} must reference an existing event pool.`)
     }
+    if (marker.kind === 'decoration' && marker.spaceIds.length > 0) {
+      issues.push(`Decoration marker ${marker.id} cannot reference spaces.`)
+    }
     const transform = marker.transform
     if (!marker.asset || !Number.isFinite(transform.x) || !Number.isFinite(transform.y)
-      || !Number.isFinite(transform.scale) || transform.scale <= 0 || !Number.isFinite(transform.rotation)) {
+      || !Number.isFinite(transform.scale) || transform.scale <= 0 || !Number.isFinite(transform.rotation)
+      || (transform.opacity !== undefined && (!Number.isFinite(transform.opacity) || transform.opacity < 0 || transform.opacity > 1))) {
       issues.push(`Marker ${marker.id} has invalid presentation data.`)
     }
   }

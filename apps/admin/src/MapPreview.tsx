@@ -138,7 +138,29 @@ export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode,
 
       if (map.spaces.length > 1) {
         const route = new Graphics().moveTo(map.spaces[0].x, map.spaces[0].y)
-        map.spaces.slice(1).forEach((space) => route.lineTo(space.x, space.y))
+        for (let index = 1; index < map.spaces.length - 1; index += 1) {
+          const previous = map.spaces[index - 1]
+          const current = map.spaces[index]
+          const next = map.spaces[index + 1]
+          const incomingLength = Math.hypot(current.x - previous.x, current.y - previous.y)
+          const outgoingLength = Math.hypot(next.x - current.x, next.y - current.y)
+          if (incomingLength === 0 || outgoingLength === 0) {
+            route.lineTo(current.x, current.y)
+            continue
+          }
+          const radius = Math.min(24, incomingLength * 0.32, outgoingLength * 0.32)
+          const before = {
+            x: current.x - ((current.x - previous.x) / incomingLength) * radius,
+            y: current.y - ((current.y - previous.y) / incomingLength) * radius,
+          }
+          const after = {
+            x: current.x + ((next.x - current.x) / outgoingLength) * radius,
+            y: current.y + ((next.y - current.y) / outgoingLength) * radius,
+          }
+          route.lineTo(before.x, before.y).quadraticCurveTo(current.x, current.y, after.x, after.y)
+        }
+        const finalSpace = map.spaces.at(-1)!
+        route.lineTo(finalSpace.x, finalSpace.y)
         route.stroke({ color: 0x897d5d, width: 28, alpha: 0.42 })
         world.addChild(route)
       }
@@ -200,6 +222,7 @@ export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode,
           y: landmark.y ?? map.spaces[landmark.spaceIds[0]]?.y ?? 0,
           scale: (landmark.size ?? 108) / 108,
           rotation: 0,
+          opacity: 1,
         },
       }))
       for (const definition of markerDefinitions) {
@@ -207,6 +230,7 @@ export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode,
         const visual = new Container({ x: definition.transform.x, y: definition.transform.y })
         visual.rotation = definition.transform.rotation * (Math.PI / 180)
         visual.scale.set(definition.transform.scale)
+        visual.alpha = definition.transform.opacity ?? 1
         let visualWidth = 108
         let visualHeight = 108
         try {

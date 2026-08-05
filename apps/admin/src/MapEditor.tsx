@@ -6,7 +6,7 @@ import { ApiError, contentApi } from './api'
 import { useAuth } from './auth-context'
 import './map-styles.css'
 import { MapPreview, type MapCanvasMode } from './MapPreview'
-import { appendLocationAt, appendSpaceAt, createDefaultMap, csvValues, integerCsvValues, localMapIssues, mapFromUnknown, moveMarkerTo, moveSpaceTo, simulateMapPath, transformMarker } from './map-model'
+import { appendLocationAt, appendSpaceAt, createDefaultMap, csvValues, integerCsvValues, localMapIssues, mapFromUnknown, moveMarkerTo, moveSpaceTo, removeSpaceAt, transformMarker } from './map-model'
 import type { ContentDraft, DraftStatus } from './types'
 
 const statusLabels: Record<DraftStatus, string> = {
@@ -290,7 +290,7 @@ function MapCanvasWorkspace({ map, selectedSpaceId, selectedMarkerId, path, edit
   )
 }
 
-function MapPropertyPanel({ map, selectedSpaceId, selectedMarkerId, validation, editable, fromSpaceId, distance, onFromSpaceChange, onDistanceChange, onChange, onClearMarker }: { readonly map: MapDefinition; readonly selectedSpaceId: number | null; readonly selectedMarkerId: string | null; readonly validation?: ContentDraft['validation']; readonly editable: boolean; readonly fromSpaceId: number; readonly distance: number; readonly onFromSpaceChange: (value: number) => void; readonly onDistanceChange: (value: number) => void; readonly onChange: (map: MapDefinition) => void; readonly onClearMarker: () => void }) {
+function MapPropertyPanel({ map, selectedSpaceId, selectedMarkerId, validation, editable, onChange, onClearSpace, onClearMarker }: { readonly map: MapDefinition; readonly selectedSpaceId: number | null; readonly selectedMarkerId: string | null; readonly validation?: ContentDraft['validation']; readonly editable: boolean; readonly onChange: (map: MapDefinition) => void; readonly onClearSpace: () => void; readonly onClearMarker: () => void }) {
   const markers = map.markers ?? []
   const eventPools = map.eventPools ?? []
   const selectedSpace = selectedSpaceId === null ? null : (map.spaces.find((space) => space.index === selectedSpaceId) ?? null)
@@ -325,19 +325,19 @@ function MapPropertyPanel({ map, selectedSpaceId, selectedMarkerId, validation, 
       landmarks: syncLegacyLandmarks(map, nextMarkers),
     })
   }
-  const simulation = useMemo(() => {
-    try {
-      return simulateMapPath(map, fromSpaceId, distance)
-    } catch {
-      return null
-    }
-  }, [distance, fromSpaceId, map])
   const localIssues = useMemo(() => localMapIssues(map), [map])
+  const removeSpace = (space: Space) => {
+    onChange(removeSpaceAt(map, space.index))
+    onClearSpace()
+  }
   const removeMarker = (marker: Marker) => {
+    const landmarkAssets = { ...map.assets.landmarks }
+    delete landmarkAssets[marker.id]
     patch({
       markers: markers.filter((item) => item.id !== marker.id),
       landmarks: map.landmarks.filter((item) => item.id !== marker.id),
       spaces: map.spaces.map((space) => ((space.markerId ?? space.landmarkId) === marker.id ? { ...space, markerId: undefined, landmarkId: undefined } : space)),
+      assets: { ...map.assets, landmarks: landmarkAssets },
     })
     onClearMarker()
   }
@@ -404,7 +404,7 @@ function MapPropertyPanel({ map, selectedSpaceId, selectedMarkerId, validation, 
                 <span>地图标记</span>
                 <select value={selectedSpace.markerId ?? selectedSpace.landmarkId ?? ''} disabled={!editable} onChange={(event) => assignSpaceMarker(selectedSpace, event.target.value)}>
                   <option value="">无</option>
-                  {markers.map((marker) => (
+                  {markers.filter((marker) => marker.kind !== 'decoration').map((marker) => (
                     <option key={marker.id} value={marker.id}>
                       {marker.name}
                     </option>
@@ -438,6 +438,9 @@ function MapPropertyPanel({ map, selectedSpaceId, selectedMarkerId, validation, 
                 </select>
               </label>
             </div>
+            <button type="button" className="property-delete" disabled={!editable || selectedSpace.index === 0 || map.spaces.length <= 2} onClick={() => removeSpace(selectedSpace)}>
+              <Trash2 />删除格子
+            </button>
           </section>
         ) : selectedMarker ? (
           <section className="property-section">
@@ -447,7 +450,7 @@ function MapPropertyPanel({ map, selectedSpaceId, selectedMarkerId, validation, 
                 <input value={selectedMarker.id} disabled />
               </label>
               <label>
-                <span>类型</span>
+                <span>用途</span>
                 <select
                   value={selectedMarker.kind}
                   disabled={!editable}
@@ -456,12 +459,14 @@ function MapPropertyPanel({ map, selectedSpaceId, selectedMarkerId, validation, 
                     patchMarker(selectedMarker, {
                       kind,
                       eventPoolId: kind === 'location' ? selectedMarker.eventPoolId : undefined,
+                      spaceIds: kind === 'decoration' ? [] : selectedMarker.spaceIds,
                     })
                   }}
                 >
-                  <option value="start">起点</option>
+                  <option value="decoration">装饰</option>
+                  <option value="start">起点标识</option>
                   <option value="location">地点</option>
-                  <option value="finish">终点</option>
+                  <option value="finish">终点标识</option>
                 </select>
               </label>
               <label>
@@ -472,12 +477,26 @@ function MapPropertyPanel({ map, selectedSpaceId, selectedMarkerId, validation, 
                 <span>关联格子</span>
                 <input
                   value={selectedMarker.spaceIds.join(', ')}
-                  disabled={!editable}
+                  disabled={!editable || selectedMarker.kind === 'decoration'}
                   onChange={(event) =>
                     patchMarker(selectedMarker, {
                       spaceIds: integerCsvValues(event.target.value),
                     })
                   }
+                />
+              </label>
+              <label className="property-wide marker-opacity-field">
+                <span>
+                  透明度 <strong>{Math.round((selectedMarker.transform.opacity ?? 1) * 100)}%</strong>
+                </span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={Math.round((selectedMarker.transform.opacity ?? 1) * 100)}
+                  disabled={!editable}
+                  onChange={(event) => onChange(transformMarker(map, selectedMarker.id, { opacity: Number(event.target.value) / 100 }))}
                 />
               </label>
               <label className="property-wide">
@@ -660,28 +679,6 @@ function MapPropertyPanel({ map, selectedSpaceId, selectedMarkerId, validation, 
             </div>
           </section>
         )}
-        <section className="path-simulator">
-          <strong>固定路径模拟</strong>
-          <div>
-            <label>
-              <span>起点</span>
-              <input type="number" min="0" max={map.spaces.length - 1} value={fromSpaceId} onChange={(event) => onFromSpaceChange(Number(event.target.value))} />
-            </label>
-            <label>
-              <span>步数</span>
-              <input type="number" value={distance} onChange={(event) => onDistanceChange(Number(event.target.value))} />
-            </label>
-          </div>
-          {simulation ? (
-            <p>
-              <span>终点 #{simulation.toSpaceId}</span>
-              <strong>{simulation.bounced ? '发生折返' : '未折返'}</strong>
-              <small>{simulation.path.join(' → ') || '原地'}</small>
-            </p>
-          ) : (
-            <p className="form-error">起点或路径参数无效。</p>
-          )}
-        </section>
         {!(validation?.valid ?? localIssues.length === 0) ? (
           <section className="validation-panel">
             <div>
@@ -708,8 +705,6 @@ export function MapWorkspace() {
   const [map, setMap] = useState<MapDefinition>(() => createDefaultMap())
   const [selectedSpaceId, setSelectedSpaceId] = useState<number | null>(null)
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null)
-  const [fromSpaceId, setFromSpaceId] = useState(0)
-  const [distance, setDistance] = useState(6)
   const [dirty, setDirty] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -985,13 +980,7 @@ export function MapWorkspace() {
             map={map}
             selectedSpaceId={selectedSpaceId}
             selectedMarkerId={selectedMarkerId}
-            path={(() => {
-              try {
-                return simulateMapPath(map, fromSpaceId, distance).path
-              } catch {
-                return []
-              }
-            })()}
+            path={[]}
             editable={editable && !busy}
             mode={canvasMode}
             pendingMarkerAsset={pendingMarkerAsset}
@@ -1009,7 +998,7 @@ export function MapWorkspace() {
           />
         </main>
       )}
-      {draftId ? <MapPropertyPanel map={map} selectedSpaceId={selectedSpaceId} selectedMarkerId={selectedMarkerId} validation={draft?.validation} editable={editable && !busy} fromSpaceId={fromSpaceId} distance={distance} onFromSpaceChange={setFromSpaceId} onDistanceChange={setDistance} onChange={changeMap} onClearMarker={() => setSelectedMarkerId(null)} /> : null}
+      {draftId ? <MapPropertyPanel map={map} selectedSpaceId={selectedSpaceId} selectedMarkerId={selectedMarkerId} validation={draft?.validation} editable={editable && !busy} onChange={changeMap} onClearSpace={() => setSelectedSpaceId(null)} onClearMarker={() => setSelectedMarkerId(null)} /> : null}
     </div>
   )
 }

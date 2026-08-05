@@ -262,12 +262,12 @@ interface EventPoolDefinition {
 
 interface MapMarkerDefinition {
   id: string
-  kind: 'start' | 'location' | 'finish'
+  kind: 'decoration' | 'start' | 'location' | 'finish'
   name: string
   spaceIds: number[]
   eventPoolId?: string
   asset: string
-  transform: { x: number; y: number; scale: number; rotation: number }
+  transform: { x: number; y: number; scale: number; rotation: number; opacity?: number }
 }
 ```
 
@@ -281,7 +281,7 @@ interface MapMarkerDefinition {
 
 旧草稿使用的 `landmarks / genericEventPoolIds / landmarkEventPoolIds` 由 `packages/content-tools` 的显式迁移器读取，转换后保存为新修订；运行时不长期维护两套选池逻辑。奥普港迁移必须保持所有格子坐标、贴图位置和现有事件数组不变，只更新引用关系。内容版本和规则集版本随迁移递增，已经开始的房间继续锁定旧版本。
 
-地图校验至少覆盖：标记和池 ID 唯一、格子/标记/池引用存在、起点与终点不关联池、地点池至少三张有效事件、贴图路径非空、变换值有限、`scale > 0`、旋转可序列化、胜利格存在且可达。规则层的“移动到下一个地点”只遍历 `kind === 'location'` 的标记。
+地图校验至少覆盖：标记和池 ID 唯一、格子/标记/池引用存在、起点与终点不关联池、装饰不关联格子或事件池、地点池至少三张有效事件、贴图路径非空、变换值有限、`scale > 0`、透明度位于 `0..1`、旋转可序列化、胜利格存在且可达。规则层的“移动到下一个地点”只遍历 `kind === 'location'` 的标记。
 
 管理端上传的地图贴图由内容服务鉴权接收，仅允许 PNG、JPEG 和 WebP，单文件上限 5 MB，并校验文件签名。文件以 SHA-256 内容哈希命名，保存于可配置的 `CONTENT_ASSET_DIR`，通过不可变的 `/content-assets/<hash>.<ext>` URL 读取；草稿只保存 URL，不内嵌二进制数据。
 
