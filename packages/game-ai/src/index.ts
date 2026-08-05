@@ -1,5 +1,6 @@
 import {
   calculateMovementPath,
+  calculatePathToNextLandmark,
   type CoreGameCommand,
   type GameDecisionView,
   type GameEffect,
@@ -95,6 +96,8 @@ function effectUtility(view: GameDecisionView, effects: readonly GameEffect[]) {
   return effects.reduce((utility, effect) => {
     switch (effect.type) {
       case 'move': return utility + progressValue(view, actor.playerId, effect.spaces)
+      case 'move-to-next-landmark':
+        return utility + progressValue(view, actor.playerId, calculatePathToNextLandmark(view.map, actor.spaceId).path.length)
       case 'opponent-move': return utility - (opponent ? progressValue(view, opponent.playerId, effect.spaces) : 0)
       case 'skip': return utility - effect.turns * 7
       case 'extra-turn': return utility + 9

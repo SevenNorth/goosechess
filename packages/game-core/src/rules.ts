@@ -1,4 +1,4 @@
-import { calculateMovementPath, isWinningSpace } from './map.js'
+import { calculateMovementPath, calculatePathToNextLandmark, isWinningSpace } from './map.js'
 import { DeterministicRandom, rollDice, type RandomSource } from './random.js'
 import type {
   CoreGameCommand,
@@ -419,6 +419,13 @@ function applyEffects(
       case 'move':
         applyMovementEffect(state, definition, actorPlayerId, effect.spaces, events, cues)
         break
+      case 'move-to-next-landmark': {
+        const movement = calculatePathToNextLandmark(definition.map, actor.spaceId)
+        if (movement.path.length) {
+          applyMovementEffect(state, definition, actorPlayerId, movement.path.length, events, cues)
+        }
+        break
+      }
       case 'opponent-move':
         applyMovementEffect(state, definition, nextPlayer(state, actorPlayerId).playerId, effect.spaces, events, cues)
         break

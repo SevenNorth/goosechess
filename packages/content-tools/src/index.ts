@@ -76,6 +76,8 @@ function validateEffect(
     return false
   }
   switch (value.type) {
+    case 'move-to-next-landmark':
+      return true
     case 'move':
     case 'opponent-move':
       if (!Number.isInteger(value.spaces)) {

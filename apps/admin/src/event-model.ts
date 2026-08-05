@@ -17,6 +17,7 @@ function effectFromUnknown(value: unknown): EventEffect | null {
     case 'opponent-move': return { type: value.type, spaces: Number(value.spaces) || 0 }
     case 'skip': return { type: 'skip', turns: Number(value.turns) || 1 }
     case 'world-max-die': return { type: 'world-max-die', value: Number(value.value) || 4, rounds: Number(value.rounds) || 1 }
+    case 'move-to-next-landmark':
     case 'extra-turn':
     case 'gain-item':
     case 'swap': return { type: value.type }
@@ -59,6 +60,7 @@ export function effectForType(type: EventEffect['type']): EventEffect {
     case 'opponent-move': return { type, spaces: 1 }
     case 'skip': return { type, turns: 1 }
     case 'world-max-die': return { type, value: 4, rounds: 1 }
+    case 'move-to-next-landmark':
     case 'extra-turn':
     case 'gain-item':
     case 'swap': return { type }

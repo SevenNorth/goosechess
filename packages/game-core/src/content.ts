@@ -30,6 +30,8 @@ function validateEventPool(
 
 function validateEffect(effect: GameEffect, eventId: string): string[] {
   switch (effect.type) {
+    case 'move-to-next-landmark':
+      return []
     case 'move':
     case 'opponent-move':
       return Number.isInteger(effect.spaces) ? [] : [`Event ${eventId} has a non-integer movement effect.`]

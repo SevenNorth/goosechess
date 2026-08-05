@@ -21,6 +21,8 @@ import {
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError, contentApi } from './api'
 import { DEFAULT_EVENT, effectForType, eventFromUnknown, simulateCheck } from './event-model'
+import { eventPoolOptions, type EventPoolOption } from './event-pools'
+import './event-pools.css'
 import { useAuth } from './auth-context'
 import type {
   AuditEntry,
@@ -52,6 +54,7 @@ const actionLabels: Record<string, string> = {
 
 const effectLabels: Record<EventEffect['type'], string> = {
   move: '自己移动',
+  'move-to-next-landmark': '自己移动到下一个地点',
   'opponent-move': '对手移动',
   skip: '暂停回合',
   'world-max-die': '限制骰面',
@@ -177,11 +180,13 @@ function EventForm({
   content,
   draft,
   disabled,
+  poolOptions,
   onChange,
 }: {
   readonly content: ManagedEventContent
   readonly draft: ContentDraft | null
   readonly disabled: boolean
+  readonly poolOptions: readonly EventPoolOption[]
   readonly onChange: (content: ManagedEventContent) => void
 }) {
   function patch(values: Partial<ManagedEventContent>) {
@@ -212,7 +217,26 @@ function EventForm({
           <label><span>AI 评分</span><input type="number" min="0" max="10" value={content.aiValue} disabled={disabled} onChange={(event) => patch({ aiValue: Number(event.target.value) })} /></label>
           <label><span>抽取权重</span><input type="number" min="1" value={content.weight} disabled={disabled} onChange={(event) => patch({ weight: Number(event.target.value) })} /></label>
         </div>
-        <label><span>事件池归属</span><input value={content.poolIds.join(', ')} disabled={disabled} placeholder="general, repair-room" onChange={(event) => patch({ poolIds: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} /><small>使用英文逗号分隔；general 表示通用事件池。</small></label>
+        <fieldset className="event-pool-fieldset" disabled={disabled}>
+          <legend>事件池归属</legend>
+          <div className="event-pool-options">
+            {poolOptions.map((option) => (
+              <label className="event-pool-option" key={option.id}>
+                <input
+                  type="checkbox"
+                  checked={content.poolIds.includes(option.id)}
+                  onChange={(event) => patch({
+                    poolIds: event.target.checked
+                      ? [...content.poolIds, option.id]
+                      : content.poolIds.filter((id) => id !== option.id),
+                  })}
+                />
+                <span><strong>{option.label}</strong><code>{option.id}</code></span>
+              </label>
+            ))}
+          </div>
+          <small>可同时归属多个事件池；地点选项来自默认地图和地图草稿。</small>
+        </fieldset>
       </section>
       <section className="form-section">
         <div className="section-title"><span>03</span><div><strong>结算效果</strong><small>只允许结构化规则，不接受脚本</small></div></div>
@@ -238,6 +262,7 @@ function EventForm({
 function effectDescription(effect: EventEffect) {
   switch (effect.type) {
     case 'move': return `自己${effect.spaces >= 0 ? '前进' : '后退'} ${Math.abs(effect.spaces)} 格`
+    case 'move-to-next-landmark': return '自己移动到下一个地点'
     case 'opponent-move': return `对手${effect.spaces >= 0 ? '前进' : '后退'} ${Math.abs(effect.spaces)} 格`
     case 'skip': return `暂停 ${effect.turns} 回合`
     case 'world-max-die': return `${effect.rounds} 轮内骰面上限 ${effect.value}`
@@ -302,6 +327,7 @@ export function EventWorkspace() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const [drafts, setDrafts] = useState<ContentDraft[]>([])
+  const [mapDrafts, setMapDrafts] = useState<ContentDraft[]>([])
   const [draft, setDraft] = useState<ContentDraft | null>(null)
   const [content, setContent] = useState<ManagedEventContent>(structuredClone(DEFAULT_EVENT))
   const [dirty, setDirty] = useState(false)
@@ -316,6 +342,7 @@ export function EventWorkspace() {
     try {
       const response = await contentApi.listDrafts()
       setDrafts(response.drafts.filter((item) => item.kind === 'event'))
+      setMapDrafts(response.drafts.filter((item) => item.kind === 'map'))
     } catch (cause) {
       setError(messageFrom(cause))
     } finally {
@@ -405,6 +432,7 @@ export function EventWorkspace() {
   }
 
   const editable = !draft || draft.status === 'draft' || draft.status === 'rejected'
+  const availablePoolOptions = useMemo(() => eventPoolOptions(mapDrafts, content.poolIds), [content.poolIds, mapDrafts])
   const activeId = draftId === 'new' ? undefined : draftId
   return (
     <div className="event-workspace">
@@ -427,7 +455,7 @@ export function EventWorkspace() {
           {draft?.status === 'in-review' && user?.role === 'admin' ? <label className="review-reason"><span>驳回原因</span><input value={reviewReason} placeholder="驳回时必填" onChange={(event) => setReviewReason(event.target.value)} /></label> : null}
           {error ? <div className="notice-banner is-error" role="alert"><AlertCircle />{error}</div> : null}
           {notice ? <div className="notice-banner is-success" role="status"><CheckCircle2 />{notice}</div> : null}
-          <div className="editor-scroll"><EventForm content={content} draft={draft} disabled={!editable || busy} onChange={(next) => { setContent(next); setDirty(true); setNotice(null) }} /></div>
+          <div className="editor-scroll"><EventForm content={content} draft={draft} disabled={!editable || busy} poolOptions={availablePoolOptions} onChange={(next) => { setContent(next); setDirty(true); setNotice(null) }} /></div>
         </main>
       )}
       {draftId ? <EventPreview content={content} validation={draft?.validation} candidates={drafts.filter((item) => item.id !== draft?.id).map((item) => eventFromUnknown(item.content))} /> : null}

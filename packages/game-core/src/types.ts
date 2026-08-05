@@ -43,6 +43,7 @@ export interface MapDefinition {
 
 export type GameEffect =
   | { readonly type: 'move'; readonly spaces: number }
+  | { readonly type: 'move-to-next-landmark' }
   | { readonly type: 'skip'; readonly turns: number }
   | { readonly type: 'extra-turn' }
   | { readonly type: 'gain-item' }

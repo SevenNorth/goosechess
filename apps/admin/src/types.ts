@@ -23,6 +23,7 @@ export interface ValidationResult {
 
 export type EventEffect =
   | { type: 'move'; spaces: number }
+  | { type: 'move-to-next-landmark' }
   | { type: 'opponent-move'; spaces: number }
   | { type: 'skip'; turns: number }
   | { type: 'world-max-die'; value: number; rounds: number }

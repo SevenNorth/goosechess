@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from 'react'
+import { lazy, Suspense, useState, type FormEvent } from 'react'
 import {
   Activity,
   BookOpenCheck,
   ChevronRight,
   FileClock,
   LogOut,
+  Map,
   ShieldAlert,
   Sparkles,
 } from 'lucide-react'
@@ -19,6 +20,7 @@ import {
 import { ApiError } from './api'
 import { useAuth } from './auth-context'
 import { AuditPage, EventWorkspace, ReleasesPage } from './EventEditor'
+const MapWorkspace = lazy(() => import('./MapEditor').then((module) => ({ default: module.MapWorkspace })))
 
 function LoadingScreen() {
   return (
@@ -113,6 +115,7 @@ function ProtectedLayout() {
 
 const navigation = [
   { to: '/events', label: '事件内容', icon: Sparkles },
+  { to: '/maps', label: '\u5730\u56fe\u5185\u5bb9', icon: Map },
   { to: '/releases', label: '发布版本', icon: BookOpenCheck },
   { to: '/audit', label: '操作审计', icon: FileClock, adminOnly: true },
 ]
@@ -165,6 +168,8 @@ export function AdminRoutes() {
         <Route index element={<Navigate to="/events" replace />} />
         <Route path="events" element={<EventWorkspace />} />
         <Route path="events/:draftId" element={<EventWorkspace />} />
+        <Route path="maps" element={<Suspense fallback={<LoadingScreen />}><MapWorkspace /></Suspense>} />
+        <Route path="maps/:draftId" element={<Suspense fallback={<LoadingScreen />}><MapWorkspace /></Suspense>} />
         <Route path="releases" element={<ReleasesPage />} />
         <Route path="audit" element={<AuditPage />} />
       </Route>

@@ -61,6 +61,25 @@ export function calculateMovementPath(map: Pick<MapDefinition, 'spaces'>, fromSp
   }
 }
 
+export function calculatePathToNextLandmark(
+  map: Pick<MapDefinition, 'spaces'>,
+  fromSpaceId: number,
+): MovementResult {
+  const fromIndex = map.spaces.findIndex((space) => space.index === fromSpaceId)
+  if (fromIndex < 0) throw new RangeError('Unknown starting space: ' + fromSpaceId + '.')
+
+  const currentLandmarkId = map.spaces[fromIndex].landmarkId
+  const targetIndex = map.spaces.findIndex((space, index) => (
+    index > fromIndex
+    && Boolean(space.landmarkId)
+    && space.landmarkId !== currentLandmarkId
+  ))
+  if (targetIndex < 0) {
+    return { fromSpaceId, path: [], toSpaceId: fromSpaceId, bounced: false }
+  }
+  return calculateMovementPath(map, fromSpaceId, targetIndex - fromIndex)
+}
+
 export function isWinningSpace(map: Pick<MapDefinition, 'winningSpaceIds'>, spaceId: number) {
   return map.winningSpaceIds.includes(spaceId)
 }

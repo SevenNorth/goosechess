@@ -1,0 +1,14 @@
+.event-pool-fieldset { min-width: 0; margin: 0; padding: 12px; border: 1px solid #c5cbc1; background: #eef0ea; }
+.event-pool-fieldset legend { padding: 0 7px; color: #42483f; font-size: var(--font-min); font-weight: 800; }
+.event-pool-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.event-pool-option { min-width: 0; min-height: 48px; display: grid !important; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 9px !important; padding: 7px 9px; border: 1px solid #ccd1c8; background: #fafbf8; cursor: pointer; }
+.event-pool-option:has(input:checked) { border-color: #2c9284; background: #e0f0eb; box-shadow: inset 3px 0 0 var(--teal); }
+.event-pool-option input { width: 17px; height: 17px; margin: 0; accent-color: var(--teal); }
+.event-pool-option > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.event-pool-option strong, .event-pool-option code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.event-pool-option strong { font-size: var(--font-min); }
+.event-pool-option code { color: var(--muted); font-size: var(--font-min); font-weight: 400; }
+.event-pool-fieldset > small { display: block; margin-top: 9px; color: var(--muted); font-size: var(--font-min); }
+@media (max-width: 1300px) {
+  .event-pool-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

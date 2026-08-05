@@ -1,3 +1,4 @@
+import type { MapDefinition } from '@goose-chess/game-core'
 import type { AuditEntry, ContentDraft, ContentRelease, ManagedEventContent, PublicUser } from './types'
 
 export class ApiError extends Error {
@@ -43,6 +44,12 @@ export const contentApi = {
     method: 'PUT', body: JSON.stringify({ expectedRevision, title, content }),
   }),
   submitDraft: (id: string) => request<{ draft: ContentDraft }>(`/admin/drafts/${encodeURIComponent(id)}/submit`, { method: 'POST' }),
+  createMap: (title: string, content: MapDefinition) => request<{ draft: ContentDraft }>('/admin/drafts', {
+    method: 'POST', body: JSON.stringify({ kind: 'map', title, content }),
+  }),
+  updateMap: (id: string, expectedRevision: number, title: string, content: MapDefinition) => request<{ draft: ContentDraft }>(`/admin/drafts/${encodeURIComponent(id)}`, {
+    method: 'PUT', body: JSON.stringify({ expectedRevision, title, content }),
+  }),
   reviewDraft: (id: string, decision: 'approve' | 'reject', reason?: string) => request<{ draft: ContentDraft }>(`/admin/drafts/${encodeURIComponent(id)}/review`, {
     method: 'POST', body: JSON.stringify({ decision, ...(reason ? { reason } : {}) }),
   }),
