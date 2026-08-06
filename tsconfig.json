@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
+    { "path": "./packages/board-renderer/tsconfig.json" },
     { "path": "./apps/game-server/tsconfig.json" },
     { "path": "./apps/content-server/tsconfig.json" },
     { "path": "./apps/admin/tsconfig.json" },

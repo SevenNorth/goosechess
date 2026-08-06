@@ -5,11 +5,11 @@ import {
   Container,
   Graphics,
   Sprite,
-  Text,
   Texture,
 } from 'pixi.js'
 import { createActor, type ActorRefFrom } from 'xstate'
 import type { MapDefinition } from '@goose-chess/game-core'
+import { createStaticBoard, mapMarkers } from '@goose-chess/board-renderer'
 import type { GameSnapshot, AuthorityUpdate, PresentationCue } from '@goose-chess/game-protocol'
 import type { AudioPort } from '../audio/audio-port'
 import { presentationMachine, type PresentationStage } from '../game-client/machine/presentation-machine'
@@ -72,14 +72,9 @@ export class BoardScene implements BoardSceneController {
   private readonly app = new Application()
   private readonly world = new Container()
   private readonly staticBoardLayer = new Container()
-  private readonly tableLayer = new Container()
-  private readonly boardLayer = new Container()
-  private readonly spaceLayer = new Container()
   private readonly routeLayer = new Container()
-  private readonly landmarkLayer = new Container()
   private readonly tokenLayer = new Container()
   private readonly effectsLayer = new Container()
-  private readonly foregroundLayer = new Container()
   private readonly tweens = new Group()
   private readonly tokens = new Map<string, TokenVisual>()
   private readonly tokenTextures = new Map<string, Texture>()
@@ -158,18 +153,11 @@ export class BoardScene implements BoardSceneController {
     this.app.canvas.addEventListener('pointerup', this.onPointerUp)
     this.app.canvas.addEventListener('pointercancel', this.onPointerUp)
     this.app.stage.addChild(this.world)
-    this.staticBoardLayer.addChild(
-      this.tableLayer,
-      this.boardLayer,
-      this.spaceLayer,
-      this.landmarkLayer,
-    )
     this.world.addChild(
       this.staticBoardLayer,
       this.routeLayer,
       this.tokenLayer,
       this.effectsLayer,
-      this.foregroundLayer,
     )
     this.app.ticker.add(this.updateTweens)
     this.tickerAttached = true
@@ -253,169 +241,24 @@ export class BoardScene implements BoardSceneController {
   }
 
   private async buildBoard(onProgress: (progress: number) => void) {
-    const landmarkAssets = this.map.assets.landmarks ?? {}
-    const landmarkTextures = new Map<string, Texture>()
-    const tokenAssetCount = PLAYER_SKIN_OPTIONS.length
-    const totalAssetCount = this.map.landmarks.length + 2 + tokenAssetCount
-    const assetPromises = [
-      '/assets/sample/tabletop.png',
-      `/${this.map.assets.background}`,
-      ...this.map.landmarks.map((landmark) => landmarkAssets[landmark.id] ? `/${landmarkAssets[landmark.id]}` : null),
-      ...PLAYER_SKIN_OPTIONS.map((skin) => skin.imageSrc),
-    ].map(async (url) => {
-      const texture = url ? await Assets.load<Texture>(url) : Texture.WHITE
-      this.loadedTextureCount += url ? 1 : 0
-      onProgress(0.12 + this.loadedTextureCount / totalAssetCount * 0.8)
-      return texture
-    })
-    const loadedAssets = await Promise.all(assetPromises)
-    const [tableTexture, paperTexture] = loadedAssets
-    const loadedLandmarks = loadedAssets.slice(2, 2 + this.map.landmarks.length)
-    const loadedTokens = loadedAssets.slice(2 + this.map.landmarks.length)
-    this.map.landmarks.forEach((landmark, index) => landmarkTextures.set(landmark.id, loadedLandmarks[index]))
+    const totalAssetCount = mapMarkers(this.map).length + 2 + PLAYER_SKIN_OPTIONS.length
+    let completedAssetCount = 0
+    const reportAssetLoaded = () => {
+      completedAssetCount += 1
+      onProgress(0.12 + completedAssetCount / totalAssetCount * 0.8)
+    }
+    const [board, loadedTokens] = await Promise.all([
+      createStaticBoard(this.map, { onAssetLoaded: reportAssetLoaded, strictAssets: true }),
+      Promise.all(PLAYER_SKIN_OPTIONS.map(async (skin) => {
+        const texture = await Assets.load<Texture>(skin.imageSrc)
+        reportAssetLoaded()
+        return texture
+      })),
+    ])
     PLAYER_SKIN_OPTIONS.forEach((skin, index) => this.tokenTextures.set(skin.id, loadedTokens[index]))
-    const worldWidth = this.map.logicalSize.width
-    const worldHeight = this.map.logicalSize.height
-    const table = new Sprite({ texture: tableTexture, width: worldWidth, height: worldHeight })
-    const paper = new Sprite({ texture: paperTexture, width: worldWidth - 70, height: worldHeight - 54, x: 35, y: 27 })
-    this.tableLayer.addChild(table)
-    this.boardLayer.addChild(paper)
-
-    const border = new Graphics()
-      .rect(35, 27, worldWidth - 70, worldHeight - 54)
-      .stroke({ color: 0x5c5a50, width: 7, alpha: 0.55 })
-    const routeOutline = new Graphics()
-    const routePaper = new Graphics()
-    const routePoints = this.map.spaces.map(({ x, y }) => ({ x, y }))
-    const traceSmoothRoute = (graphic: Graphics) => {
-      graphic.moveTo(routePoints[0].x, routePoints[0].y)
-      for (let index = 0; index < routePoints.length - 1; index += 1) {
-        const before = routePoints[Math.max(0, index - 1)]
-        const from = routePoints[index]
-        const to = routePoints[index + 1]
-        const after = routePoints[Math.min(routePoints.length - 1, index + 2)]
-        graphic.bezierCurveTo(
-          from.x + (to.x - before.x) * 0.12,
-          from.y + (to.y - before.y) * 0.12,
-          to.x - (after.x - from.x) * 0.12,
-          to.y - (after.y - from.y) * 0.12,
-          to.x,
-          to.y,
-        )
-      }
-    }
-    traceSmoothRoute(routeOutline)
-    traceSmoothRoute(routePaper)
-    routeOutline.stroke({ color: 0x555449, width: 47, alpha: 0.24 })
-    routePaper.stroke({ color: 0xc9b783, width: 39, alpha: 0.72 })
-    this.boardLayer.addChild(border, routeOutline, routePaper)
-
-    const compact = this.map.spaces.length > 24
-    for (const space of this.map.spaces) {
-      const landmark = space.landmarkId
-        ? this.map.landmarks.find((candidate) => candidate.id === space.landmarkId)
-        : undefined
-      if (landmark?.pathIntegrated) continue
-
-      const cellContainer = new Container()
-      const cell = new Graphics()
-      const previous = this.map.spaces[Math.max(0, space.index - 1)]
-      const next = this.map.spaces[Math.min(this.map.spaces.length - 1, space.index + 1)]
-      const width = compact ? 61 : (space.kind === 'start' || space.kind === 'finish' ? 58 : 48)
-      const height = compact ? (space.kind === 'finish' ? 42 : 39) : width
-      const paperColors = [0xd9c38b, 0xe1ce9e, 0xcfb77e]
-      const fill = space.kind === 'event'
-        ? 0xc96850
-        : space.kind === 'finish'
-          ? 0x4b4f46
-          : paperColors[space.index % paperColors.length]
-      if (compact) {
-        const topLeft = ((space.index * 7) % 5) - 2
-        const topRight = ((space.index * 3) % 5) - 2
-        const bottomRight = ((space.index * 5) % 5) - 2
-        const bottomLeft = ((space.index * 11) % 5) - 2
-        cell.poly([
-          -width / 2, -height / 2 + topLeft,
-          width / 2, -height / 2 + topRight,
-          width / 2 - 2, height / 2 + bottomRight,
-          -width / 2 + 2, height / 2 + bottomLeft,
-        ])
-      } else {
-        cell.roundRect(-width / 2, -height / 2, width, height, 5)
-      }
-      cell.fill({ color: fill, alpha: 0.97 })
-        .stroke({ color: space.kind === 'event' ? 0x713d34 : space.kind === 'finish' ? 0xd5ad43 : 0x5e594b, width: compact ? 2.5 : 3, alpha: 0.9 })
-      cellContainer.position.set(space.x, space.y)
-      const incomingX = space.index === 0 ? next.x - space.x : space.x - previous.x
-      const incomingY = space.index === 0 ? next.y - space.y : space.y - previous.y
-      const outgoingX = space.index === this.map.spaces.length - 1 ? incomingX : next.x - space.x
-      const outgoingY = space.index === this.map.spaces.length - 1 ? incomingY : next.y - space.y
-      const incomingLength = Math.hypot(incomingX, incomingY) || 1
-      const outgoingLength = Math.hypot(outgoingX, outgoingY) || 1
-      const routeAngle = compact
-        ? Math.atan2(incomingY / incomingLength + outgoingY / outgoingLength, incomingX / incomingLength + outgoingX / outgoingLength)
-        : 0
-      cellContainer.rotation = routeAngle + space.rotation * Math.PI / 720
-      const number = new Text({
-        text: space.kind === 'event' ? '!' : String(space.index),
-        style: {
-          fontFamily: 'Microsoft YaHei',
-          fontSize: compact ? 14 : space.kind === 'event' ? 15 : 14,
-          fill: space.kind === 'event' ? 0xfff4df : space.kind === 'finish' ? 0xffe39a : 0x54574e,
-          fontWeight: '700',
-        },
-      })
-      number.anchor.set(0.5)
-      number.rotation = -cellContainer.rotation
-      cellContainer.addChild(cell, number)
-      this.spaceLayer.addChild(cellContainer)
-    }
-
-    for (const landmark of this.map.landmarks) {
-      const anchor = spacePoint(this.map, landmark.spaceIds[0])
-      this.addLandmark(
-        landmarkTextures.get(landmark.id) ?? Texture.WHITE,
-        landmark.x ?? anchor.x,
-        landmark.y ?? anchor.y - 45,
-        landmark.size ?? (compact ? 96 : 150),
-        landmark.name,
-        landmark.id === 'noise-house',
-      )
-    }
-
-    const title = new Text({
-      text: `${this.map.name} · 65 格竞速`,
-      style: { fontFamily: 'Microsoft YaHei', fontSize: 22, fill: 0x55584f, fontWeight: '700', letterSpacing: 0 },
-    })
-    title.position.set(520, 425)
-    title.rotation = -0.02
-    this.foregroundLayer.addChild(title)
+    this.loadedTextureCount = board.loadedTextureCount + loadedTokens.length
+    this.staticBoardLayer.addChild(board.root)
     this.staticBoardLayer.cacheAsTexture({ resolution: Math.min(window.devicePixelRatio || 1, 2), antialias: true })
-  }
-
-  private addLandmark(texture: Texture, x: number, y: number, size: number, label: string, isFinish = false) {
-    const container = new Container({ x, y })
-    const sprite = new Sprite(texture)
-    sprite.anchor.set(0.5, 1)
-    sprite.width = size
-    sprite.height = size
-    const text = new Text({
-      text: label,
-      style: { fontFamily: 'Microsoft YaHei', fontSize: 15, fill: 0x41443d, fontWeight: '700' },
-    })
-    text.anchor.set(0.5)
-    text.position.set(0, 14)
-    const labelPaper = new Graphics().roundRect(-text.width / 2 - 8, 1, text.width + 16, 27, 3).fill({ color: isFinish ? 0xd5ad43 : 0xe4deca, alpha: 0.9 })
-    if (isFinish) {
-      container.addChild(sprite)
-      this.boardLayer.addChild(container)
-      const finishLabel = new Container({ x, y })
-      finishLabel.addChild(labelPaper, text)
-      this.landmarkLayer.addChild(finishLabel)
-    } else {
-      container.addChild(sprite, labelPaper, text)
-      this.landmarkLayer.addChild(container)
-    }
   }
 
   private makeToken(player: GameSnapshot['state']['players'][number], players: GameSnapshot['state']['players']) {

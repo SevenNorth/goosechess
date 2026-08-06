@@ -12,6 +12,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@goose-chess/board-renderer": "0.1.0",
     "@goose-chess/game-ai": "0.1.0",
     "@goose-chess/game-content": "0.1.0",
     "@goose-chess/game-core": "0.1.0",

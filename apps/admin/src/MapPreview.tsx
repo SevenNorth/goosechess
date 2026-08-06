@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js'
+import { Application, Container, Graphics } from 'pixi.js'
 import type { MapDefinition } from '@goose-chess/game-core'
+import { createStaticBoard, mapMarkers } from '@goose-chess/board-renderer'
 
 export type MapCanvasMode = 'select' | 'add-space' | 'add-marker' | 'pan'
 
@@ -130,164 +131,97 @@ export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode,
       app.canvas.addEventListener('wheel', handleWheel, { passive: false })
       removeWheelListener = () => app.canvas.removeEventListener('wheel', handleWheel)
 
-      const paper = new Graphics()
-        .roundRect(20, 20, map.logicalSize.width - 40, map.logicalSize.height - 40, 8)
-        .fill({ color: 0xdad4bd })
-        .stroke({ color: 0x68675d, width: 5 })
-      world.addChild(paper)
-
-      if (map.spaces.length > 1) {
-        const route = new Graphics().moveTo(map.spaces[0].x, map.spaces[0].y)
-        for (let index = 1; index < map.spaces.length - 1; index += 1) {
-          const previous = map.spaces[index - 1]
-          const current = map.spaces[index]
-          const next = map.spaces[index + 1]
-          const incomingLength = Math.hypot(current.x - previous.x, current.y - previous.y)
-          const outgoingLength = Math.hypot(next.x - current.x, next.y - current.y)
-          if (incomingLength === 0 || outgoingLength === 0) {
-            route.lineTo(current.x, current.y)
-            continue
-          }
-          const radius = Math.min(24, incomingLength * 0.32, outgoingLength * 0.32)
-          const before = {
-            x: current.x - ((current.x - previous.x) / incomingLength) * radius,
-            y: current.y - ((current.y - previous.y) / incomingLength) * radius,
-          }
-          const after = {
-            x: current.x + ((next.x - current.x) / outgoingLength) * radius,
-            y: current.y + ((next.y - current.y) / outgoingLength) * radius,
-          }
-          route.lineTo(before.x, before.y).quadraticCurveTo(current.x, current.y, after.x, after.y)
-        }
-        const finalSpace = map.spaces.at(-1)!
-        route.lineTo(finalSpace.x, finalSpace.y)
-        route.stroke({ color: 0x897d5d, width: 28, alpha: 0.42 })
-        world.addChild(route)
-      }
-
+      const board = await createStaticBoard(map)
+      if (cancelled) return
+      world.addChild(board.root)
+      const interactionLayer = new Container()
+      world.addChild(interactionLayer)
       const pathIds = new Set(path)
       for (const space of map.spaces) {
         const selected = space.index === selectedSpaceId
         const inPath = pathIds.has(space.index)
-        const fill = selected ? 0x1e8b7c : inPath ? 0xd9a938 : space.kind === 'event' ? 0xc96850 : space.kind === 'finish' ? 0x444a43 : 0xf0e4bf
-        const cellContainer = new Container({ x: space.x, y: space.y })
-        const cell = new Graphics()
-          .circle(0, 0, selected ? 16 : 13)
-          .fill({ color: fill })
-          .stroke({ color: selected ? 0xffffff : 0x55584f, width: selected ? 4 : 2 })
-
-        cellContainer.eventMode = 'static'
-        cellContainer.cursor = mode === 'select' ? 'grab' : 'pointer'
+        const visual = board.spaces.get(space.index)
+        if (!visual) continue
+        const hit = new Container({ x: space.x, y: space.y })
+        const target = new Graphics().circle(0, 0, 28).fill({ color: 0xffffff, alpha: 0.001 })
+        if (selected || inPath) {
+          target.circle(0, 0, selected ? 27 : 25).stroke({ color: selected ? 0x1e8b7c : 0xd9a938, width: selected ? 5 : 4, alpha: 0.95 })
+        }
+        hit.addChild(target)
+        hit.eventMode = 'static'
+        hit.cursor = mode === 'select' ? 'grab' : 'pointer'
         let dragging = false
-        cellContainer.on('pointerdown', (event) => {
+        hit.on('pointerdown', (event) => {
           event.stopPropagation()
           if (mode !== 'select') return
           dragging = true
           didDrag = false
-          cellContainer.cursor = 'grabbing'
+          hit.cursor = 'grabbing'
         })
-        cellContainer.on('globalpointermove', (event) => {
+        hit.on('globalpointermove', (event) => {
           if (!dragging) return
           didDrag = true
           const point = toWorldPoint(event.global.x, event.global.y)
-          cellContainer.position.set(point.x, point.y)
+          hit.position.set(point.x, point.y)
+          visual.position.set(point.x, point.y)
         })
         const finishSpaceDrag = (event: { global: { x: number; y: number } }) => {
           if (!dragging) return
           dragging = false
-          cellContainer.cursor = 'grab'
+          hit.cursor = 'grab'
           if (didDrag) onMoveSpace(space.index, toWorldPoint(event.global.x, event.global.y))
           else onSelectSpace(space.index)
         }
-        cellContainer.on('pointerup', finishSpaceDrag)
-        cellContainer.on('pointerupoutside', finishSpaceDrag)
-        cellContainer.on('pointertap', (event) => event.stopPropagation())
-        const label = new Text({
-          text: space.kind === 'event' ? '!' : String(space.index),
-          style: { fontFamily: 'Microsoft YaHei', fontSize: 11, fill: space.kind === 'normal' ? 0x45483f : 0xffffff, fontWeight: '700' },
-        })
-        label.anchor.set(0.5)
-        cellContainer.addChild(cell, label)
-        world.addChild(cellContainer)
+        hit.on('pointerup', finishSpaceDrag)
+        hit.on('pointerupoutside', finishSpaceDrag)
+        hit.on('pointertap', (event) => event.stopPropagation())
+        interactionLayer.addChild(hit)
       }
 
-      const markerDefinitions = map.markers ?? map.landmarks.map((landmark) => ({
-        id: landmark.id,
-        kind: 'location' as const,
-        name: landmark.name,
-        spaceIds: landmark.spaceIds,
-        asset: map.assets.landmarks?.[landmark.id] ?? '',
-        transform: {
-          x: landmark.x ?? map.spaces[landmark.spaceIds[0]]?.x ?? 0,
-          y: landmark.y ?? map.spaces[landmark.spaceIds[0]]?.y ?? 0,
-          scale: (landmark.size ?? 108) / 108,
-          rotation: 0,
-          opacity: 1,
-        },
-      }))
+      const markerDefinitions = mapMarkers(map)
       for (const definition of markerDefinitions) {
         const selected = definition.id === selectedMarkerId
-        const visual = new Container({ x: definition.transform.x, y: definition.transform.y })
-        visual.rotation = definition.transform.rotation * (Math.PI / 180)
-        visual.scale.set(definition.transform.scale)
-        visual.alpha = definition.transform.opacity ?? 1
-        let visualWidth = 108
-        let visualHeight = 108
-        try {
-          const source = definition.asset.startsWith('/') ? definition.asset : `/${definition.asset}`
-          const texture = definition.asset ? await Assets.load<Texture>(source) : Texture.EMPTY
-          if (cancelled) return
-          const sprite = new Sprite(texture)
-          const longestSide = Math.max(texture.width, texture.height)
-          const fitScale = longestSide > 0 ? 108 / longestSide : 1
-          visualWidth = texture.width * fitScale
-          visualHeight = texture.height * fitScale
-          sprite.anchor.set(0.5)
-          sprite.width = visualWidth
-          sprite.height = visualHeight
-          visual.addChild(sprite)
-        } catch {
-          const badge = new Graphics().roundRect(-54, -22, 108, 44, 3).fill({ color: 0x743f38, alpha: 0.94 })
-          const label = new Text({ text: definition.name, style: { fontFamily: 'Microsoft YaHei', fontSize: 14, fill: 0xffffff, fontWeight: '700' } })
-          label.anchor.set(0.5)
-          visualWidth = 108
-          visualHeight = 44
-          visual.addChild(badge, label)
-        }
-        visual.eventMode = 'static'
-        visual.cursor = mode === 'select' ? 'grab' : 'default'
+        const marker = board.markers.get(definition.id)
+        if (!marker) continue
+        const visual = marker.container
+        const markerBounds = marker.bounds
+        const hit = new Container({ x: definition.transform.x, y: definition.transform.y })
+        hit.rotation = visual.rotation
+        hit.scale.set(definition.transform.scale)
+        hit.addChild(new Graphics().rect(markerBounds.x, markerBounds.y, markerBounds.width, markerBounds.height).fill({ color: 0xffffff, alpha: 0.001 }))
+        hit.eventMode = 'static'
+        hit.cursor = mode === 'select' ? 'grab' : 'default'
         let dragging = false
-        visual.on('pointerdown', (event) => {
+        hit.on('pointerdown', (event) => {
           event.stopPropagation()
           if (mode !== 'select') return
           onSelectMarker(definition.id)
           if (!selected) return
           dragging = true
           didDrag = false
-          visual.cursor = 'grabbing'
+          hit.cursor = 'grabbing'
         })
-        visual.on('globalpointermove', (event) => {
+        hit.on('globalpointermove', (event) => {
           if (!dragging) return
           didDrag = true
           const point = toWorldPoint(event.global.x, event.global.y)
           visual.position.set(point.x, point.y)
+          hit.position.set(point.x, point.y)
         })
         const finishMarkerDrag = (event: { global: { x: number; y: number } }) => {
           if (!dragging) return
           dragging = false
-          visual.cursor = 'grab'
+          hit.cursor = 'grab'
           if (didDrag) onMoveMarker(definition.id, toWorldPoint(event.global.x, event.global.y))
         }
-        visual.on('pointerup', finishMarkerDrag)
-        visual.on('pointerupoutside', finishMarkerDrag)
-        visual.on('pointertap', (event) => event.stopPropagation())
-        world.addChild(visual)
+        hit.on('pointerup', finishMarkerDrag)
+        hit.on('pointerupoutside', finishMarkerDrag)
+        hit.on('pointertap', (event) => event.stopPropagation())
+        interactionLayer.addChild(hit)
 
         if (selected && mode === 'select') {
           const overlay = new Container({ x: definition.transform.x, y: definition.transform.y })
           overlay.rotation = visual.rotation
-          const halfWidth = visualWidth * definition.transform.scale / 2
-          const halfHeight = visualHeight * definition.transform.scale / 2
           const outline = new Graphics()
           const stem = new Graphics()
           const scaleHandle = new Graphics()
@@ -299,12 +233,14 @@ export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode,
             .fill({ color: 0xd9a938 })
             .stroke({ color: 0xffffff, width: 2 })
           const drawSelection = (scale: number) => {
-            const width = visualWidth * scale / 2
-            const height = visualHeight * scale / 2
-            outline.clear().rect(-width, -height, width * 2, height * 2).stroke({ color: 0xffffff, width: 2 / viewport.scale })
-            stem.clear().moveTo(0, -height).lineTo(0, -height - 28).stroke({ color: 0xffffff, width: 2 / viewport.scale })
-            scaleHandle.position.set(width, height)
-            rotateHandle.position.set(0, -height - 28)
+            const x = markerBounds.x * scale
+            const y = markerBounds.y * scale
+            const width = markerBounds.width * scale
+            const height = markerBounds.height * scale
+            outline.clear().rect(x, y, width, height).stroke({ color: 0xffffff, width: 2 / viewport.scale })
+            stem.clear().moveTo(0, y).lineTo(0, y - 28).stroke({ color: 0xffffff, width: 2 / viewport.scale })
+            scaleHandle.position.set(x + width, y + height)
+            rotateHandle.position.set(0, y - 28)
           }
           drawSelection(definition.transform.scale)
           scaleHandle.eventMode = 'static'
@@ -316,7 +252,10 @@ export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode,
           let previewScale = definition.transform.scale
           let previewRotation = definition.transform.rotation
           const center = definition.transform
-          const startDistance = Math.hypot(halfWidth, halfHeight)
+          const startDistance = Math.hypot(
+            (markerBounds.x + markerBounds.width) * definition.transform.scale,
+            (markerBounds.y + markerBounds.height) * definition.transform.scale,
+          ) || 1
           scaleHandle.on('pointerdown', (event) => {
             event.stopPropagation()
             scaling = true
@@ -326,6 +265,7 @@ export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode,
             const point = toUnsappedWorldPoint(event.global.x, event.global.y)
             previewScale = Math.min(8, Math.max(0.05, definition.transform.scale * Math.hypot(point.x - center.x, point.y - center.y) / startDistance))
             visual.scale.set(previewScale)
+            hit.scale.set(previewScale)
             drawSelection(previewScale)
           })
           const finishScale = () => {
@@ -346,6 +286,7 @@ export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode,
             previewRotation = Math.atan2(point.y - center.y, point.x - center.x) * 180 / Math.PI + 90
             if (snapToGrid) previewRotation = Math.round(previewRotation / 5) * 5
             visual.rotation = previewRotation * Math.PI / 180
+            hit.rotation = visual.rotation
             overlay.rotation = visual.rotation
           })
           const finishRotation = () => {
@@ -357,7 +298,7 @@ export function MapPreview({ map, selectedSpaceId, selectedMarkerId, path, mode,
           rotateHandle.on('pointerup', finishRotation)
           rotateHandle.on('pointerupoutside', finishRotation)
           overlay.addChild(outline, stem, scaleHandle, rotateHandle)
-          world.addChild(overlay)
+          interactionLayer.addChild(overlay)
         }
       }
 

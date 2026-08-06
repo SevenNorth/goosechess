@@ -15,7 +15,7 @@
     "dev": "npm run dev --workspace @goose-chess/web",
     "dev:e2e": "vite apps/web --host 127.0.0.1 --port 4173",
     "dev:e2e:server": "npm run build --workspace @goose-chess/game-server && node apps/game-server/dist/index.js",
-    "build": "npm run build --workspace @goose-chess/game-core && npm run build --workspace @goose-chess/game-protocol && npm run build --workspace @goose-chess/game-content && npm run build --workspace @goose-chess/game-ai && npm run build --workspace @goose-chess/game-server && npm run build --workspace @goose-chess/content-tools && npm run build --workspace @goose-chess/content-server && npm run build --workspace @goose-chess/admin && npm run build --workspace @goose-chess/web",
+    "build": "npm run build --workspace @goose-chess/game-core && npm run build --workspace @goose-chess/board-renderer && npm run build --workspace @goose-chess/game-protocol && npm run build --workspace @goose-chess/game-content && npm run build --workspace @goose-chess/game-ai && npm run build --workspace @goose-chess/game-server && npm run build --workspace @goose-chess/content-tools && npm run build --workspace @goose-chess/content-server && npm run build --workspace @goose-chess/admin && npm run build --workspace @goose-chess/web",
     "build:rules": "npm run build --workspace @goose-chess/game-core && npm run build --workspace @goose-chess/game-protocol && npm run build --workspace @goose-chess/game-content && npm run build --workspace @goose-chess/game-ai",
     "dev:server": "npm run dev --workspace @goose-chess/game-server",
     "dev:content-server": "npm run dev --workspace @goose-chess/content-server",

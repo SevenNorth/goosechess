@@ -123,8 +123,8 @@ React + Vite Web Client
 
 负责：
 
-- 加载棋盘纹理与精灵图集。
-- 创建地图、格子、地标、棋子和特效层。
+- `packages/board-renderer` 加载棋盘纹理并创建背景、路径、格子和地图标记静态层；玩家端与管理端必须复用该包。
+- 玩家场景在静态层上创建棋子和特效层；管理地图预览只叠加命中区、选择框和变换手柄。
 - 逐格移动和镜头跟随。
 - 绘制移动路线预览、目标格圆圈和棋子逐格跳跃动画。
 - 路线、碰撞和终点演出；骰子提示交给 React 上层的 Three.js 骰子组件播放。
@@ -455,6 +455,7 @@ apps/
       rooms/
       persistence/
 packages/
+  board-renderer/
   game-core/
   game-ai/
   game-protocol/

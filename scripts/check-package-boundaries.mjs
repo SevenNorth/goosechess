@@ -4,6 +4,7 @@ import ts from 'typescript'
 
 const workspaceRoot = resolve(import.meta.dirname, '..')
 const packageRules = {
+  'board-renderer': new Set(['@goose-chess/game-core', 'pixi.js']),
   'game-core': new Set(),
   'game-content': new Set(['@goose-chess/game-core']),
   'content-tools': new Set(['@goose-chess/game-core', '@goose-chess/game-content', 'node:crypto']),
