@@ -49,7 +49,7 @@ Vite 负责开发服务器和浏览器静态资源构建，不作为生产后端
 
 ### 2.2 联机房间协议
 
-协议 v11 延续 v10 的 `AuthorityCheckpoint`、`reconnectGraceMs`、`reconnectDeadlineAt` 和按查看者 `legalCommands`，并在 `RoomJoinResponse` 中加入实例 `serverUrl`、在 `room-error` 中加入可选 `ownerUrl`。HTTP 只创建或加入房间；WebSocket 接受 `CommandEnvelope`、同步请求和带 `requestId` 的大厅命令。非 owner 实例以 `409 room_owned_elsewhere` 或 WebSocket 迁移错误返回当前 owner，浏览器按房间保存并切换服务地址。大厅命令覆盖准备、容量、地图、添加 AI、移除成员和开始游戏。服务端对每个房间串行调用共享 `LocalAuthority`，旧 `expectedRevision` 返回 `stale_revision`；AI 决策和完整同步也进入同一房间命令队列。浏览器只从每条 `room-state` 或 `authority-update` 的合法命令生成控件，不在在线 UI 中复制行动权、目标或阶段判断。
+协议 v12 延续 v11 的 `AuthorityCheckpoint`、owner 路由和按查看者 `legalCommands`，并在 `RoomState` 中加入 `contentVersion`、`mapVersion` 和 `rulesetVersion`。HTTP 只创建或加入房间；WebSocket 接受 `CommandEnvelope`、同步请求和带 `requestId` 的大厅命令。非 owner 实例以 `409 room_owned_elsewhere` 或 WebSocket 迁移错误返回当前 owner，浏览器按房间保存并切换服务地址。大厅命令覆盖准备、容量、地图、添加 AI、移除成员和开始游戏。服务端对每个房间串行调用共享 `LocalAuthority`，旧 `expectedRevision` 返回 `stale_revision`；AI 决策和完整同步也进入同一房间命令队列。浏览器只从每条 `room-state` 或 `authority-update` 的合法命令生成控件，不在在线 UI 中复制行动权、目标或阶段判断。
 
 发给浏览器的在线快照是按查看者投影后的合法 `GameSnapshot`：其他玩家的持有道具为 `null`，非本人回合不下发开局道具候选和待确认道具，相关私有领域事件不广播，真实 RNG 种子与游标不下发。该投影只用于显示和恢复客户端画面，服务端始终保留完整权威快照。
 
@@ -342,6 +342,8 @@ interface TokenSkinDefinition {
 规则层只保存 `skinId`，不能根据皮肤 ID 修改骰子、事件、道具、移动或电脑决策。
 
 远期的地图、事件和皮肤制作统一归属管理员内容平台，不放入公开游戏客户端。目标结构为独立 `apps/admin` 管理界面、`apps/content-server` 内容服务和纯函数 `packages/content-tools`；详细权限、数据生命周期、发布和验收边界见 [admin-content-platform.md](./admin-content-platform.md)。
+
+内容服务在每次发布或回滚事务内组合所有当前有效发布，校验完整 `GameDefinition`，并保存不可变运行时内容包。`GET /runtime/content/current` 返回当前包，`GET /runtime/content/:version` 返回历史包；部署可用 `CONTENT_RUNTIME_TOKEN` 保护这两个机器接口。游戏服务器通过 `CONTENT_SERVICE_URL` 读取内容包，未配置时使用内置默认包；创建房间时锁定包、地图和规则集版本，房间持久化格式 v2 保存 `contentVersion` 与 `mapVersion`，恢复时必须读取并校验精确历史包，不能回退到当前内容。当前 Web 客户端仍使用内置定义进行地图表现，发布内容完整交付给玩家前还需增加与房间版本一致的客户端内容清单和资源加载。
 
 皮肤上传接口只接收一张原始图片，随后异步完成格式和安全校验、透明背景与画布标准化、缩略图及运行时纹理生成、稳定 `skinId` 和展示名生成、`TokenSkinDefinition` 注册、内容版本递增与资源发布。所有产物通过校验并原子发布后，客户端才能在内容清单中看到新皮肤；任一步失败都保持旧版本可用并返回可读原因。疑似水印、分辨率不足或无法可靠处理的图片必须拒绝发布，不能静默产出低质量资源。图片来源、上传管理员、处理状态和发布时间需要保留审计记录。
 

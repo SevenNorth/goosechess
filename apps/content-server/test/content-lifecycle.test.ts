@@ -248,6 +248,13 @@ describe('content lifecycle API', () => {
     }
     expect(firstRelease.release.active).toBe(true)
     expect(firstRelease.release.contentHash).toMatch(/^[a-f0-9]{64}$/)
+    const firstRuntimeResponse = await request('/runtime/content/current')
+    expect(firstRuntimeResponse.status).toBe(200)
+    const firstRuntime = (await firstRuntimeResponse.json()) as {
+      bundle: { version: string; releaseVersions: string[]; definitions: Array<{ definition: { events: Array<{ id: string; title: string }> } }> }
+    }
+    expect(firstRuntime.bundle.releaseVersions).toEqual([firstRelease.release.version])
+    expect(firstRuntime.bundle.definitions[0].definition.events.find((event) => event.id === 'managed-harbor-bell')?.title).toBe('Version one')
 
     const secondCreated = await createDraft(editorCookie, eventContent('Version two'))
     const secondDraft = (await secondCreated.json()) as { draft: { id: string } }
@@ -267,6 +274,11 @@ describe('content lifecycle API', () => {
     const secondRelease = (await secondPublished.json()) as {
       release: { version: string }
     }
+    const secondRuntime = (await (await request('/runtime/content/current')).json()) as { bundle: { version: string } }
+    expect(secondRuntime.bundle.version).not.toBe(firstRuntime.bundle.version)
+    const historical = await request(`/runtime/content/${encodeURIComponent(firstRuntime.bundle.version)}`)
+    expect(historical.status).toBe(200)
+    expect(await historical.json()).toMatchObject({ bundle: { version: firstRuntime.bundle.version } })
 
     const releasesBeforeRollback = await request('/admin/releases', {
       headers: { Cookie: editorCookie },
@@ -290,6 +302,9 @@ describe('content lifecycle API', () => {
         version: firstRelease.release.version,
         active: true,
       },
+    })
+    expect(await (await request('/runtime/content/current')).json()).toMatchObject({
+      bundle: { version: firstRuntime.bundle.version },
     })
 
     const auditResponse = await request('/admin/audit?limit=100', {

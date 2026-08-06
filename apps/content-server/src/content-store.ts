@@ -10,6 +10,12 @@ import {
   type ContentValidationResult,
   type ManagedContentKind,
 } from '@goose-chess/content-tools'
+import {
+  builtInRuntimeContentBundle,
+  composeRuntimeContentBundle,
+  type RuntimeContentBundle,
+  type RuntimeContentRelease,
+} from '@goose-chess/content-tools/runtime-content'
 
 export type ContentDraftStatus =
   | 'draft'
@@ -75,6 +81,8 @@ export interface ContentStorePort {
   publishDraft(id: string, actorId: string): Promise<ContentRelease>
   listReleases(): Promise<readonly ContentRelease[]>
   rollbackRelease(version: string, actorId: string): Promise<ContentRelease>
+  getCurrentRuntimeBundle(): Promise<RuntimeContentBundle>
+  getRuntimeBundle(version: string): Promise<RuntimeContentBundle>
   listAudit(limit?: number): Promise<readonly ContentAuditEntry[]>
   close(): Promise<void> | void
 }
@@ -124,6 +132,15 @@ interface AuditRow {
   readonly entity_type: string
   readonly entity_id: string
   readonly details_json: string
+  readonly created_at: number
+}
+
+interface RuntimeBundleRow {
+  readonly version: string
+  readonly payload_json: string
+  readonly release_versions_json: string
+  readonly content_hash: string
+  readonly active: number
   readonly created_at: number
 }
 
@@ -215,6 +232,19 @@ export class SqliteContentStore implements ContentStorePort {
 
       CREATE UNIQUE INDEX IF NOT EXISTS content_releases_active_key
         ON content_releases(content_key)
+        WHERE active = 1;
+
+      CREATE TABLE IF NOT EXISTS runtime_content_bundles (
+        version TEXT PRIMARY KEY,
+        payload_json TEXT NOT NULL,
+        release_versions_json TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        active INTEGER NOT NULL CHECK (active IN (0, 1)),
+        created_at INTEGER NOT NULL
+      ) STRICT;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS runtime_content_bundles_active
+        ON runtime_content_bundles(active)
         WHERE active = 1;
 
       CREATE TABLE IF NOT EXISTS content_audit (
@@ -433,6 +463,7 @@ export class SqliteContentStore implements ContentStorePort {
       this.database.prepare(`
         UPDATE content_drafts SET status = 'published', updated_at = ? WHERE id = ?
       `).run(timestamp, draft.id)
+      this.activateRuntimeBundle(timestamp)
       this.insertAudit(actorId, 'release.published', 'release', version, {
         draftId: draft.id,
         contentKey: draft.contentKey,
@@ -462,6 +493,7 @@ export class SqliteContentStore implements ContentStorePort {
       this.database.prepare(`
         UPDATE content_releases SET active = 1 WHERE version = ?
       `).run(version)
+      this.activateRuntimeBundle(timestamp)
       this.insertAudit(actorId, 'release.rolled-back', 'release', version, {
         contentKey: release.contentKey,
         draftId: release.draftId,
@@ -469,6 +501,31 @@ export class SqliteContentStore implements ContentStorePort {
       }, timestamp)
     })
     return this.requireRelease(version)
+  }
+
+  async getCurrentRuntimeBundle() {
+    this.ensureOpen()
+    const row = this.database.prepare(`
+      SELECT * FROM runtime_content_bundles WHERE active = 1
+    `).get() as unknown as RuntimeBundleRow | undefined
+    if (row) return toRuntimeBundle(row)
+    const activeReleaseCount = Number((this.database.prepare(`
+      SELECT COUNT(*) AS count FROM content_releases WHERE active = 1
+    `).get() as { count: number }).count)
+    return activeReleaseCount > 0
+      ? this.transaction(() => this.activateRuntimeBundle(this.now()))
+      : builtInRuntimeContentBundle()
+  }
+
+  async getRuntimeBundle(version: string) {
+    this.ensureOpen()
+    const builtIn = builtInRuntimeContentBundle()
+    if (version === builtIn.version) return builtIn
+    const row = this.database.prepare(`
+      SELECT * FROM runtime_content_bundles WHERE version = ?
+    `).get(version) as unknown as RuntimeBundleRow | undefined
+    if (!row) throw new ContentStoreError(404, 'runtime_bundle_not_found', '运行时内容版本不存在。')
+    return toRuntimeBundle(row)
   }
 
   async listAudit(limit = 100) {
@@ -498,6 +555,39 @@ export class SqliteContentStore implements ContentStorePort {
     `).get(version) as unknown as ReleaseRow | undefined
     if (!row) throw new ContentStoreError(404, 'release_not_found', '内容版本不存在。')
     return toRelease(row)
+  }
+
+  private activateRuntimeBundle(timestamp: number) {
+    const rows = this.database.prepare(`
+      SELECT * FROM content_releases WHERE active = 1 ORDER BY content_key, version
+    `).all() as unknown as ReleaseRow[]
+    const releases: RuntimeContentRelease[] = rows.map((row) => ({
+      version: row.version,
+      contentKey: row.content_key,
+      contentHash: row.content_hash,
+      kind: row.kind,
+      content: JSON.parse(row.payload_json) as unknown,
+    }))
+    const contentHash = hashJsonContent(releases.map((release) => ({
+      version: release.version,
+      contentHash: release.contentHash,
+    })))
+    const version = `content-${contentHash.slice(0, 20)}`
+    const bundle = composeRuntimeContentBundle(version, releases)
+    this.database.prepare(`UPDATE runtime_content_bundles SET active = 0 WHERE active = 1`).run()
+    this.database.prepare(`
+      INSERT OR IGNORE INTO runtime_content_bundles (
+        version, payload_json, release_versions_json, content_hash, active, created_at
+      ) VALUES (?, ?, ?, ?, 0, ?)
+    `).run(
+      version,
+      JSON.stringify(bundle),
+      JSON.stringify(bundle.releaseVersions),
+      contentHash,
+      timestamp,
+    )
+    this.database.prepare(`UPDATE runtime_content_bundles SET active = 1 WHERE version = ?`).run(version)
+    return bundle
   }
 
   private insertRevision(
@@ -603,6 +693,12 @@ function toRelease(row: ReleaseRow): ContentRelease {
     publishedBy: row.published_by,
     publishedAt: row.published_at,
   }
+}
+
+function toRuntimeBundle(row: RuntimeBundleRow): RuntimeContentBundle {
+  const bundle = JSON.parse(row.payload_json) as RuntimeContentBundle
+  if (bundle.version !== row.version) throw new Error(`Runtime content bundle ${row.version} has an invalid payload.`)
+  return bundle
 }
 
 function toAudit(row: AuditRow): ContentAuditEntry {

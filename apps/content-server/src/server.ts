@@ -46,6 +46,7 @@ export interface ContentServerOptions {
   readonly cookieSecure?: boolean
   readonly allowedOrigin?: string
   readonly assetDirectory?: string
+  readonly runtimeToken?: string
 }
 
 function sendJson(
@@ -270,6 +271,22 @@ export function createContentServer(options: ContentServerOptions = {}) {
       }
       if (method === 'GET' && pathname === '/health') {
         sendJson(response, 200, { ok: true })
+        return
+      }
+      const runtimeMatch = pathname.match(/^\/runtime\/content\/(current|[^/]+)$/)
+      if (method === 'GET' && runtimeMatch) {
+        const expectedToken = options.runtimeToken?.trim()
+        if (expectedToken && request.headers.authorization !== `Bearer ${expectedToken}`) {
+          sendJson(response, 401, { code: 'invalid_runtime_token', message: '运行时内容凭证无效。' })
+          return
+        }
+        const version = decodeURIComponent(runtimeMatch[1])
+        const bundle = version === 'current'
+          ? await contentStore.getCurrentRuntimeBundle()
+          : await contentStore.getRuntimeBundle(version)
+        sendJson(response, 200, { bundle }, {
+          'Cache-Control': version === 'current' ? 'no-store' : 'public, max-age=31536000, immutable',
+        })
         return
       }
       const assetMatch = pathname.match(/^\/content-assets\/([a-f0-9]{64})\.(png|jpg|webp)$/)

@@ -1,7 +1,7 @@
 import { AuthorityCheckpointSchema } from '@goose-chess/game-protocol'
 import { z } from 'zod'
 
-export const ROOM_PERSISTENCE_VERSION = 1 as const
+export const ROOM_PERSISTENCE_VERSION = 2 as const
 
 const PersistedRoomMemberSchema = z.object({
   playerId: z.string().trim().min(1).max(128),
@@ -20,6 +20,8 @@ export const PersistedRoomSchema = z.object({
   members: z.array(PersistedRoomMemberSchema).min(1).max(4),
   hostPlayerId: z.string().trim().min(1).max(128),
   mapId: z.string().trim().min(1).max(128),
+  mapVersion: z.string().trim().min(1).max(128),
+  contentVersion: z.string().trim().min(1).max(64),
   maxPlayers: z.number().int().min(2).max(4),
   authorityCheckpoint: AuthorityCheckpointSchema.nullable(),
   aiCommandSequence: z.number().int().nonnegative(),

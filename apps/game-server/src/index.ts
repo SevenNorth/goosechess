@@ -3,6 +3,7 @@ import { PostgresRoomPersistence } from './postgres-room-persistence.js'
 import { RoomStore } from './room-store.js'
 import { createGameServer } from './server.js'
 import { SqliteRoomPersistence } from './sqlite-room-persistence.js'
+import { HttpRuntimeContentSource, StaticRuntimeContentSource } from './content-source.js'
 
 const port = Number(process.env.PORT ?? 8787)
 const host = process.env.HOST ?? '127.0.0.1'
@@ -13,11 +14,16 @@ if (databaseUrl && !instanceUrl) {
   throw new Error('INSTANCE_URL or PUBLIC_SERVER_URL is required when DATABASE_URL is set.')
 }
 const ownerUrl = instanceUrl ?? `http://127.0.0.1:${port}`
+const contentServiceUrl = process.env.CONTENT_SERVICE_URL?.trim()
+const contentSource = contentServiceUrl
+  ? new HttpRuntimeContentSource(contentServiceUrl, { token: process.env.CONTENT_RUNTIME_TOKEN?.trim() })
+  : new StaticRuntimeContentSource()
 const persistence = databaseUrl
   ? new PostgresRoomPersistence(databaseUrl)
   : new SqliteRoomPersistence(databasePath)
 const store = new RoomStore({
   persistence,
+  contentSource,
   ownerId: process.env.INSTANCE_ID?.trim(),
   ownerUrl,
   leaseDurationMs: Number(process.env.ROOM_LEASE_DURATION_MS ?? 15_000),
@@ -62,6 +68,7 @@ server.listen().then((address) => {
   console.log(`Goose Chess game server listening on http://${address.host}:${address.port}`)
   console.log(`Room persistence: ${databaseUrl ? 'postgresql shared' : databasePath}`)
   console.log(`Instance URL: ${ownerUrl}`)
+  console.log(`Runtime content: ${contentServiceUrl ?? 'built-in bundle'}`)
   console.log('Monitoring endpoints: /health, /metrics')
 }).catch((error) => {
   console.error(error)

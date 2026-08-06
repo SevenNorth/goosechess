@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto'
 import { createGooseAiStrategy } from '@goose-chess/game-ai'
 import { DeterministicRandom, type ParticipantSetup } from '@goose-chess/game-core'
 import { DEFAULT_GAME_DEFINITION } from '@goose-chess/game-content'
+import type { RuntimeContentBundle, RuntimeGameDefinition } from '@goose-chess/content-tools/runtime-content'
 import {
   GameCommandSchema,
   LocalAuthority,
@@ -27,6 +28,7 @@ import {
   type RoomOwner,
   type RoomPersistence,
 } from './room-persistence.js'
+import { StaticRuntimeContentSource, type RuntimeContentSource } from './content-source.js'
 
 export interface RoomProfile {
   readonly displayName: string
@@ -53,6 +55,7 @@ interface RoomSession {
   readonly subscribers: Map<string, Set<Subscriber>>
   hostPlayerId: string
   mapId: string
+  readonly content: RuntimeContentBundle
   maxPlayers: number
   authority: LocalAuthority | null
   commandQueue: Promise<void>
@@ -80,7 +83,6 @@ type OwnershipListener = (event: RoomOwnershipEvent) => void
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const COLOR_IDS = ['pink', 'blue', 'gold', 'teal'] as const
-const SUPPORTED_MAP_IDS = [DEFAULT_GAME_DEFINITION.map.id] as const
 const aiStrategy = createGooseAiStrategy()
 
 export interface RoomStoreOptions {
@@ -93,6 +95,7 @@ export interface RoomStoreOptions {
   readonly ownerId?: string
   readonly ownerUrl?: string
   readonly persistence?: RoomPersistence
+  readonly contentSource?: RuntimeContentSource
   readonly now?: () => number
 }
 
@@ -194,6 +197,7 @@ export class RoomStore {
   private readonly leaseDurationMs: number
   private readonly owner: RoomOwner
   private readonly persistence: RoomPersistence | null
+  private readonly contentSource: RuntimeContentSource
   private readonly now: () => number
   private readonly cleanupTimer: ReturnType<typeof setInterval> | null
   private readonly leaseRenewTimer: ReturnType<typeof setInterval> | null
@@ -213,6 +217,7 @@ export class RoomStore {
       ownerUrl: normalizeOwnerUrl(options.ownerUrl ?? 'http://127.0.0.1:8787'),
     }
     this.persistence = options.persistence ?? null
+    this.contentSource = options.contentSource ?? new StaticRuntimeContentSource()
     this.now = options.now ?? Date.now
     const cleanupIntervalMs = options.cleanupIntervalMs ?? 60_000
     for (const [name, value] of Object.entries({
@@ -249,7 +254,11 @@ export class RoomStore {
   async createRoom(profile: RoomProfile): Promise<RoomJoinResponse> {
     await this.initialized
     this.assertOpen()
-    const { member, recoveryToken } = this.createRemoteMember(profile, 0)
+    const content = await this.contentSource.load()
+    const initialDefinition = content.definitions.find((entry) => entry.mapId === DEFAULT_GAME_DEFINITION.map.id)
+      ?? content.definitions[0]
+    if (!initialDefinition) throw new RoomStoreError('content_unavailable', '当前没有可用于创建房间的已发布内容。')
+    const { member, recoveryToken } = this.createRemoteMember(profile, 0, content)
     for (let attempt = 0; attempt < 64; attempt += 1) {
       const roomCode = createRoomCode()
       if (this.rooms.has(roomCode)) continue
@@ -260,7 +269,8 @@ export class RoomStore {
         members: [member],
         subscribers: new Map(),
         hostPlayerId: member.playerId,
-        mapId: DEFAULT_GAME_DEFINITION.map.id,
+        mapId: initialDefinition.mapId,
+        content,
         maxPlayers: 4,
         authority: null,
         commandQueue: Promise.resolve(),
@@ -299,7 +309,7 @@ export class RoomStore {
       }
       if (room.authority) throw new RoomStoreError('game_started', '对局已经开始，无法占用新座位。')
       if (room.members.length >= room.maxPlayers) throw new RoomStoreError('room_full', '房间已经满员。')
-      const { member, recoveryToken: createdRecoveryToken } = this.createRemoteMember(profile, room.members.length)
+      const { member, recoveryToken: createdRecoveryToken } = this.createRemoteMember(profile, room.members.length, room.content)
       room.members.push(member)
       await this.persistRoom(room)
       this.broadcastRoomState(room)
@@ -358,7 +368,7 @@ export class RoomStore {
             break
           case 'set-map':
             this.requireHost(room, member)
-            if (!SUPPORTED_MAP_IDS.some((mapId) => mapId === command.mapId)) {
+            if (!room.content.definitions.some((entry) => entry.mapId === command.mapId)) {
               throw new RoomStoreError('unsupported_map', '该地图尚未接入在线房间。')
             }
             room.mapId = command.mapId
@@ -465,7 +475,7 @@ export class RoomStore {
         now + this.leaseDurationMs,
       )
       if (claimed.status !== 'acquired') continue
-      const room = this.restoreRoom(claimed.room, claimed.lease)
+      const room = await this.restoreRoom(claimed.room, claimed.lease)
       this.rooms.set(room.roomCode, room)
       room.members.forEach((member) => this.beginDisconnectGrace(room, member))
       this.emitOwnership({
@@ -512,7 +522,7 @@ export class RoomStore {
     }
     const existing = this.rooms.get(roomCode)
     if (existing) return existing
-    const restored = this.restoreRoom(claimed.room, claimed.lease)
+    const restored = await this.restoreRoom(claimed.room, claimed.lease)
     this.rooms.set(roomCode, restored)
     restored.members.forEach((member) => this.beginDisconnectGrace(restored, member))
     this.emitOwnership({
@@ -529,8 +539,8 @@ export class RoomStore {
     return result
   }
 
-  private createRemoteMember(profile: RoomProfile, seatIndex: number) {
-    this.validateProfile(profile)
+  private createRemoteMember(profile: RoomProfile, seatIndex: number, content: RuntimeContentBundle) {
+    this.validateProfile(profile, content)
     const recoveryToken = randomBytes(24).toString('base64url')
     const member: RoomMember = {
       playerId: `remote-${randomUUID()}`,
@@ -553,7 +563,7 @@ export class RoomStore {
     const displayName = availableNames.length
       ? availableNames[randomInt(availableNames.length)]
       : `港口棋手${room.members.length + 1}`
-    const skinIds = DEFAULT_GAME_DEFINITION.ruleset.skinIds
+    const skinIds = this.roomDefinition(room).definition.ruleset.skinIds
     const usedSkinIds = new Set(room.members.map((member) => member.skinId))
     const skinId = skinIds.find((candidate) => !usedSkinIds.has(candidate))
       ?? skinIds[room.members.length % skinIds.length]
@@ -571,8 +581,8 @@ export class RoomStore {
     }
   }
 
-  private validateProfile(profile: RoomProfile) {
-    if (!DEFAULT_GAME_DEFINITION.ruleset.skinIds.some((skinId) => skinId === profile.skinId)) {
+  private validateProfile(profile: RoomProfile, content: RuntimeContentBundle) {
+    if (!content.definitions.some((entry) => entry.definition.ruleset.skinIds.includes(profile.skinId))) {
       throw new RoomStoreError('invalid_profile', '未知的棋子外观。')
     }
     const displayName = profile.displayName.trim()
@@ -580,6 +590,7 @@ export class RoomStore {
   }
 
   private startGame(room: RoomSession) {
+    const definition = this.roomDefinition(room).definition
     const participants: ParticipantSetup[] = room.members.map((member) => ({
       playerId: member.playerId,
       seatIndex: member.seatIndex,
@@ -590,22 +601,27 @@ export class RoomStore {
     }))
     room.authority = LocalAuthority.create({
       gameId: room.gameId,
-      definition: DEFAULT_GAME_DEFINITION,
+      definition,
       participants,
       seed: randomInt(0x1_0000_0000),
     })
   }
 
-  private restoreRoom(persisted: PersistedRoom, lease: RoomLease | null): RoomSession {
-    if (!SUPPORTED_MAP_IDS.some((mapId) => mapId === persisted.mapId)) {
+  private async restoreRoom(persisted: PersistedRoom, lease: RoomLease | null): Promise<RoomSession> {
+    const content = await this.contentSource.load(persisted.contentVersion)
+    const runtimeDefinition = content.definitions.find((entry) => entry.mapId === persisted.mapId)
+    if (!runtimeDefinition) {
       throw new Error(`Cannot restore unsupported map ${persisted.mapId}.`)
+    }
+    if (runtimeDefinition.mapVersion !== persisted.mapVersion) {
+      throw new Error(`Cannot restore map ${persisted.mapId} with mismatched version ${persisted.mapVersion}.`)
     }
     if (!persisted.members.some((member) => member.playerId === persisted.hostPlayerId)) {
       throw new Error(`Cannot restore room ${persisted.roomCode} without its host member.`)
     }
     const checkpoint: AuthorityCheckpoint | null = persisted.authorityCheckpoint
     const authority = checkpoint
-      ? LocalAuthority.restore({ definition: DEFAULT_GAME_DEFINITION, checkpoint })
+      ? LocalAuthority.restore({ definition: runtimeDefinition.definition, checkpoint })
       : null
     if (authority && authority.getSnapshot().gameId !== persisted.gameId) {
       throw new Error(`Cannot restore room ${persisted.roomCode} with a mismatched gameId.`)
@@ -622,6 +638,7 @@ export class RoomStore {
       subscribers: new Map(),
       hostPlayerId: persisted.hostPlayerId,
       mapId: persisted.mapId,
+      content,
       maxPlayers: persisted.maxPlayers,
       authority,
       commandQueue: Promise.resolve(),
@@ -638,6 +655,7 @@ export class RoomStore {
     const finished = room.authority?.getSnapshot().state.phase === 'game-over'
     room.updatedAt = now
     room.expiresAt = now + (finished ? this.finishedRoomTtlMs : this.roomTtlMs)
+    const runtimeDefinition = this.roomDefinition(room)
     return {
       persistenceVersion: ROOM_PERSISTENCE_VERSION,
       roomCode: room.roomCode,
@@ -653,6 +671,8 @@ export class RoomStore {
       })),
       hostPlayerId: room.hostPlayerId,
       mapId: room.mapId,
+      mapVersion: runtimeDefinition.mapVersion,
+      contentVersion: room.content.version,
       maxPlayers: room.maxPlayers,
       authorityCheckpoint: room.authority?.getCheckpoint() ?? null,
       aiCommandSequence: room.aiCommandSequence,
@@ -776,12 +796,16 @@ export class RoomStore {
 
   private publicState(room: RoomSession): RoomState {
     const snapshot = room.authority?.getSnapshot()
+    const runtimeDefinition = this.roomDefinition(room)
     return RoomStateSchema.parse({
       schemaVersion: PROTOCOL_SCHEMA_VERSION,
       roomCode: room.roomCode,
       gameId: room.gameId,
       hostPlayerId: room.hostPlayerId,
       mapId: room.mapId,
+      mapVersion: runtimeDefinition.mapVersion,
+      contentVersion: room.content.version,
+      rulesetVersion: runtimeDefinition.definition.ruleset.version,
       maxPlayers: room.maxPlayers,
       reconnectGraceMs: this.disconnectGraceMs,
       status: !snapshot ? 'waiting' : snapshot.state.phase === 'game-over' ? 'finished' : 'playing',
@@ -995,6 +1019,12 @@ export class RoomStore {
 
   private requireHost(room: RoomSession, member: RoomMember) {
     if (room.hostPlayerId !== member.playerId) throw new RoomStoreError('host_only', '只有房主可以执行这个操作。')
+  }
+
+  private roomDefinition(room: RoomSession): RuntimeGameDefinition {
+    const definition = room.content.definitions.find((entry) => entry.mapId === room.mapId)
+    if (!definition) throw new Error(`Room ${room.roomCode} references missing map ${room.mapId}.`)
+    return definition
   }
 
   private requireRemoteMember(room: RoomSession, recoveryToken: string) {

@@ -15,6 +15,11 @@
       "types": "./src/map-migration.ts",
       "development": "./src/map-migration.ts",
       "default": "./dist/map-migration.js"
+    },
+    "./runtime-content": {
+      "types": "./src/runtime-content.ts",
+      "development": "./src/runtime-content.ts",
+      "default": "./dist/runtime-content.js"
     }
   },
   "scripts": {

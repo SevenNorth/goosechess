@@ -12,6 +12,7 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
+    "@goose-chess/content-tools": "0.1.0",
     "@goose-chess/game-ai": "0.1.0",
     "@goose-chess/game-content": "0.1.0",
     "@goose-chess/game-core": "0.1.0",

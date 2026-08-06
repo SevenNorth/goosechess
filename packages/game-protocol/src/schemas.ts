@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const PROTOCOL_SCHEMA_VERSION = 11 as const
+export const PROTOCOL_SCHEMA_VERSION = 12 as const
 
 const IdSchema = z.string().trim().min(1).max(128)
 const RevisionSchema = z.number().int().nonnegative()
@@ -191,6 +191,9 @@ export const RoomStateSchema = z.object({
   gameId: IdSchema,
   hostPlayerId: IdSchema,
   mapId: IdSchema,
+  mapVersion: IdSchema,
+  contentVersion: z.string().trim().min(1).max(64),
+  rulesetVersion: z.number().int().positive(),
   maxPlayers: z.number().int().min(2).max(4),
   reconnectGraceMs: z.number().int().positive(),
   status: z.enum(['waiting', 'playing', 'finished']),
