@@ -10,6 +10,11 @@
       "types": "./src/index.ts",
       "development": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./map-migration": {
+      "types": "./src/map-migration.ts",
+      "development": "./src/map-migration.ts",
+      "default": "./dist/map-migration.js"
     }
   },
   "scripts": {

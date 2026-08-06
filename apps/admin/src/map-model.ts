@@ -1,70 +1,9 @@
 import { DEFAULT_MAP_DEFINITION } from '@goose-chess/game-content'
 import { calculateMovementPath, validateMapDefinition, type MapDefinition } from '@goose-chess/game-core'
+import { migrateLegacyMapDefinition } from '@goose-chess/content-tools/map-migration'
 
 export function createDefaultMap(): MapDefinition {
   return structuredClone(DEFAULT_MAP_DEFINITION) as MapDefinition
-}
-
-function migrateLegacyMap(candidate: MapDefinition): MapDefinition {
-  if (candidate.markers && candidate.eventPools) return structuredClone(candidate)
-
-  const legacyPools = candidate.landmarkEventPoolIds ?? {}
-  const eventPools = [
-    ...((candidate.genericEventPoolIds?.length ?? 0) >= 3
-      ? [{ id: 'general', name: '通用', eventIds: candidate.genericEventPoolIds! }]
-      : []),
-    ...candidate.landmarks.flatMap((landmark) => {
-      const eventIds = legacyPools[landmark.id]
-      return (eventIds?.length ?? 0) >= 3
-        ? [{ id: `legacy-${landmark.id}`, name: landmark.name, eventIds }]
-        : []
-    }),
-  ]
-  const eventPoolIdByMarker = new Map(candidate.landmarks.map((landmark) => [
-    landmark.id,
-    legacyPools[landmark.id] ? `legacy-${landmark.id}` : undefined,
-  ]))
-  const markers = candidate.landmarks.map((landmark) => {
-    const kind = landmark.spaceIds.some((spaceId) => candidate.winningSpaceIds.includes(spaceId))
-      ? 'finish' as const
-      : landmark.spaceIds.includes(candidate.spaces[0]?.index ?? 0)
-        ? 'start' as const
-        : 'location' as const
-    const eventPoolId = kind === 'location'
-      ? eventPoolIdByMarker.get(landmark.id) ?? (eventPools.some((pool) => pool.id === 'general') ? 'general' : undefined)
-      : undefined
-    return {
-      id: landmark.id,
-      kind,
-      name: landmark.name,
-      spaceIds: landmark.spaceIds,
-      ...(eventPoolId ? { eventPoolId } : {}),
-      asset: candidate.assets.landmarks?.[landmark.id] ?? '',
-      transform: {
-        x: landmark.x ?? candidate.spaces[landmark.spaceIds[0]]?.x ?? 0,
-        y: landmark.y ?? candidate.spaces[landmark.spaceIds[0]]?.y ?? 0,
-        scale: (landmark.size ?? 108) / 108,
-        rotation: 0,
-      },
-    }
-  })
-  const markerById = new Map(markers.map((marker) => [marker.id, marker]))
-  return {
-    ...structuredClone(candidate),
-    spaces: candidate.spaces.map((space) => {
-      const markerId = space.markerId ?? space.landmarkId
-      const marker = markerId ? markerById.get(markerId) : undefined
-      return {
-        ...space,
-        ...(markerId ? { markerId } : {}),
-        ...(space.kind === 'event'
-          ? { eventPoolId: space.eventPoolId ?? marker?.eventPoolId ?? (eventPools.some((pool) => pool.id === 'general') ? 'general' : undefined) }
-          : {}),
-      }
-    }),
-    markers,
-    eventPools,
-  }
 }
 
 export function mapFromUnknown(value: unknown): MapDefinition {
@@ -73,7 +12,7 @@ export function mapFromUnknown(value: unknown): MapDefinition {
   if (typeof candidate.id !== 'string' || typeof candidate.name !== 'string' || !Array.isArray(candidate.spaces)) {
     return createDefaultMap()
   }
-  const migrated = migrateLegacyMap(candidate as MapDefinition)
+  const migrated = migrateLegacyMapDefinition(candidate as MapDefinition)
   return {
     ...migrated,
     markers: migrated.markers?.map((marker) => ({
