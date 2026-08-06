@@ -13,6 +13,14 @@ export function playerSkinOption(skinId: string) {
   return PLAYER_SKIN_OPTIONS.find((skin) => skin.id === skinId) ?? PLAYER_SKIN_OPTIONS[0]
 }
 
+export function roomSkinOption(skinId: string, definition: GameDefinition, content: LoadedRoomContent) {
+  const builtIn = PLAYER_SKIN_OPTIONS.find((skin) => skin.id === skinId)
+  const skin = definition.skins.find((candidate) => candidate.id === skinId) ?? definition.skins[0]
+  return skin
+    ? { id: skin.id, label: skin.name, color: builtIn?.color ?? '#68756b', imageSrc: resolveRoomAsset(skin.atlas, content) }
+    : PLAYER_SKIN_OPTIONS[0]
+}
+
 export interface PlayerProfile {
   readonly nickname: string
   readonly skinId: string
@@ -56,3 +64,6 @@ export function loadPlayerProfile(): PlayerProfile {
 export function savePlayerProfile(profile: PlayerProfile) {
   window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile))
 }
+import type { GameDefinition } from '@goose-chess/game-core'
+import type { LoadedRoomContent } from './room-content-client'
+import { resolveRoomAsset } from './room-content-client'

@@ -35,6 +35,22 @@ export interface RoomProfile {
   readonly skinId: string
 }
 
+export interface RoomRuntimeContent {
+  readonly schemaVersion: typeof PROTOCOL_SCHEMA_VERSION
+  readonly contentVersion: string
+  readonly mapVersion: string
+  readonly assetBaseUrl: string | null
+  readonly maps: readonly {
+    readonly id: string
+    readonly mapVersion: string
+    readonly name: string
+    readonly spaceCount: number
+    readonly markerCount: number
+    readonly backgroundAsset: string
+  }[]
+  readonly definition: RuntimeGameDefinition['definition']
+}
+
 interface RoomMember extends RoomProfile {
   readonly playerId: string
   readonly recoveryTokenHash: string | null
@@ -458,6 +474,27 @@ export class RoomStore {
       const member = this.requireRemoteMember(room, recoveryToken)
       const subscribers = room.subscribers.get(member.playerId)
       subscribers?.forEach((subscriber) => this.sendRoomState(room, member, subscriber))
+    })
+  }
+
+  async getRoomContent(roomCodeInput: string, recoveryToken: string): Promise<RoomRuntimeContent> {
+    const room = await this.requireRoom(roomCodeInput)
+    this.requireRemoteMember(room, recoveryToken)
+    const runtime = this.roomDefinition(room)
+    return structuredClone({
+      schemaVersion: PROTOCOL_SCHEMA_VERSION,
+      contentVersion: room.content.version,
+      mapVersion: runtime.mapVersion,
+      assetBaseUrl: this.contentSource.publicAssetBaseUrl ?? null,
+      maps: room.content.definitions.map((entry) => ({
+        id: entry.mapId,
+        mapVersion: entry.mapVersion,
+        name: entry.definition.map.name,
+        spaceCount: entry.definition.map.spaces.length,
+        markerCount: (entry.definition.map.markers ?? entry.definition.map.landmarks).length,
+        backgroundAsset: entry.definition.map.assets.background,
+      })),
+      definition: runtime.definition,
     })
   }
 

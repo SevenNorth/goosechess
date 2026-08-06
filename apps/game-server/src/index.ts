@@ -16,7 +16,10 @@ if (databaseUrl && !instanceUrl) {
 const ownerUrl = instanceUrl ?? `http://127.0.0.1:${port}`
 const contentServiceUrl = process.env.CONTENT_SERVICE_URL?.trim()
 const contentSource = contentServiceUrl
-  ? new HttpRuntimeContentSource(contentServiceUrl, { token: process.env.CONTENT_RUNTIME_TOKEN?.trim() })
+  ? new HttpRuntimeContentSource(contentServiceUrl, {
+      token: process.env.CONTENT_RUNTIME_TOKEN?.trim(),
+      publicAssetBaseUrl: process.env.CONTENT_PUBLIC_URL?.trim(),
+    })
   : new StaticRuntimeContentSource()
 const persistence = databaseUrl
   ? new PostgresRoomPersistence(databaseUrl)

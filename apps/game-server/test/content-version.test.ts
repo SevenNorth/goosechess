@@ -54,6 +54,7 @@ describe('room content version locking', () => {
     const requests: Array<{ url: string; authorization: string | null }> = []
     const source = new HttpRuntimeContentSource('https://content.example.com/', {
       token: 'runtime-secret',
+      publicAssetBaseUrl: 'https://cdn.example.com/game/',
       fetch: async (input, init) => {
         const headers = new Headers(init?.headers)
         requests.push({ url: String(input), authorization: headers.get('authorization') })
@@ -65,6 +66,7 @@ describe('room content version locking', () => {
     })
 
     expect((await source.load('content-v1')).version).toBe('content-v1')
+    expect(source.publicAssetBaseUrl).toBe('https://cdn.example.com/game')
     expect((await source.load('content-v1')).version).toBe('content-v1')
     expect(requests).toEqual([{
       url: 'https://content.example.com/runtime/content/content-v1',

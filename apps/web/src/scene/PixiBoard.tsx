@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import type { MapDefinition } from '@goose-chess/game-core'
+import type { MapDefinition, TokenSkinDefinition } from '@goose-chess/game-core'
+import { DEFAULT_GAME_DEFINITION } from '@goose-chess/game-content'
 import type { AuthorityUpdate, GameSnapshot } from '@goose-chess/game-protocol'
 import type { BoardSceneController, BoardPlaybackOptions } from './BoardScene'
 
 interface PixiBoardProps {
   readonly snapshot?: GameSnapshot
   readonly map: MapDefinition
+  readonly skins?: readonly TokenSkinDefinition[]
+  readonly resolveAsset?: (asset: string) => string
   readonly onReady: (controller: BoardSceneController) => void
   readonly onDispose?: () => void
 }
@@ -36,7 +39,7 @@ function createTestController(): BoardSceneController {
   }
 }
 
-export function PixiBoard({ snapshot, map, onReady, onDispose }: PixiBoardProps) {
+export function PixiBoard({ snapshot, map, skins = DEFAULT_GAME_DEFINITION.skins, resolveAsset, onReady, onDispose }: PixiBoardProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const controllerRef = useRef<BoardSceneController | null>(null)
   const snapshotRef = useRef(snapshot)
@@ -75,6 +78,8 @@ export function PixiBoard({ snapshot, map, onReady, onDispose }: PixiBoardProps)
         host,
         new NullAudioPort(),
         map,
+        skins,
+        resolveAsset,
         () => cancelled,
         (nextProgress) => !cancelled && setProgress(nextProgress),
       ))
@@ -103,7 +108,7 @@ export function PixiBoard({ snapshot, map, onReady, onDispose }: PixiBoardProps)
       controllerRef.current = null
       onDisposeRef.current?.()
     }
-  }, [attempt, map])
+  }, [attempt, map, resolveAsset, skins])
 
   useEffect(() => {
     if (snapshot) controllerRef.current?.setActivePlayer(snapshot.state.activePlayerId)
@@ -114,7 +119,7 @@ export function PixiBoard({ snapshot, map, onReady, onDispose }: PixiBoardProps)
     {loadState !== 'ready' && (
       <section className="board-load-state" aria-live="polite" aria-busy={loadState === 'loading'}>
         {loadState === 'loading' ? <>
-          <span>正在铺设奥普港棋盘</span>
+          <span>正在铺设{map.name}棋盘</span>
           <strong>{Math.round(progress * 100)}%</strong>
           <div className="board-load-track"><i style={{ width: `${Math.max(4, progress * 100)}%` }} /></div>
         </> : <>

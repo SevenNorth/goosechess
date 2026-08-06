@@ -69,6 +69,52 @@ describe('在线完整棋盘', () => {
     expect(onSubmit).toHaveBeenCalledWith({ type: 'request-order-roll' })
   })
 
+  it('使用房间锁定的地图定义和资源基址', () => {
+    const definition = {
+      ...structuredClone(DEFAULT_GAME_DEFINITION),
+      contentVersion: 'content-v2',
+      map: { ...structuredClone(DEFAULT_GAME_DEFINITION.map), name: '新版港口' },
+      ruleset: { ...structuredClone(DEFAULT_GAME_DEFINITION.ruleset), version: 22 },
+    }
+    const customRoom = {
+      ...room,
+      contentVersion: definition.contentVersion,
+      mapVersion: 'map-v2',
+      rulesetVersion: definition.ruleset.version,
+    }
+    const authority = LocalAuthority.create({
+      gameId: room.gameId,
+      definition,
+      seed: 20260806,
+      participants: [
+        { playerId: 'remote-host', displayName: '港口房主', skinId: 'goose-white', seatIndex: 0, controller: 'remote', colorId: 'pink' },
+        { playerId: 'ai-one', displayName: '晚班水手', skinId: 'goose-yellow', seatIndex: 1, controller: 'ai', colorId: 'blue' },
+      ],
+    })
+
+    render(
+      <MemoryRouter>
+        <OnlineMatchStage
+          content={{ definition, assetBaseUrl: 'https://assets.example.com', serverUrl: 'https://game.example.com', maps: [] }}
+          room={customRoom}
+          snapshot={authority.getSnapshot()}
+          viewerPlayerId="remote-host"
+          legalCommands={[]}
+          pendingUpdates={[]}
+          connection="connected"
+          presenceNow={Date.now()}
+          ownReconnectDeadlineAt={null}
+          commandBusy={false}
+          notice=""
+          onSubmit={() => undefined}
+          onPresented={() => undefined}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('新版港口 65 格联机 · 房间 ABC123')).toBeTruthy()
+  })
+
 
   it('在对局 HUD 显示其他玩家的重连倒计时', async () => {
     const authority = LocalAuthority.create({

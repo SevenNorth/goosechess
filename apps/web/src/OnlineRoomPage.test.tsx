@@ -7,13 +7,14 @@ import { LocalAuthority, PROTOCOL_SCHEMA_VERSION, type RoomPlayer } from '@goose
 import { OnlineRoomPage } from './OnlineRoomPage'
 
 vi.mock('./OnlineMatchStage', () => ({
-  OnlineMatchStage: ({ snapshot, pendingUpdates, room }: {
+  OnlineMatchStage: ({ snapshot, pendingUpdates, room, content }: {
     snapshot: { revision: number }
     pendingUpdates: readonly unknown[]
     room: { hostPlayerId: string }
+    content: { definition: { map: { name: string } } }
   }) => (
     <div data-testid="mock-online-stage">
-      revision:{snapshot.revision} queue:{pendingUpdates.length} host:{room.hostPlayerId}
+      revision:{snapshot.revision} queue:{pendingUpdates.length} host:{room.hostPlayerId} map:{content.definition.map.name}
     </div>
   ),
 }))
@@ -215,6 +216,74 @@ describe('在线房间大厅', () => {
     expect(startButton.hasAttribute('disabled')).toBe(false)
     fireEvent.click(startButton)
     expect(socket.sent.at(-1)).toMatchObject({ type: 'lobby-command', command: { type: 'start-game' } })
+  })
+
+  it('加载并显示房间锁定的已发布地图', async () => {
+    window.sessionStorage.setItem('goose-chess-online-room-v1:ABC123', JSON.stringify({
+      playerId: host.playerId,
+      recoveryToken: 'recovery-host',
+    }))
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    const definition = {
+      ...structuredClone(DEFAULT_GAME_DEFINITION),
+      contentVersion: 'content-v2',
+      map: { ...structuredClone(DEFAULT_GAME_DEFINITION.map), name: '新版奥普港' },
+      ruleset: { ...structuredClone(DEFAULT_GAME_DEFINITION.ruleset), version: 22 },
+    }
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer recovery-host')
+      return new Response(JSON.stringify({
+        schemaVersion: PROTOCOL_SCHEMA_VERSION,
+        contentVersion: 'content-v2',
+        mapVersion: 'map-v2',
+        assetBaseUrl: 'https://assets.example.com',
+        maps: [{
+          id: DEFAULT_GAME_DEFINITION.map.id,
+          mapVersion: 'map-v2',
+          name: '新版奥普港',
+          spaceCount: DEFAULT_GAME_DEFINITION.map.spaces.length,
+          markerCount: DEFAULT_GAME_DEFINITION.map.landmarks.length,
+          backgroundAsset: DEFAULT_GAME_DEFINITION.map.assets.background,
+        }, {
+          id: 'new-route',
+          mapVersion: 'map-new-route-v1',
+          name: '新版航道',
+          spaceCount: 20,
+          markerCount: 4,
+          backgroundAsset: DEFAULT_GAME_DEFINITION.map.assets.background,
+        }],
+        definition,
+      }), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <MemoryRouter initialEntries={['/room/ABC123']}>
+        <Routes><Route path="/room/:roomCode" element={<OnlineRoomPage />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    const state = roomState()
+    act(() => {
+      FakeWebSocket.instances[0].emit('open')
+      FakeWebSocket.instances[0].emit('message', {
+        ...state,
+        room: {
+          ...state.room,
+          contentVersion: 'content-v2',
+          mapVersion: 'map-v2',
+          rulesetVersion: 22,
+        },
+      })
+    })
+
+    expect(await screen.findByText('新版奥普港')).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('radio', { name: /新版航道/ }))
+    expect(FakeWebSocket.instances[0].sent.at(-1)).toMatchObject({
+      type: 'lobby-command',
+      command: { type: 'set-map', mapId: 'new-route' },
+    })
   })
 
 

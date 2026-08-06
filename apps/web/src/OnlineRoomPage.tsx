@@ -26,7 +26,8 @@ import {
   type RoomState,
 } from '@goose-chess/game-protocol'
 import { gameServerUrl, loadOnlineIdentity, roomSocketUrl, updateOnlineIdentityServerUrl } from './online-room-client'
-import { playerSkinOption } from './player-profile'
+import { roomSkinOption } from './player-profile'
+import { loadRoomContent, localRoomContent, resolveRoomAsset, type LoadedRoomContent } from './room-content-client'
 import { OnlineMatchStage, type OnlineQueuedUpdate } from './OnlineMatchStage'
 
 function reconnectSeconds(deadlineAt: number | null, now: number) {
@@ -49,6 +50,7 @@ function playerPresenceLabel(
 }
 
 interface RoomRosterProps {
+  readonly content: LoadedRoomContent
   readonly room: RoomState
   readonly snapshot: GameSnapshot | null
   readonly viewerPlayerId: string
@@ -60,12 +62,12 @@ interface RoomRosterProps {
   readonly onRemove: (playerId: string) => void
 }
 
-function RoomRoster({ room, snapshot, viewerPlayerId, canManage, busy, connection, now, ownReconnectDeadlineAt, onRemove }: RoomRosterProps) {
+function RoomRoster({ content, room, snapshot, viewerPlayerId, canManage, busy, connection, now, ownReconnectDeadlineAt, onRemove }: RoomRosterProps) {
   return (
     <aside className="online-player-list" aria-label="房间玩家">
       <header><strong>房间棋手</strong><span>{room.players.length}/{room.maxPlayers}</span></header>
       {room.players.map((player) => {
-        const skin = playerSkinOption(player.skinId)
+        const skin = roomSkinOption(player.skinId, content.definition, content)
         const position = snapshot?.state.players.find((candidate) => candidate.playerId === player.playerId)
         const isHost = player.playerId === room.hostPlayerId
         const removable = canManage && player.playerId !== viewerPlayerId && (player.controller === 'ai' || !player.ready)
@@ -143,6 +145,38 @@ export function OnlineRoomPage() {
   const [removed, setRemoved] = useState(false)
   const [ownReconnectDeadlineAt, setOwnReconnectDeadlineAt] = useState<number | null>(null)
   const [presenceNow, setPresenceNow] = useState(() => Date.now())
+  const [loadedContent, setLoadedContent] = useState<LoadedRoomContent | null>(null)
+  const [contentError, setContentError] = useState('')
+  const [contentLoadAttempt, setContentLoadAttempt] = useState(0)
+
+  const builtInContent = room ? localRoomContent(room, serverUrl) : null
+  const fetchedContentMatches = Boolean(
+    loadedContent
+    && room
+    && loadedContent.definition.contentVersion === room.contentVersion
+    && loadedContent.definition.map.id === room.mapId
+    && loadedContent.definition.ruleset.version === room.rulesetVersion,
+  )
+  const content = builtInContent ?? (fetchedContentMatches ? loadedContent : null)
+
+  useEffect(() => {
+    if (!room || builtInContent || fetchedContentMatches) return
+    let cancelled = false
+    setContentError('')
+    void loadRoomContent(room, { recoveryToken, serverUrl })
+      .then((nextContent) => {
+        if (cancelled) return
+        setLoadedContent(nextContent)
+        if (nextContent.serverUrl !== serverUrl) {
+          updateOnlineIdentityServerUrl(roomCode, nextContent.serverUrl)
+          setServerUrl(nextContent.serverUrl)
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setContentError(error instanceof Error ? error.message : '无法读取房间内容。')
+      })
+    return () => { cancelled = true }
+  }, [builtInContent, contentLoadAttempt, fetchedContentMatches, recoveryToken, room, roomCode, serverUrl])
 
   useEffect(() => {
     if (!room) return
@@ -311,7 +345,7 @@ export function OnlineRoomPage() {
     <header className="online-room-header">
       <Link to="/" aria-label="返回准备页面"><ArrowLeft /></Link>
       <div>
-        <small>{room?.status === 'waiting' ? '私人房间大厅' : '奥普港在线对局'}</small>
+        <small>{room?.status === 'waiting' ? '私人房间大厅' : `${content?.definition.map.name ?? '棋盘'}在线对局`}</small>
         <strong>房间 {roomCode}</strong>
       </div>
       <button type="button" onClick={copyCode} title="复制房间码" aria-label="复制房间码">
@@ -338,12 +372,37 @@ export function OnlineRoomPage() {
     )
   }
 
+  const snapshotMatchesContent = !snapshot || Boolean(
+    content
+    && snapshot.contentVersion === content.definition.contentVersion
+    && snapshot.mapId === content.definition.map.id
+    && snapshot.rulesetVersion === content.definition.ruleset.version,
+  )
+  if (!content || !snapshotMatchesContent) {
+    const mismatch = Boolean(content && !snapshotMatchesContent)
+    return (
+      <main className="online-room-shell">
+        {header}
+        <section className="route-message">
+          {contentError || mismatch ? <WifiOff /> : <LoaderCircle />}
+          <h1>{contentError || mismatch ? '无法加载对局内容' : '正在加载对局内容'}</h1>
+          <p>{mismatch ? '权威快照与房间锁定的内容版本不一致。' : contentError || '正在校验房间锁定的地图、规则和资源。'}</p>
+          {contentError && (
+            <button className="primary-button" type="button" onClick={() => setContentLoadAttempt((value) => value + 1)}>重新加载</button>
+          )}
+          {mismatch && <Link className="primary-button" to="/">返回准备</Link>}
+        </section>
+      </main>
+    )
+  }
+
   if (room.status === 'waiting' || !snapshot) {
     return (
       <main className="online-room-shell">
         {header}
         <section className="online-room-stage is-lobby">
           <RoomRoster
+            content={content}
             room={room}
             snapshot={null}
             viewerPlayerId={identity.playerId}
@@ -364,14 +423,27 @@ export function OnlineRoomPage() {
 
             <div className="online-lobby-map">
               <header><span><MapPinned /> 棋盘地图</span><small>开局后锁定</small></header>
-              <article className="is-selected">
-                <div>
-                  <small>经典竞速地图</small>
-                  <strong>奥普港</strong>
-                  <span>65 格路线 · 9 处地标 · 支持 2–4 名棋手</span>
-                </div>
-                <Check />
-              </article>
+              <div className="online-map-options" role="radiogroup" aria-label="棋盘地图">
+                {content.maps.map((map) => {
+                  const selected = map.id === room.mapId && map.mapVersion === room.mapVersion
+                  const backgroundUrl = resolveRoomAsset(map.backgroundAsset, content)
+                  return (
+                    <button
+                      className={selected ? 'online-map-option is-selected' : 'online-map-option'}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={!isHost || lobbyBusy}
+                      onClick={() => submitLobby({ type: 'set-map', mapId: map.id })}
+                      style={{ backgroundImage: `url(${JSON.stringify(backgroundUrl)})` }}
+                      key={`${map.id}:${map.mapVersion}`}
+                    >
+                      <span><small>已发布竞速地图</small><strong>{map.name}</strong><em>{Math.max(0, map.spaceCount - 1)} 格路线 · {map.markerCount} 处标记 · 支持 {content.definition.ruleset.playerCount.min}–{content.definition.ruleset.playerCount.max} 名棋手</em></span>
+                      {selected && <Check />}
+                    </button>
+                  )
+                })}
+              </div>
               <p>开局后使用完整 PixiJS 棋盘，并按服务端权威事件播放骰子、路线和棋子移动。</p>
             </div>
 
@@ -447,6 +519,7 @@ export function OnlineRoomPage() {
 
   return (
     <OnlineMatchStage
+      content={content}
       room={room}
       snapshot={snapshot}
       viewerPlayerId={identity.playerId}

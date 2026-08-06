@@ -585,13 +585,15 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .online-lobby-map > header span, .online-lobby-capacity > header span { display: inline-flex; align-items: center; gap: 7px; font-size: var(--font-static-min); font-weight: 900; }
 .online-lobby-map > header svg, .online-lobby-capacity > header svg { width: 17px; color: var(--pink); }
 .online-lobby-map > header small, .online-lobby-capacity > header small { color: #92998e; }
-.online-lobby-map article { position: relative; min-height: 150px; margin-top: 12px; display: grid; align-items: center; padding: 20px; border: 1px solid #646a5e; color: #32332d; background: #d9d1ba url('/assets/maps/aup-port/paper-board.png') center / cover; }
-.online-lobby-map article.is-selected { border: 3px solid var(--teal); }
-.online-lobby-map article > div { display: flex; flex-direction: column; gap: 4px; }
-.online-lobby-map article small { color: #8f3345; font-weight: 900; }
-.online-lobby-map article strong { font-size: 24px; }
-.online-lobby-map article span { color: #625f54; font-size: var(--font-static-min); font-weight: 800; }
-.online-lobby-map article > svg { position: absolute; top: 14px; right: 14px; width: 26px; height: 26px; padding: 5px; color: white; background: var(--teal); }
+.online-map-options { max-height: 330px; overflow: auto; display: grid; gap: 10px; margin-top: 12px; }
+.online-map-option { position: relative; width: 100%; min-height: 112px; display: grid; align-items: center; padding: 18px; border: 1px solid #646a5e; border-radius: 0; color: #32332d; text-align: left; background-color: #d9d1ba; background-position: center; background-size: cover; }
+.online-map-option.is-selected { border: 3px solid var(--teal); }
+.online-map-option:disabled { cursor: default; opacity: 1; }
+.online-map-option > span { display: flex; flex-direction: column; gap: 4px; }
+.online-map-option small { color: #8f3345; font-weight: 900; }
+.online-map-option strong { font-size: 24px; }
+.online-map-option em { color: #625f54; font-size: var(--font-static-min); font-style: normal; font-weight: 800; }
+.online-map-option > svg { position: absolute; top: 14px; right: 14px; width: 26px; height: 26px; padding: 5px; color: white; background: var(--teal); }
 .online-lobby-map > p { margin: 10px 0 0; color: #9ea59a; font-size: var(--font-static-min); line-height: 1.55; }
 .online-lobby-capacity > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 10px; padding: 4px; background: #171914; }
 .online-lobby-capacity button { height: 44px; border: 1px solid transparent; color: #b6bbb1; background: transparent; cursor: pointer; font-weight: 900; }

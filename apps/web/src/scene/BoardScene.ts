@@ -8,13 +8,12 @@ import {
   Texture,
 } from 'pixi.js'
 import { createActor, type ActorRefFrom } from 'xstate'
-import type { MapDefinition } from '@goose-chess/game-core'
+import type { MapDefinition, TokenSkinDefinition } from '@goose-chess/game-core'
 import { createStaticBoard, mapMarkers } from '@goose-chess/board-renderer'
 import type { GameSnapshot, AuthorityUpdate, PresentationCue } from '@goose-chess/game-protocol'
 import type { AudioPort } from '../audio/audio-port'
 import { presentationMachine, type PresentationStage } from '../game-client/machine/presentation-machine'
 import { settlePresentation } from '../game-client/presentation-recovery'
-import { PLAYER_SKIN_OPTIONS, playerSkinOption } from '../player-profile'
 import { tokenOffset } from './token-layout'
 const SEAT_COLORS: Readonly<Record<string, number>> = {
   pink: 0xe82f73,
@@ -103,6 +102,8 @@ export class BoardScene implements BoardSceneController {
     private readonly host: HTMLElement,
     private readonly audio: AudioPort,
     private readonly map: MapDefinition,
+    private readonly skins: readonly TokenSkinDefinition[],
+    private readonly resolveAsset?: (asset: string) => string,
   ) {
     this.cameraFocusX = map.logicalSize.width / 2
     this.cameraFocusY = map.logicalSize.height / 2
@@ -114,10 +115,12 @@ export class BoardScene implements BoardSceneController {
     host: HTMLElement,
     audio: AudioPort,
     map: MapDefinition,
+    skins: readonly TokenSkinDefinition[],
+    resolveAsset?: (asset: string) => string,
     isCancelled: () => boolean = () => false,
     onProgress: (progress: number) => void = () => undefined,
   ) {
-    const scene = new BoardScene(host, audio, map)
+    const scene = new BoardScene(host, audio, map, skins, resolveAsset)
     try {
       await scene.initialize(isCancelled, onProgress)
       return scene
@@ -241,21 +244,21 @@ export class BoardScene implements BoardSceneController {
   }
 
   private async buildBoard(onProgress: (progress: number) => void) {
-    const totalAssetCount = mapMarkers(this.map).length + 2 + PLAYER_SKIN_OPTIONS.length
+    const totalAssetCount = mapMarkers(this.map).length + 2 + this.skins.length
     let completedAssetCount = 0
     const reportAssetLoaded = () => {
       completedAssetCount += 1
       onProgress(0.12 + completedAssetCount / totalAssetCount * 0.8)
     }
     const [board, loadedTokens] = await Promise.all([
-      createStaticBoard(this.map, { onAssetLoaded: reportAssetLoaded, strictAssets: true }),
-      Promise.all(PLAYER_SKIN_OPTIONS.map(async (skin) => {
-        const texture = await Assets.load<Texture>(skin.imageSrc)
+      createStaticBoard(this.map, { onAssetLoaded: reportAssetLoaded, strictAssets: true, resolveAsset: this.resolveAsset }),
+      Promise.all(this.skins.map(async (skin) => {
+        const texture = await Assets.load<Texture>(this.resolveAsset?.(skin.atlas) ?? (skin.atlas.startsWith('/') ? skin.atlas : `/${skin.atlas}`))
         reportAssetLoaded()
         return texture
       })),
     ])
-    PLAYER_SKIN_OPTIONS.forEach((skin, index) => this.tokenTextures.set(skin.id, loadedTokens[index]))
+    this.skins.forEach((skin, index) => this.tokenTextures.set(skin.id, loadedTokens[index]))
     this.loadedTextureCount = board.loadedTextureCount + loadedTokens.length
     this.staticBoardLayer.addChild(board.root)
     this.staticBoardLayer.cacheAsTexture({ resolution: Math.min(window.devicePixelRatio || 1, 2), antialias: true })
@@ -270,7 +273,7 @@ export class BoardScene implements BoardSceneController {
       .ellipse(0, -2, 33, 10).fill({ color: outline })
       .ellipse(0, -4, 27, 7).fill({ color: 0x383a34 })
     const texture = this.tokenTextures.get(player.skinId)
-      ?? this.tokenTextures.get(playerSkinOption(player.skinId).id)
+      ?? this.tokenTextures.values().next().value
       ?? Texture.WHITE
     const model = new Sprite(texture)
     model.anchor.set(0.5, 1)

@@ -44,7 +44,7 @@ function sendJson(
   headers: IncomingHttpHeaders = {},
 ) {
   response.writeHead(status, {
-    'Access-Control-Allow-Headers': 'content-type',
+    'Access-Control-Allow-Headers': 'authorization,content-type',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Origin': '*',
     'Content-Type': 'application/json; charset=utf-8',
@@ -99,6 +99,7 @@ function normalizedRoute(method: string, pathname: string) {
   if (method === 'GET' && pathname === '/metrics') return '/metrics'
   if (method === 'POST' && pathname === '/rooms') return '/rooms'
   if (method === 'POST' && /^\/rooms\/[A-Z0-9]{6}\/join$/i.test(pathname)) return '/rooms/:roomCode/join'
+  if (method === 'GET' && /^\/rooms\/[A-Z0-9]{6}\/content$/i.test(pathname)) return '/rooms/:roomCode/content'
   if (method === 'OPTIONS') return 'options'
   return 'not_found'
 }
@@ -207,7 +208,7 @@ export function createGameServer(options: GameServerOptions = {}) {
       if (method === 'OPTIONS') {
         status = 204
         response.writeHead(status, {
-          'Access-Control-Allow-Headers': 'content-type',
+          'Access-Control-Allow-Headers': 'authorization,content-type',
           'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
           'Access-Control-Allow-Origin': '*',
         })
@@ -257,11 +258,21 @@ export function createGameServer(options: GameServerOptions = {}) {
         sendJson(response, status, await store.joinRoom(joinMatch[1], profile, profile.recoveryToken))
         return
       }
+      const contentMatch = url.pathname.match(/^\/rooms\/([A-Z0-9]{6})\/content$/i)
+      if (method === 'GET' && contentMatch) {
+        const authorization = request.headers.authorization
+        const recoveryToken = authorization?.startsWith('Bearer ') ? authorization.slice(7) : ''
+        status = 200
+        sendJson(response, status, await store.getRoomContent(contentMatch[1], recoveryToken))
+        return
+      }
       status = 404
       sendJson(response, status, { code: 'not_found', message: '接口不存在。' })
     } catch (error) {
       const known = error instanceof RoomStoreError
-      status = known && (error.code === 'room_owned_elsewhere' || error.code === 'room_lease_lost') ? 409 : known ? 400 : 500
+      status = known && (error.code === 'room_owned_elsewhere' || error.code === 'room_lease_lost')
+        ? 409
+        : known && error.code === 'invalid_recovery_token' ? 401 : known ? 400 : 500
       if (!known) {
         diagnose('error', 'http_handler_error', {
           requestId,

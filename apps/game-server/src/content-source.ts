@@ -5,6 +5,7 @@ import {
 } from '@goose-chess/content-tools/runtime-content'
 
 export interface RuntimeContentSource {
+  readonly publicAssetBaseUrl?: string
   load(version?: string): Promise<RuntimeContentBundle>
 }
 
@@ -21,16 +22,21 @@ export class StaticRuntimeContentSource implements RuntimeContentSource {
 
 export interface HttpRuntimeContentSourceOptions {
   readonly token?: string
+  readonly publicAssetBaseUrl?: string
   readonly fetch?: typeof fetch
 }
 
 export class HttpRuntimeContentSource implements RuntimeContentSource {
+  readonly publicAssetBaseUrl?: string
   private readonly fetchImplementation: typeof fetch
   private readonly historical = new Map<string, RuntimeContentBundle>()
   private readonly baseUrl: string
 
   constructor(baseUrl: string, private readonly options: HttpRuntimeContentSourceOptions = {}) {
     this.baseUrl = new URL(baseUrl).toString().replace(/\/$/, '')
+    this.publicAssetBaseUrl = options.publicAssetBaseUrl
+      ? normalizeHttpBaseUrl(options.publicAssetBaseUrl)
+      : this.baseUrl
     this.fetchImplementation = options.fetch ?? fetch
   }
 
@@ -49,6 +55,14 @@ export class HttpRuntimeContentSource implements RuntimeContentSource {
     this.historical.set(bundle.version, structuredClone(bundle))
     return bundle
   }
+}
+
+function normalizeHttpBaseUrl(value: string) {
+  const url = new URL(value)
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('Runtime content public URL must use HTTP or HTTPS.')
+  }
+  return url.toString().replace(/\/$/, '')
 }
 
 function parseRuntimeContentBundle(value: unknown): RuntimeContentBundle {

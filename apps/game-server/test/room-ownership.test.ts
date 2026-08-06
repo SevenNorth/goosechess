@@ -213,6 +213,15 @@ describe('multi-instance room ownership', () => {
       ownerUrl: 'https://game-a.example.com',
     })
     socket.terminate()
+
+    const contentResponse = await fetch(`http://127.0.0.1:${address.port}/rooms/${joined.room.roomCode}/content`, {
+      headers: { Authorization: `Bearer ${joined.recoveryToken}` },
+    })
+    expect(contentResponse.status).toBe(409)
+    await expect(contentResponse.json()).resolves.toMatchObject({
+      code: 'room_owned_elsewhere',
+      ownerUrl: 'https://game-a.example.com',
+    })
   })
 
   it('increments fencing and rejects stale-owner writes after lease takeover', async () => {

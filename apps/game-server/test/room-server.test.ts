@@ -135,6 +135,29 @@ describe('game server private lobby and room flow', () => {
     await expect(response.json()).resolves.toMatchObject({ code: 'room_full' })
   })
 
+  it('serves the locked room definition only to a room participant', async () => {
+    const { baseUrl, creator } = await setupLobby()
+    const unauthorized = await fetch(`${baseUrl}/rooms/${creator.room.roomCode}/content`)
+    expect(unauthorized.status).toBe(401)
+
+    const response = await fetch(`${baseUrl}/rooms/${creator.room.roomCode}/content`, {
+      headers: { Authorization: `Bearer ${creator.recoveryToken}` },
+    })
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      schemaVersion: PROTOCOL_SCHEMA_VERSION,
+      contentVersion: creator.room.contentVersion,
+      mapVersion: creator.room.mapVersion,
+      assetBaseUrl: null,
+      maps: [{ id: creator.room.mapId, mapVersion: creator.room.mapVersion, name: '奥普港' }],
+      definition: {
+        contentVersion: creator.room.contentVersion,
+        map: { id: creator.room.mapId },
+        ruleset: { version: creator.room.rulesetVersion },
+      },
+    })
+  })
+
   it('enforces host permissions and readiness before manual start', async () => {
     const { creator, guest, socketUrl } = await setupLobby()
     const host = await openInbox(socketUrl(creator))

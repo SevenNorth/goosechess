@@ -6,7 +6,8 @@ import {
   Sparkles,
   type LucideIcon,
 } from 'lucide-react'
-import { DEFAULT_GAME_DEFINITION } from '@goose-chess/game-content'
+import { DEFAULT_GAME_DEFINITION, type EventCard, type ItemCard } from '@goose-chess/game-content'
+import type { EventDefinition, GameDefinition, ItemDefinition } from '@goose-chess/game-core'
 
 export const COLOR_HEX: Readonly<Record<string, string>> = {
   pink: '#e82f73',
@@ -30,10 +31,23 @@ export const ITEM_COPY: Readonly<Record<string, { icon: LucideIcon; description:
   'warm-soup': { icon: Shield, description: '自动抵消下一次暂停回合效果。' },
 }
 
+type PresentationEvent = EventDefinition & Partial<Pick<EventCard, 'accent'>>
+type PresentationItem = ItemDefinition & Partial<Pick<ItemCard, 'description' | 'priority' | 'quote'>>
+
 export function eventById(eventId: string) {
   return DEFAULT_GAME_DEFINITION.events.find((event) => event.id === eventId)
 }
 
+export function eventByIdIn(definition: GameDefinition, eventId: string) {
+  return definition.events.find((event) => event.id === eventId) as PresentationEvent | undefined
+}
+
 export function itemById(itemId: string | null | undefined) {
   return itemId ? DEFAULT_GAME_DEFINITION.items.find((item) => item.id === itemId) : undefined
+}
+
+export function itemByIdIn(definition: GameDefinition, itemId: string | null | undefined) {
+  return itemId
+    ? definition.items.find((item) => item.id === itemId) as PresentationItem | undefined
+    : undefined
 }

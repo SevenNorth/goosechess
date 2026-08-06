@@ -10,8 +10,9 @@ import type { ThreeDiceRollerHandle } from './dice/ThreeDiceRoller'
 import { ItemUsePresentation, type ItemUsePresentationData } from './items/ItemUsePresentation'
 import { PauseTurnIndicator } from './hud/PauseTurnIndicator'
 import { PauseTurnOverlay } from './hud/PauseTurnOverlay'
-import { COLOR_HEX, ITEM_COPY, eventById, itemById } from './game-presentation-content'
-import { playerSkinOption } from './player-profile'
+import { COLOR_HEX, ITEM_COPY, eventByIdIn, itemByIdIn } from './game-presentation-content'
+import { roomSkinOption } from './player-profile'
+import { resolveRoomAsset, type LoadedRoomContent } from './room-content-client'
 
 const ThreeDiceRoller = lazy(() => import('./dice/ThreeDiceRoller').then((module) => ({ default: module.ThreeDiceRoller })))
 
@@ -31,6 +32,7 @@ export interface OnlineQueuedUpdate {
 }
 
 interface OnlineMatchStageProps {
+  readonly content?: LoadedRoomContent
   readonly room: RoomState
   readonly snapshot: GameSnapshot
   readonly viewerPlayerId: string
@@ -43,6 +45,13 @@ interface OnlineMatchStageProps {
   readonly notice: string
   readonly onSubmit: (command: GameCommand) => void
   readonly onPresented: (id: number) => void
+}
+
+const BUILT_IN_ROOM_CONTENT: LoadedRoomContent = {
+  definition: DEFAULT_GAME_DEFINITION,
+  assetBaseUrl: null,
+  serverUrl: 'http://127.0.0.1:8787',
+  maps: [],
 }
 
 interface PausePresentationState {
@@ -101,6 +110,7 @@ function CountdownConfirmButton({ label, seconds, className, disabled, onConfirm
 }
 
 export function OnlineMatchStage({
+  content = BUILT_IN_ROOM_CONTENT,
   room,
   snapshot,
   viewerPlayerId,
@@ -114,6 +124,8 @@ export function OnlineMatchStage({
   onSubmit,
   onPresented,
 }: OnlineMatchStageProps) {
+  const definition = content.definition
+  const resolveAsset = useCallback((asset: string) => resolveRoomAsset(asset, content), [content])
   const [presentedSnapshot, setPresentedSnapshot] = useState(snapshot)
   const [board, setBoard] = useState<BoardSceneController | null>(null)
   const [presentationStage, setPresentationStage] = useState<PresentationStage>('ready')
@@ -159,7 +171,7 @@ export function OnlineMatchStage({
   ) => {
     const player = sourceSnapshot.state.players.find((candidate) => candidate.playerId === playerId)
     const target = sourceSnapshot.state.players.find((candidate) => candidate.playerId === targetPlayerId)
-    const item = itemById(itemId)
+    const item = itemByIdIn(definition, itemId)
     if (!player || !item || !mountedRef.current) return Promise.resolve()
     const copy = ITEM_COPY[item.id]
     return new Promise<void>((resolve) => {
@@ -177,7 +189,7 @@ export function OnlineMatchStage({
         Icon: copy?.icon ?? PackageOpen,
       })
     })
-  }, [viewerPlayerId])
+  }, [definition, viewerPlayerId])
 
   const finishPause = useCallback(() => {
     if (pauseTimerRef.current !== null) window.clearTimeout(pauseTimerRef.current)
@@ -255,9 +267,9 @@ export function OnlineMatchStage({
   const ownPlayer = presentedSnapshot.state.players.find((player) => player.playerId === viewerPlayerId)
   const activePlayer = presentedSnapshot.state.players.find((player) => player.playerId === presentedSnapshot.state.activePlayerId)
     ?? presentedSnapshot.state.players[0]
-  const ownItem = itemById(ownPlayer?.itemId)
-  const pendingItem = itemById(presentedSnapshot.state.pendingItemId)
-  const gainedItem = itemById(itemGainConfirmation?.itemId)
+  const ownItem = itemByIdIn(definition, ownPlayer?.itemId)
+  const pendingItem = itemByIdIn(definition, presentedSnapshot.state.pendingItemId)
+  const gainedItem = itemByIdIn(definition, itemGainConfirmation?.itemId)
   const locked = commandBusy || pendingUpdates.length > 0
     || snapshot.revision !== presentedSnapshot.revision
   const legal = <T extends GameCommand['type']>(type: T) => legalCommands.filter(
@@ -282,7 +294,7 @@ export function OnlineMatchStage({
   const targetPlayers = itemTargetCommands.map((command) => presentedSnapshot.state.players.find(
     (player) => player.playerId === command.targetPlayerId,
   )).filter((player) => player !== undefined)
-  const finalSpaceId = DEFAULT_GAME_DEFINITION.map.spaces.at(-1)?.index ?? 65
+  const finalSpaceId = Math.max(...definition.map.spaces.map((space) => space.index))
   const provisionalOrder = presentedSnapshot.state.turnOrderGroups.flat()
   const orderIndex = new Map(provisionalOrder.map((playerId, index) => [playerId, index]))
   const hudPlayers = [...presentedSnapshot.state.players].sort((left, right) => {
@@ -299,10 +311,12 @@ export function OnlineMatchStage({
   }
   for (const result of presentedSnapshot.state.orderRollResults) latestOrderFaces.set(result.playerId, result.face)
   const unresolvedOrderGroup = presentedSnapshot.state.turnOrderGroups.find((group) => group.length > 1) ?? []
-  const startingItems = presentedSnapshot.state.startingItemOfferIds.map(itemById).filter((item) => item !== undefined)
-  const offeredEvents = presentedSnapshot.state.pendingEventIds.map(eventById).filter((event) => event !== undefined)
-  const activeSpace = DEFAULT_GAME_DEFINITION.map.spaces.find((space) => space.index === activePlayer.spaceId)
-  const activeLandmark = DEFAULT_GAME_DEFINITION.map.landmarks.find((landmark) => landmark.id === activeSpace?.landmarkId)
+  const startingItems = presentedSnapshot.state.startingItemOfferIds.map((id) => itemByIdIn(definition, id)).filter((item) => item !== undefined)
+  const offeredEvents = presentedSnapshot.state.pendingEventIds.map((id) => eventByIdIn(definition, id)).filter((event) => event !== undefined)
+  const activeSpace = definition.map.spaces.find((space) => space.index === activePlayer.spaceId)
+  const activeMarker = definition.map.markers?.find((marker) => marker.id === activeSpace?.markerId)
+  const activeLandmark = definition.map.landmarks.find((landmark) => landmark.id === activeSpace?.landmarkId)
+  const activeLocationName = activeMarker?.name ?? activeLandmark?.name
   const pausedPlayer = pausePresentation
     ? presentedSnapshot.state.players.find((player) => player.playerId === pausePresentation.playerId)
     : undefined
@@ -328,7 +342,9 @@ export function OnlineMatchStage({
   return (
     <main className="stage5-shell online-full-match">
       <PixiBoard
-        map={DEFAULT_GAME_DEFINITION.map}
+        map={definition.map}
+        skins={definition.skins}
+        resolveAsset={resolveAsset}
         snapshot={presentedSnapshot}
         onReady={(controller) => { controller.sync(presentedSnapshot); setBoard(controller) }}
         onDispose={() => setBoard(null)}
@@ -353,7 +369,7 @@ export function OnlineMatchStage({
       )}
 
       <header className="stage5-topbar">
-        <div className="stage5-brand"><span>鹅</span><div><strong>鹅了个棋</strong><small>奥普港 65 格联机 · 房间 {room.roomCode}</small></div></div>
+        <div className="stage5-brand"><span>鹅</span><div><strong>鹅了个棋</strong><small>{definition.map.name} {finalSpaceId} 格联机 · 房间 {room.roomCode}</small></div></div>
         <div className="online-match-connection">
           {connection === 'connected' ? <Wifi /> : <WifiOff />}
           <span>{connectionLabel}</span>
@@ -363,7 +379,7 @@ export function OnlineMatchStage({
 
       <section className="floating-players" aria-label="联机参赛棋手">
         {hudPlayers.map((player) => {
-          const skin = playerSkinOption(player.skinId)
+          const skin = roomSkinOption(player.skinId, definition, content)
           const progress = Math.round(player.spaceId / finalSpaceId * 100)
           const roomPlayer = room.players.find((candidate) => candidate.playerId === player.playerId)
           const locallyDisconnected = player.playerId === viewerPlayerId && connection !== 'connected'
@@ -409,7 +425,7 @@ export function OnlineMatchStage({
               const player = presentedSnapshot.state.players.find((candidate) => candidate.playerId === playerId)!
               return <li className={presentedSnapshot.state.activePlayerId === playerId ? 'is-rolling' : ''} key={playerId} style={{ '--seat-color': COLOR_HEX[player.colorId] } as CSSProperties}>
                 <span className="order-rank">{index + 1}</span><span className="order-player"><strong>{player.displayName}</strong></span>
-                <img className="order-token" src={playerSkinOption(player.skinId).imageSrc} alt={`${player.displayName}的棋子`} />
+                <img className="order-token" src={roomSkinOption(player.skinId, definition, content).imageSrc} alt={`${player.displayName}的棋子`} />
                 <span className="order-die" aria-label={latestOrderFaces.has(playerId) ? `${latestOrderFaces.get(playerId)} 点` : '尚未投掷'}>{latestOrderFaces.get(playerId) ?? '·'}</span>
               </li>
             })}
@@ -434,7 +450,7 @@ export function OnlineMatchStage({
 
       {!locked && presentedSnapshot.state.phase === 'awaiting-event-choice' && activePlayer.playerId === viewerPlayerId && (
         <div className="overlay-stage event-overlay"><section className="event-panel" aria-labelledby="online-event-title">
-          <div className="panel-kicker">{activeLandmark ? `${activeLandmark.name} · 地标事件` : '遭遇事件'}</div><h2 id="online-event-title">从三张牌中选择</h2>
+          <div className="panel-kicker">{activeLocationName ? `${activeLocationName} · 地点事件` : '遭遇事件'}</div><h2 id="online-event-title">从三张牌中选择</h2>
           <div className="event-card-grid">{offeredEvents.map((event, index) => { const eventCommand = eventChoiceCommands.find((command) => command.eventId === event.id); return <button className={`event-choice tone-${index}`} type="button" disabled={!eventCommand} onClick={() => eventCommand && onSubmit(eventCommand)} key={event.id}><span>{event.kind}</span><div className="event-sketch">{['!', '?', '↗'][index]}</div><strong>{event.title}</strong><p>{event.flavor}</p><small>{event.threshold ? `双骰 ≥ ${event.threshold}` : '直接结算'}</small></button> })}</div>
         </section></div>
       )}
@@ -462,7 +478,7 @@ export function OnlineMatchStage({
         <div className="item-modal-backdrop" onClick={() => setItemDetailsOpen(false)}><section className={targetPlayers.length ? 'item-modal has-targets' : 'item-modal'} role="dialog" aria-modal="true" aria-labelledby="online-item-use-title" onClick={(event) => event.stopPropagation()}>
           <button className="drawer-close" type="button" title="关闭道具详情" aria-label="关闭道具详情" onClick={() => setItemDetailsOpen(false)}><X /></button>
           <div className="item-modal-icon"><PackageOpen /></div><span>{ownItem.mode}道具</span><h2 id="online-item-use-title">{itemUseCommands.length ? `使用${ownItem.title}` : ownItem.title}</h2><p>{ITEM_COPY[ownItem.id]?.description}</p>
-          {targetPlayers.length > 0 && <div className="item-target-picker" role="radiogroup" aria-label="选择道具目标" style={{ '--target-count': Math.min(4, targetPlayers.length) } as CSSProperties}>{targetPlayers.map((player) => <button className={selectedItemTargetId === player.playerId ? 'is-selected' : ''} type="button" role="radio" aria-checked={selectedItemTargetId === player.playerId} onClick={() => setSelectedItemTargetId(player.playerId)} key={player.playerId} style={{ '--seat-color': COLOR_HEX[player.colorId] } as CSSProperties}><strong>{player.displayName}</strong><img src={playerSkinOption(player.skinId).imageSrc} alt={`${player.displayName}的棋子`} /><span>第 {player.spaceId} 格</span>{selectedItemTargetId === player.playerId && <Check />}</button>)}</div>}
+          {targetPlayers.length > 0 && <div className="item-target-picker" role="radiogroup" aria-label="选择道具目标" style={{ '--target-count': Math.min(4, targetPlayers.length) } as CSSProperties}>{targetPlayers.map((player) => <button className={selectedItemTargetId === player.playerId ? 'is-selected' : ''} type="button" role="radio" aria-checked={selectedItemTargetId === player.playerId} onClick={() => setSelectedItemTargetId(player.playerId)} key={player.playerId} style={{ '--seat-color': COLOR_HEX[player.colorId] } as CSSProperties}><strong>{player.displayName}</strong><img src={roomSkinOption(player.skinId, definition, content).imageSrc} alt={`${player.displayName}的棋子`} /><span>第 {player.spaceId} 格</span>{selectedItemTargetId === player.playerId && <Check />}</button>)}</div>}
           <div className="item-modal-actions"><button className="secondary-command" type="button" onClick={() => setItemDetailsOpen(false)}>取消</button>{itemUseCommands.length > 0 && <button className="primary-command" type="button" disabled={!selectedItemCommand || locked} onClick={() => { if (!selectedItemCommand) return; setItemDetailsOpen(false); onSubmit(selectedItemCommand) }}><Check /> 确认使用</button>}</div>
         </section></div>
       )}
