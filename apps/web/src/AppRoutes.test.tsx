@@ -23,6 +23,8 @@ describe('客户端路由', () => {
     expect(screen.getByRole('heading', { name: '配置本局棋手' })).toBeTruthy()
     expect(screen.getByText('2–4 人私人房间')).toBeTruthy()
     expect(screen.getByRole('radio', { name: /1v1/ }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.queryByRole('complementary', { name: '个人信息' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '个人信息' }))
     expect(screen.getByRole('img', { name: '妮露棋子预览' }).getAttribute('src')).toBe('/assets/tokens/characters/nilou.png')
 
     fireEvent.click(screen.getByRole('radio', { name: /1v3/ }))
@@ -39,6 +41,8 @@ describe('客户端路由', () => {
   it('个人信息侧栏可收起并阻止超长昵称开始对局', () => {
     render(<MemoryRouter initialEntries={['/']}><AppRoutes /></MemoryRouter>)
 
+    expect(screen.queryByRole('complementary', { name: '个人信息' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '个人信息' }))
     expect(screen.getByRole('complementary', { name: '个人信息' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '关闭个人信息' }))
     expect(screen.queryByRole('complementary', { name: '个人信息' })).toBeNull()

@@ -129,6 +129,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid #fff; outline-offset:
 .map-card-copy span { margin-top: 4px; color: #aeb4aa; font-size: var(--font-static-min); }
 .map-preview-card > svg { position: absolute; right: 15px; bottom: 22px; width: 19px; color: var(--teal); }
 @keyframes profile-sidebar-enter { from { transform: translateX(28px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@media (min-width: 1180px) and (max-width: 1439px) {
+  .preparation-content { width: auto; margin-right: 292px; margin-left: 292px; }
+}
 .route-message-shell { display: grid; place-items: center; padding: 48px; }
 .route-message { width: min(480px, 100%); text-align: center; }
 .route-message > svg { width: 44px; height: 44px; color: var(--gold); }

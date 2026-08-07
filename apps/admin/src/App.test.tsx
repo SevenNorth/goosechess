@@ -137,6 +137,11 @@ describe('admin application access and event workflow', () => {
 
     fireEvent.click(redo)
     expect(screen.getByDisplayValue('新贴图')).toBeTruthy()
+    expect(screen.queryByRole('combobox', { name: '事件池' })).toBeNull()
+    fireEvent.change(screen.getByRole('combobox', { name: '用途' }), { target: { value: 'location' } })
+    expect(screen.getByRole('combobox', { name: '事件池' })).toBeTruthy()
+    fireEvent.change(screen.getByRole('combobox', { name: '用途' }), { target: { value: 'finish' } })
+    expect(screen.queryByRole('combobox', { name: '事件池' })).toBeNull()
   })
 
   it('binds a winning space through the selected-space type', async () => {
@@ -158,6 +163,7 @@ describe('admin application access and event workflow', () => {
     expect(screen.queryByRole('checkbox', { name: 'END 终点格' })).toBeNull()
     const type = screen.getByRole('combobox', { name: '类型' }) as HTMLSelectElement
     expect(type.value).toBe('normal')
+    expect(screen.queryByRole('combobox', { name: '事件池' })).toBeNull()
     expect(screen.queryByText('固定路径模拟')).toBeNull()
     const deleteSpace = screen.getByRole('button', { name: '删除格子' })
     fireEvent.click(deleteSpace)
@@ -165,6 +171,7 @@ describe('admin application access and event workflow', () => {
 
     fireEvent.change(type, { target: { value: 'finish' } })
     expect(type.value).toBe('finish')
+    expect(screen.queryByRole('combobox', { name: '事件池' })).toBeNull()
     expect((screen.getByRole('button', { name: '撤销' }) as HTMLButtonElement).disabled).toBe(false)
 
     fireEvent.change(type, { target: { value: 'normal' } })

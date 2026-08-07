@@ -27,7 +27,7 @@ export function PreparationPage() {
   const [initialProfile] = useState(loadPlayerProfile)
   const [nickname, setNickname] = useState(initialProfile.nickname)
   const [selectedSkinId, setSelectedSkinId] = useState(initialProfile.skinId)
-  const [profileOpen, setProfileOpen] = useState(true)
+  const [profileOpen, setProfileOpen] = useState(false)
   const [onlineCode, setOnlineCode] = useState('')
   const [onlineBusy, setOnlineBusy] = useState(false)
   const [onlineError, setOnlineError] = useState('')

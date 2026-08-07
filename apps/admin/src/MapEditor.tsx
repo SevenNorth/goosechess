@@ -365,7 +365,11 @@ function MapPropertyPanel({ map, selectedSpaceId, selectedMarkerId, validation, 
                   onChange={(event) => {
                     const kind = event.target.value as Space['kind']
                     patch({
-                      spaces: map.spaces.map((space) => (space.index === selectedSpace.index ? { ...space, kind } : space)),
+                      spaces: map.spaces.map((space) =>
+                        space.index === selectedSpace.index
+                          ? { ...space, kind, eventPoolId: kind === 'event' ? space.eventPoolId : undefined }
+                          : space,
+                      ),
                       winningSpaceIds:
                         kind === 'finish'
                           ? [...new Set([...map.winningSpaceIds, selectedSpace.index])].sort((a, b) => a - b)
@@ -411,32 +415,34 @@ function MapPropertyPanel({ map, selectedSpaceId, selectedMarkerId, validation, 
                   ))}
                 </select>
               </label>
-              <label className="property-wide">
-                <span>事件池</span>
-                <select
-                  value={selectedSpace.eventPoolId ?? ''}
-                  disabled={!editable || selectedSpace.kind !== 'event'}
-                  onChange={(event) =>
-                    patch({
-                      spaces: map.spaces.map((space) =>
-                        space.index === selectedSpace.index
-                          ? {
-                              ...space,
-                              eventPoolId: event.target.value || undefined,
-                            }
-                          : space,
-                      ),
-                    })
-                  }
-                >
-                  <option value="">继承地点 / 通用</option>
-                  {eventPools.map((pool) => (
-                    <option key={pool.id} value={pool.id}>
-                      {pool.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {selectedSpace.kind === 'event' ? (
+                <label className="property-wide">
+                  <span>事件池</span>
+                  <select
+                    value={selectedSpace.eventPoolId ?? ''}
+                    disabled={!editable}
+                    onChange={(event) =>
+                      patch({
+                        spaces: map.spaces.map((space) =>
+                          space.index === selectedSpace.index
+                            ? {
+                                ...space,
+                                eventPoolId: event.target.value || undefined,
+                              }
+                            : space,
+                        ),
+                      })
+                    }
+                  >
+                    <option value="">继承地点 / 通用</option>
+                    {eventPools.map((pool) => (
+                      <option key={pool.id} value={pool.id}>
+                        {pool.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
             </div>
             <button type="button" className="property-delete" disabled={!editable || selectedSpace.index === 0 || map.spaces.length <= 2} onClick={() => removeSpace(selectedSpace)}>
               <Trash2 />删除格子
@@ -499,25 +505,27 @@ function MapPropertyPanel({ map, selectedSpaceId, selectedMarkerId, validation, 
                   onChange={(event) => onChange(transformMarker(map, selectedMarker.id, { opacity: Number(event.target.value) / 100 }))}
                 />
               </label>
-              <label className="property-wide">
-                <span>事件池</span>
-                <select
-                  value={selectedMarker.eventPoolId ?? ''}
-                  disabled={!editable || selectedMarker.kind !== 'location'}
-                  onChange={(event) =>
-                    patchMarker(selectedMarker, {
-                      eventPoolId: event.target.value || undefined,
-                    })
-                  }
-                >
-                  <option value="">请选择事件池</option>
-                  {eventPools.map((pool) => (
-                    <option key={pool.id} value={pool.id}>
-                      {pool.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {selectedMarker.kind === 'location' ? (
+                <label className="property-wide">
+                  <span>事件池</span>
+                  <select
+                    value={selectedMarker.eventPoolId ?? ''}
+                    disabled={!editable}
+                    onChange={(event) =>
+                      patchMarker(selectedMarker, {
+                        eventPoolId: event.target.value || undefined,
+                      })
+                    }
+                  >
+                    <option value="">请选择事件池</option>
+                    {eventPools.map((pool) => (
+                      <option key={pool.id} value={pool.id}>
+                        {pool.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <label>
                 <span>X</span>
                 <input

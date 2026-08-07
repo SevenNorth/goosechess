@@ -380,6 +380,25 @@ test('shows a clear warning below the supported landscape size', async ({ page }
   await expect(page.getByRole('status', { name: '桌面窗口尺寸提示' })).toBeHidden()
 })
 
+test('keeps preparation sidebars clear of the primary content at the minimum viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 1180, height: 680 })
+  await page.goto('/')
+
+  await expect(page.getByRole('complementary', { name: '个人信息' })).toBeHidden()
+  const mapBounds = await page.locator('.map-library-sidebar').boundingBox()
+  const contentBounds = await page.locator('.preparation-content').boundingBox()
+  expect(mapBounds).not.toBeNull()
+  expect(contentBounds).not.toBeNull()
+  expect(mapBounds!.x + mapBounds!.width).toBeLessThanOrEqual(contentBounds!.x)
+
+  await page.getByRole('button', { name: '个人信息' }).click()
+  const profile = page.getByRole('complementary', { name: '个人信息' })
+  await profile.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
+  const profileBounds = await profile.boundingBox()
+  expect(profileBounds).not.toBeNull()
+  expect(contentBounds!.x + contentBounds!.width).toBeLessThanOrEqual(profileBounds!.x)
+})
+
 test('caps renderer resolution at 2x device pixel ratio', async ({ browser }) => {
   const context = await browser.newContext({ baseURL: 'http://127.0.0.1:4173', viewport: { width: 1280, height: 720 }, deviceScaleFactor: 3 })
   const page = await context.newPage()
