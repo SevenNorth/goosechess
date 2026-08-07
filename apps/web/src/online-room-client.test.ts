@@ -5,6 +5,7 @@ import {
   type RoomJoinResponse,
 } from '@goose-chess/game-protocol'
 import {
+  gameServerUrl,
   joinOnlineRoom,
   loadOnlineIdentity,
   roomSocketUrl,
@@ -45,8 +46,20 @@ function joinedRoom(serverUrl: string): RoomJoinResponse {
 describe('online room owner routing', () => {
   afterEach(() => {
     window.sessionStorage.clear()
+    vi.unstubAllEnvs()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+  })
+
+  it('uses the player origin as the production game service URL', () => {
+    vi.stubEnv('PROD', true)
+    expect(gameServerUrl()).toBe('http://localhost:3000')
+  })
+
+  it('prefers an explicitly configured game service URL', () => {
+    vi.stubEnv('PROD', true)
+    vi.stubEnv('VITE_GAME_SERVER_URL', 'https://rooms.example.com/')
+    expect(gameServerUrl()).toBe('https://rooms.example.com')
   })
 
   it('keeps legacy room identities usable with the configured server fallback', () => {

@@ -1,0 +1,100 @@
+name: goose-chess
+
+services:
+  content-server:
+    build:
+      context: .
+      target: content-server
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8788
+      CONTENT_ACCOUNT_DB_PATH: /data/goose-chess-content.sqlite
+      CONTENT_ASSET_DIR: /data/content-assets
+      CONTENT_RUNTIME_TOKEN: ${CONTENT_RUNTIME_TOKEN:?Set CONTENT_RUNTIME_TOKEN in deploy/.env}
+      CONTENT_BOOTSTRAP_USERNAME: ${CONTENT_BOOTSTRAP_USERNAME:?Set CONTENT_BOOTSTRAP_USERNAME in deploy/.env}
+      CONTENT_BOOTSTRAP_PASSWORD: ${CONTENT_BOOTSTRAP_PASSWORD:?Set CONTENT_BOOTSTRAP_PASSWORD in deploy/.env}
+      CONTENT_BOOTSTRAP_DISPLAY_NAME: ${CONTENT_BOOTSTRAP_DISPLAY_NAME:-Administrator}
+      CONTENT_BOOTSTRAP_ROLE: admin
+      CONTENT_COOKIE_SECURE: ${CONTENT_COOKIE_SECURE:-true}
+      ADMIN_ORIGIN: ${ADMIN_PUBLIC_URL:?Set ADMIN_PUBLIC_URL in deploy/.env}
+    expose:
+      - "8788"
+    volumes:
+      - content-data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8788/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    init: true
+
+  game-server:
+    build:
+      context: .
+      target: game-server
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8787
+      ROOM_DB_PATH: /data/goose-chess.sqlite
+      PUBLIC_SERVER_URL: ${PLAYER_PUBLIC_URL:?Set PLAYER_PUBLIC_URL in deploy/.env}
+      CONTENT_SERVICE_URL: http://content-server:8788
+      CONTENT_PUBLIC_URL: ${PLAYER_PUBLIC_URL:?Set PLAYER_PUBLIC_URL in deploy/.env}
+      CONTENT_RUNTIME_TOKEN: ${CONTENT_RUNTIME_TOKEN:?Set CONTENT_RUNTIME_TOKEN in deploy/.env}
+      TRUST_PROXY: "true"
+    expose:
+      - "8787"
+    volumes:
+      - game-data:/data
+    depends_on:
+      content-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    init: true
+
+  web:
+    build:
+      context: .
+      target: web
+    ports:
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-8080}:80"
+    depends_on:
+      game-server:
+        condition: service_healthy
+      content-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: .
+      target: admin
+    ports:
+      - "${ADMIN_BIND_ADDRESS:-127.0.0.1}:${ADMIN_PORT:-8081}:80"
+    depends_on:
+      content-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  game-data:
+  content-data:

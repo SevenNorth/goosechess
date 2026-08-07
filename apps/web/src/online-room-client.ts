@@ -10,7 +10,9 @@ export interface OnlineIdentity {
 }
 
 export function gameServerUrl() {
-  return normalizeServerUrl(import.meta.env.VITE_GAME_SERVER_URL ?? DEFAULT_SERVER_URL)
+  const configured = import.meta.env.VITE_GAME_SERVER_URL?.trim()
+  const fallback = import.meta.env.PROD ? window.location.origin : DEFAULT_SERVER_URL
+  return normalizeServerUrl(configured || fallback)
 }
 
 function normalizeServerUrl(value: string) {

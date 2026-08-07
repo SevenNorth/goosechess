@@ -47,6 +47,8 @@ Vite 负责开发服务器和浏览器静态资源构建，不作为生产后端
 
 静态前端与游戏服务可以分别部署、缓存、扩缩容和回滚。React Router 的生产部署必须配置 SPA fallback，使 `/play` 和 `/room/:roomCode` 刷新时返回 `index.html`。
 
+单机生产部署使用根目录多阶段 `Dockerfile` 和 `compose.yml` 构建 `web`、`admin`、`game-server`、`content-server` 四个职责独立的镜像。只有两个 Nginx 静态入口绑定宿主机回环端口，宿主机 Nginx 负责公开 HTTPS 域名；房间和内容服务只存在于 Docker 内部网络。玩家入口代理 `/rooms` HTTP/WebSocket 与 `/content-assets`，管理入口代理 `/auth`、`/admin` 与 `/content-assets`。单实例模式分别使用持久卷中的 SQLite 房间库和内容库，明确禁止扩展 `game-server` 副本；具体环境变量、宿主机代理和一致性备份步骤见 [Docker 单机部署](../deploy/README.md)。
+
 ### 2.2 联机房间协议
 
 协议 v12 延续 v11 的 `AuthorityCheckpoint`、owner 路由和按查看者 `legalCommands`，并在 `RoomState` 中加入 `contentVersion`、`mapVersion` 和 `rulesetVersion`。HTTP 创建或加入房间；`GET /rooms/:roomCode/content` 使用恢复凭证作为 Bearer token，只返回该参与者所在房间当前地图的锁定定义、同一内容包的地图摘要清单和公开资源基址。WebSocket 接受 `CommandEnvelope`、同步请求和带 `requestId` 的大厅命令。非 owner 实例对加入、内容读取或 WebSocket 连接均以 `409 room_owned_elsewhere` 或迁移错误返回当前 owner，浏览器按房间保存并切换服务地址。大厅命令覆盖准备、容量、地图、添加 AI、移除成员和开始游戏；房主从锁定包的地图摘要中选择地图，地图改变后客户端按新的 `mapVersion` 加载精确定义。服务端对每个房间串行调用共享 `LocalAuthority`，旧 `expectedRevision` 返回 `stale_revision`；AI 决策和完整同步也进入同一房间命令队列。浏览器只从每条 `room-state` 或 `authority-update` 的合法命令生成控件，不在在线 UI 中复制行动权、目标或阶段判断。

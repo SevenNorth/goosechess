@@ -11,3 +11,5 @@ apps/game-server/data/*.sqlite*
 apps/content-server/data/*.sqlite*
 apps/content-server/data/content-assets/
 apps/content-server/.env
+deploy/.env
+deploy/data/
