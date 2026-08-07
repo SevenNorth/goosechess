@@ -54,7 +54,7 @@ export interface RoomRuntimeContent {
 interface RoomMember extends RoomProfile {
   readonly playerId: string
   readonly recoveryTokenHash: string | null
-  readonly controller: 'remote' | 'ai'
+  controller: 'remote' | 'ai'
   seatIndex: number
   ready: boolean
   connections: number
@@ -321,6 +321,10 @@ export class RoomStore {
         ? room.members.find((member) => member.recoveryTokenHash === hashRecoveryToken(recoveryToken))
         : undefined
       if (recovered) {
+        if (recovered.controller === 'ai' && recovered.recoveryTokenHash && room.authority) {
+          recovered.controller = 'remote'
+          room.authority.setPlayerController(recovered.playerId, 'remote')
+        }
         await this.persistRoom(room)
         return this.joinResponse(room, recovered, recoveryToken!)
       }
@@ -946,10 +950,16 @@ export class RoomStore {
       member.reconnectTimer = null
       void this.enqueueRoom(room, async () => {
         if (member.connections > 0) return
+        const takeover = Boolean(room.authority && member.controller === 'remote')
+        if (takeover) {
+          member.controller = 'ai'
+          room.authority!.setPlayerController(member.playerId, 'ai')
+        }
         if (room.hostPlayerId === member.playerId) this.transferExpiredHost(room)
         else member.reconnectDeadlineAt = null
         await this.persistRoom(room)
         this.broadcastRoomState(room)
+        if (takeover) await this.runAiTurns(room)
       }).catch(() => undefined)
     }, this.disconnectGraceMs)
   }
@@ -1073,8 +1083,12 @@ export class RoomStore {
   }
 
   private requireRemoteMember(room: RoomSession, recoveryToken: string) {
-    const member = room.members.find((candidate) => candidate.recoveryTokenHash === hashRecoveryToken(recoveryToken) && candidate.controller === 'remote')
+    const member = room.members.find((candidate) => candidate.recoveryTokenHash === hashRecoveryToken(recoveryToken))
     if (!member) throw new RoomStoreError('invalid_recovery_token', '恢复凭证无效。')
+    if (member.controller === 'ai' && member.recoveryTokenHash && room.authority) {
+      member.controller = 'remote'
+      room.authority.setPlayerController(member.playerId, 'remote')
+    }
     return member
   }
 

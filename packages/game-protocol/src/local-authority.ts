@@ -247,6 +247,19 @@ export class LocalAuthority implements GameAuthorityPort {
     return GameSnapshotSchema.parse(this.snapshot)
   }
 
+  setPlayerController(playerId: string, controller: 'remote' | 'ai') {
+    const player = this.state.players.find((candidate) => candidate.playerId === playerId)
+    if (!player || player.controller === controller) return this.getSnapshot()
+    this.state = {
+      ...this.state,
+      players: this.state.players.map((candidate) => (
+        candidate.playerId === playerId ? { ...candidate, controller } : candidate
+      )),
+    }
+    this.snapshot = toSnapshot(this.gameId, this.snapshot.revision + 1, this.definition, this.state)
+    return this.getSnapshot()
+  }
+
   getDecisionView(playerId: string) {
     return createGameDecisionView(this.state, this.definition, {
       gameId: this.gameId,

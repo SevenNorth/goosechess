@@ -92,8 +92,8 @@ describe('game server private lobby and room flow', () => {
     return { baseUrl, creator, guest, socketUrl }
   }
 
-  async function startTwoPlayerRoom() {
-    const setup = await setupLobby()
+  async function startTwoPlayerRoom(disconnectGraceMs = 30_000) {
+    const setup = await setupLobby(disconnectGraceMs)
     const host = await openInbox(setup.socketUrl(setup.creator))
     const guest = await openInbox(setup.socketUrl(setup.guest))
     cleanups.push(async () => {
@@ -109,6 +109,23 @@ describe('game server private lobby and room flow', () => {
     if (started.type !== 'room-state' || !started.snapshot) throw new Error('Missing started snapshot.')
     return { ...setup, host, guestInbox: guest, initialSnapshot: started.snapshot }
   }
+
+  it('hands a disconnected player to the AI after reconnect grace', async () => {
+    const { creator, guest, host, guestInbox, socketUrl } = await startTwoPlayerRoom(50)
+    guestInbox.socket.terminate()
+    const takeover = await host.next((message) => (
+      message.type === 'room-state'
+      && message.room.players.some((player) => player.playerId === guest.playerId && player.controller === 'ai')
+    ))
+    expect(takeover.type).toBe('room-state')
+
+    const recovered = await openInbox(socketUrl(guest))
+    cleanups.push(async () => recovered.socket.terminate())
+    const restored = await recovered.next((message) => message.type === 'room-state')
+    expect(restored.type === 'room-state' && restored.room.players.find((player) => player.playerId === guest.playerId)?.controller).toBe('remote')
+    expect(restored.type === 'room-state' && restored.snapshot?.state.players.find((player) => player.playerId === guest.playerId)?.controller).toBe('remote')
+    expect(restored.type === 'room-state' && restored.room.hostPlayerId).toBe(creator.playerId)
+  })
 
   it('creates a four-seat lobby and rejects a fifth player', async () => {
     const { baseUrl, creator, guest } = await setupLobby()
