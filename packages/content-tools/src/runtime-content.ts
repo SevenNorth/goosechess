@@ -46,6 +46,18 @@ function eventPoolIds(content: unknown) {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []
 }
 
+function runtimeSkin(content: unknown): TokenSkinDefinition {
+  const skin = content as TokenSkinDefinition
+  return {
+    id: skin.id,
+    name: skin.name,
+    atlas: skin.atlas,
+    animations: structuredClone(skin.animations),
+    anchor: structuredClone(skin.anchor),
+    shadowScale: skin.shadowScale,
+  }
+}
+
 function applyEventMemberships(map: MapDefinition, releases: readonly RuntimeContentRelease[]) {
   if (!map.eventPools) return map
   const releasedMemberships = new Map(releases.map((release) => [
@@ -83,7 +95,7 @@ export function composeRuntimeContentBundle(
   )
   const skins = replaceById(
     baseDefinition.skins,
-    skinReleases.map((release) => release.content as TokenSkinDefinition),
+    skinReleases.map((release) => runtimeSkin(release.content)),
   )
   const releasedMaps = mapReleases.map((release) => release.content as MapDefinition)
   const maps = replaceById([baseDefinition.map], releasedMaps)

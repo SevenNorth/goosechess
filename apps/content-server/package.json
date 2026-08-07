@@ -12,7 +12,8 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
-    "@goose-chess/content-tools": "0.1.0"
+    "@goose-chess/content-tools": "0.1.0",
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

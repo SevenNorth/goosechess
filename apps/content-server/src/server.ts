@@ -21,6 +21,7 @@ import {
   type ContentStorePort,
   SqliteContentStore,
 } from './content-store.js'
+import { processSkinImage, SkinProcessingError } from './skin-processor.js'
 
 const JSON_LIMIT = 1024 * 1024
 const ASSET_LIMIT = 5 * 1024 * 1024
@@ -165,6 +166,14 @@ function createDraftInput(body: unknown) {
     kind: record.kind as ManagedContentKind,
     title: record.title,
     content: record.content,
+  }
+}
+
+function requireProcessedSkin(content: unknown) {
+  const record = requestRecord(content)
+  const production = record.production
+  if (!production || typeof production !== 'object' || Array.isArray(production)) {
+    throw new HttpError(400, 'skin_processing_required', '棋子皮肤必须通过图片处理接口生成。')
   }
 }
 
@@ -374,17 +383,40 @@ export function createContentServer(options: ContentServerOptions = {}) {
         return
       }
 
+      if (method === 'POST' && pathname === '/admin/skins/process') {
+        const auth = await requireRoles(request, response, ['admin'])
+        if (!auth) return
+        const displayName = url.searchParams.get('name') ?? ''
+        const contentType = request.headers['content-type']?.split(';', 1)[0]?.trim().toLowerCase() ?? ''
+        const extension = IMAGE_EXTENSIONS.get(contentType)
+        if (!extension) throw new HttpError(415, 'unsupported_skin_type', '仅支持 PNG、JPEG 或 WebP 棋子图片。')
+        const body = await readBody(request, ASSET_LIMIT)
+        if (body.length === 0) throw new HttpError(400, 'empty_asset', '图片内容为空。')
+        if (!matchesImageType(body, contentType)) throw new HttpError(400, 'invalid_asset', '图片内容与文件格式不匹配。')
+        const skin = await processSkinImage({ body, contentType, displayName, assetDirectory })
+        sendJson(response, 201, { skin })
+        return
+      }
+
       if (pathname === '/admin/drafts' && method === 'GET') {
         const auth = await requireRoles(request, response, ['content-editor', 'admin'])
         if (!auth) return
-        sendJson(response, 200, { drafts: await contentStore.listDrafts() })
+        const drafts = await contentStore.listDrafts()
+        sendJson(response, 200, {
+          drafts: auth.account.role === 'admin' ? drafts : drafts.filter((draft) => draft.kind !== 'skin'),
+        })
         return
       }
       if (pathname === '/admin/drafts' && method === 'POST') {
         const auth = await requireRoles(request, response, ['content-editor', 'admin'])
         if (!auth) return
+        const input = createDraftInput(await readJson(request))
+        if (input.kind === 'skin' && auth.account.role !== 'admin') {
+          throw new HttpError(403, 'forbidden', '只有管理员可以创建棋子皮肤。')
+        }
+        if (input.kind === 'skin') requireProcessedSkin(input.content)
         const draft = await contentStore.createDraft(
-          createDraftInput(await readJson(request)),
+          input,
           auth.account.id,
         )
         sendJson(response, 201, { draft })
@@ -398,6 +430,10 @@ export function createContentServer(options: ContentServerOptions = {}) {
         if (action === 'submit') {
           const auth = await requireRoles(request, response, ['content-editor', 'admin'])
           if (!auth) return
+          const draft = await contentStore.getDraft(id)
+          if (draft.kind === 'skin' && auth.account.role !== 'admin') {
+            throw new HttpError(403, 'forbidden', '只有管理员可以提交棋子皮肤。')
+          }
           sendJson(response, 200, { draft: await contentStore.submitDraft(id, auth.account.id) })
           return
         }
@@ -425,18 +461,27 @@ export function createContentServer(options: ContentServerOptions = {}) {
       if (draftMatch && method === 'GET') {
         const auth = await requireRoles(request, response, ['content-editor', 'admin'])
         if (!auth) return
-        sendJson(response, 200, {
-          draft: await contentStore.getDraft(decodeURIComponent(draftMatch[1])),
-        })
+        const draft = await contentStore.getDraft(decodeURIComponent(draftMatch[1]))
+        if (draft.kind === 'skin' && auth.account.role !== 'admin') {
+          throw new HttpError(403, 'forbidden', '只有管理员可以查看棋子皮肤草稿。')
+        }
+        sendJson(response, 200, { draft })
         return
       }
       if (draftMatch && method === 'PUT') {
         const auth = await requireRoles(request, response, ['content-editor', 'admin'])
         if (!auth) return
+        const id = decodeURIComponent(draftMatch[1])
+        const existing = await contentStore.getDraft(id)
+        if (existing.kind === 'skin' && auth.account.role !== 'admin') {
+          throw new HttpError(403, 'forbidden', '只有管理员可以修改棋子皮肤。')
+        }
+        const input = updateDraftInput(await readJson(request))
+        if (existing.kind === 'skin') requireProcessedSkin(input.content)
         sendJson(response, 200, {
           draft: await contentStore.updateDraft(
-            decodeURIComponent(draftMatch[1]),
-            updateDraftInput(await readJson(request)),
+            id,
+            input,
             auth.account.id,
           ),
         })
@@ -445,7 +490,12 @@ export function createContentServer(options: ContentServerOptions = {}) {
       if (draftMatch && method === 'DELETE') {
         const auth = await requireRoles(request, response, ['content-editor', 'admin'])
         if (!auth) return
-        await contentStore.deleteDraft(decodeURIComponent(draftMatch[1]), auth.account.id)
+        const id = decodeURIComponent(draftMatch[1])
+        const existing = await contentStore.getDraft(id)
+        if (existing.kind === 'skin' && auth.account.role !== 'admin') {
+          throw new HttpError(403, 'forbidden', '只有管理员可以删除棋子皮肤。')
+        }
+        await contentStore.deleteDraft(id, auth.account.id)
         sendEmpty(response, 204)
         return
       }
@@ -480,7 +530,7 @@ export function createContentServer(options: ContentServerOptions = {}) {
 
       sendJson(response, 404, { code: 'not_found', message: '接口不存在。' })
     } catch (error) {
-      const known = error instanceof HttpError || error instanceof ContentStoreError
+      const known = error instanceof HttpError || error instanceof ContentStoreError || error instanceof SkinProcessingError
       sendJson(response, known ? error.status : 500, {
         code: known ? error.code : 'server_error',
         message: known ? error.message : '服务器处理请求时发生错误。',

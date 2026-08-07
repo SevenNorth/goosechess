@@ -8,6 +8,7 @@ import { createContentServer } from '../src/server.js'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import sharp from 'sharp'
 
 function account(id: string, username: string, role: Role) {
   return createAccountRecord({
@@ -132,6 +133,112 @@ describe('content lifecycle API', () => {
       body: Buffer.from('not an image'),
     })
     expect(invalid.status).toBe(400)
+  })
+
+  it('processes transparent skin artwork for admins and blocks editor bypasses', async () => {
+    const editorCookie = await login('editor')
+    const adminCookie = await login('admin')
+    const transparentSkin = await sharp({
+      create: { width: 512, height: 512, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    }).composite([{
+      input: Buffer.from('<svg width="300" height="380" xmlns="http://www.w3.org/2000/svg"><rect x="40" y="20" width="220" height="340" rx="80" fill="#d95e4a"/></svg>'),
+      left: 106,
+      top: 66,
+    }]).png().toBuffer()
+
+    const editorProcess = await request('/admin/skins/process?name=Harbor%20Goose', {
+      method: 'POST',
+      headers: { Cookie: editorCookie, 'Content-Type': 'image/png' },
+      body: transparentSkin,
+    })
+    expect(editorProcess.status).toBe(403)
+
+    const processed = await request('/admin/skins/process?name=Harbor%20Goose', {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'Content-Type': 'image/png' },
+      body: transparentSkin,
+    })
+    expect(processed.status).toBe(201)
+    const result = await processed.json() as {
+      skin: {
+        id: string
+        name: string
+        atlas: string
+        anchor: { x: number; y: number }
+        production: { source: string; thumbnail: string; shadow: string; transparentPixelRatio: number }
+      }
+    }
+    expect(result.skin).toMatchObject({
+      id: expect.stringMatching(/^skin-[a-f0-9]{12}$/),
+      name: 'Harbor Goose',
+      anchor: { x: 0.5, y: 1 },
+      production: { transparentPixelRatio: expect.any(Number) },
+    })
+    for (const url of [result.skin.atlas, result.skin.production.thumbnail, result.skin.production.shadow]) {
+      expect(url).toMatch(/^\/content-assets\/[a-f0-9]{64}\.png$/)
+      const asset = await request(url)
+      expect(asset.status).toBe(200)
+      expect(asset.headers.get('content-type')).toBe('image/png')
+    }
+
+    const editorDraft = await request('/admin/drafts', {
+      method: 'POST',
+      headers: { Cookie: editorCookie },
+      body: JSON.stringify({ kind: 'skin', title: result.skin.name, content: result.skin }),
+    })
+    expect(editorDraft.status).toBe(403)
+    const adminDraft = await request('/admin/drafts', {
+      method: 'POST',
+      headers: { Cookie: adminCookie },
+      body: JSON.stringify({ kind: 'skin', title: result.skin.name, content: result.skin }),
+    })
+    expect(adminDraft.status).toBe(201)
+    const adminDraftBody = await adminDraft.json() as { draft: { id: string; kind: string; validation: { valid: boolean } } }
+    expect(adminDraftBody).toMatchObject({ draft: { kind: 'skin', validation: { valid: true } } })
+    const editorDrafts = await request('/admin/drafts', { headers: { Cookie: editorCookie } })
+    expect(await editorDrafts.json()).toMatchObject({ drafts: [] })
+    expect((await request(`/admin/drafts/${adminDraftBody.draft.id}/submit`, {
+      method: 'POST', headers: { Cookie: adminCookie },
+    })).status).toBe(200)
+    expect((await request(`/admin/drafts/${adminDraftBody.draft.id}/review`, {
+      method: 'POST', headers: { Cookie: adminCookie }, body: JSON.stringify({ decision: 'approve' }),
+    })).status).toBe(200)
+    expect((await request(`/admin/drafts/${adminDraftBody.draft.id}/publish`, {
+      method: 'POST', headers: { Cookie: adminCookie },
+    })).status).toBe(201)
+    const runtime = await request('/runtime/content/current')
+    const runtimeBody = await runtime.json() as { bundle: { definitions: Array<{ definition: { skins: Array<{ id: string; atlas: string }> } }> } }
+    expect(runtimeBody.bundle.definitions[0].definition.skins).toContainEqual(expect.objectContaining({
+      id: result.skin.id,
+      atlas: result.skin.atlas,
+    }))
+
+    const solidBackgroundJpeg = await sharp(Buffer.from(`
+      <svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+        <rect width="512" height="512" fill="#eeeeea"/>
+        <rect x="126" y="70" width="260" height="390" rx="100" fill="#2baf9c"/>
+      </svg>
+    `)).jpeg({ quality: 95 }).toBuffer()
+    const removedBackground = await request('/admin/skins/process?name=Solid%20Background', {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'Content-Type': 'image/jpeg' },
+      body: solidBackgroundJpeg,
+    })
+    expect(removedBackground.status).toBe(201)
+
+    const opaqueSkin = await sharp(Buffer.from(`
+      <svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+        <rect width="256" height="512" fill="#d95e4a"/><rect x="256" width="256" height="512" fill="#3977c5"/>
+        <circle cx="256" cy="256" r="120" fill="#171916"/>
+      </svg>
+    `)).png().toBuffer()
+    const opaque = await request('/admin/skins/process?name=Opaque', {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'Content-Type': 'image/png' },
+      body: opaqueSkin,
+    })
+    expect(opaque.status).toBe(400)
+    expect(await opaque.json()).toMatchObject({ code: 'skin_background_not_transparent' })
   })
 
   it('stores invalid drafts but blocks review submission until a valid revision exists', async () => {

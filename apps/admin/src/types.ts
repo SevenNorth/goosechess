@@ -48,6 +48,27 @@ export interface ManagedEventContent {
   failureText?: string
 }
 
+export interface ManagedSkinContent {
+  id: string
+  version: number
+  title: string
+  name: string
+  atlas: string
+  animations: { idle: string; active: string; hop: string; hit: string }
+  anchor: { x: number; y: number }
+  shadowScale: number
+  production: {
+    source: string
+    thumbnail: string
+    shadow: string
+    sourceWidth: number
+    sourceHeight: number
+    subjectWidth: number
+    subjectHeight: number
+    transparentPixelRatio: number
+  }
+}
+
 export interface ContentDraft {
   readonly id: string
   readonly contentKey: string

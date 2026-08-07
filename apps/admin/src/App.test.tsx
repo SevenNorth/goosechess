@@ -97,6 +97,46 @@ describe('admin application access and event workflow', () => {
     expect(screen.getByText('自动校验通过')).toBeTruthy()
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/admin/drafts', expect.objectContaining({ method: 'POST' })))
   })
+
+  it('processes an uploaded image into a skin draft with runtime previews', async () => {
+    const skin = {
+      id: 'skin-abcdef123456', version: 1, title: '港口巡游鹅', name: '港口巡游鹅',
+      atlas: '/content-assets/runtime.png',
+      animations: { idle: 'static', active: 'static', hop: 'static', hit: 'static' },
+      anchor: { x: 0.5, y: 1 }, shadowScale: 1,
+      production: {
+        source: '/content-assets/source.png', thumbnail: '/content-assets/thumb.png', shadow: '/content-assets/shadow.png',
+        sourceWidth: 512, sourceHeight: 512, subjectWidth: 260, subjectHeight: 380, transparentPixelRatio: 0.62,
+      },
+    }
+    const draft = {
+      id: 'skin-draft-1', contentKey: `skin:${skin.id}`, kind: 'skin', title: skin.title,
+      status: 'draft', currentRevision: 1, contentHash: 'skin-hash', createdBy: 'admin-1',
+      createdAt: 1, updatedAt: 1, validation: { valid: true, issues: [] }, content: skin,
+    }
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input)
+      if (path === '/auth/session') return json({ user: admin, expiresAt: Date.now() + 60_000 })
+      if (path === '/admin/me') return json({ user: admin, permissions: ['content:edit', 'content:review', 'content:publish'] })
+      if (path === '/admin/skins/process?name=%E6%B8%AF%E5%8F%A3%E5%B7%A1%E6%B8%B8%E9%B9%85' && init?.method === 'POST') return json({ skin }, 201)
+      if (path === '/admin/drafts' && init?.method === 'POST') return json({ draft }, 201)
+      if (path === '/admin/drafts/skin-draft-1') return json({ draft })
+      if (path === '/admin/drafts') return json({ drafts: [] })
+      return json({ code: 'not_found', message: path }, 404)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderApp('/skins/new')
+
+    fireEvent.change(await screen.findByLabelText('展示名'), { target: { value: '港口巡游鹅' } })
+    fireEvent.change(screen.getByLabelText(/选择 PNG/), { target: { files: [new File(['skin'], 'skin.png', { type: 'image/png' })] } })
+    fireEvent.click(screen.getByRole('button', { name: '处理并创建草稿' }))
+
+    expect(await screen.findByRole('region', { name: '皮肤使用场景预览' })).toBeTruthy()
+    expect(screen.getByRole('img', { name: '港口巡游鹅准备页预览' })).toBeTruthy()
+    expect(screen.getByRole('img', { name: '港口巡游鹅棋盘预览' })).toBeTruthy()
+    expect(screen.getByRole('img', { name: '港口巡游鹅目标卡预览' })).toBeTruthy()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/admin/drafts', expect.objectContaining({ method: 'POST' })))
+  })
   it('uploads and places a marker image on the canvas with undo and redo', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input)

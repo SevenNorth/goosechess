@@ -79,4 +79,34 @@ describe('content tools', () => {
       issues: [expect.objectContaining({ code: 'not_json' })],
     })
   })
+
+  it('rejects gameplay fields from cosmetic skin definitions', () => {
+    const result = validateManagedContent('skin', { ...SKINS[0], attack: 10, skill: 'dash' })
+    expect(result.valid).toBe(false)
+    expect(result.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'attack', code: 'unsupported_skin_field' }),
+      expect.objectContaining({ path: 'skill', code: 'unsupported_skin_field' }),
+    ]))
+  })
+
+  it('reports processing metadata issues with production paths', () => {
+    const result = validateManagedContent('skin', {
+      ...SKINS[0],
+      production: {
+        source: '',
+        thumbnail: '/content-assets/thumbnail.png',
+        shadow: '/content-assets/shadow.png',
+        sourceWidth: 512,
+        sourceHeight: 512,
+        subjectWidth: 320,
+        subjectHeight: 400,
+        transparentPixelRatio: 0.5,
+      },
+    })
+    expect(result.valid).toBe(false)
+    expect(result.issues).toContainEqual(expect.objectContaining({
+      path: 'production.source',
+      code: 'required_string',
+    }))
+  })
 })

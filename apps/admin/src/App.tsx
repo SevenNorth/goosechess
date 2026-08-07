@@ -6,6 +6,7 @@ import {
   FileClock,
   LogOut,
   Map,
+  Palette,
   ShieldAlert,
   Sparkles,
 } from 'lucide-react'
@@ -21,6 +22,7 @@ import { ApiError } from './api'
 import { useAuth } from './auth-context'
 import { AuditPage, EventWorkspace, ReleasesPage } from './EventEditor'
 const MapWorkspace = lazy(() => import('./MapEditor').then((module) => ({ default: module.MapWorkspace })))
+const SkinWorkspace = lazy(() => import('./SkinEditor').then((module) => ({ default: module.SkinWorkspace })))
 
 function LoadingScreen() {
   return (
@@ -116,6 +118,7 @@ function ProtectedLayout() {
 const navigation = [
   { to: '/events', label: '事件内容', icon: Sparkles },
   { to: '/maps', label: '\u5730\u56fe\u5185\u5bb9', icon: Map },
+  { to: '/skins', label: '棋子皮肤', icon: Palette, adminOnly: true },
   { to: '/releases', label: '发布版本', icon: BookOpenCheck },
   { to: '/audit', label: '操作审计', icon: FileClock, adminOnly: true },
 ]
@@ -170,6 +173,8 @@ export function AdminRoutes() {
         <Route path="events/:draftId" element={<EventWorkspace />} />
         <Route path="maps" element={<Suspense fallback={<LoadingScreen />}><MapWorkspace /></Suspense>} />
         <Route path="maps/:draftId" element={<Suspense fallback={<LoadingScreen />}><MapWorkspace /></Suspense>} />
+        <Route path="skins" element={<Suspense fallback={<LoadingScreen />}><SkinWorkspace /></Suspense>} />
+        <Route path="skins/:draftId" element={<Suspense fallback={<LoadingScreen />}><SkinWorkspace /></Suspense>} />
         <Route path="releases" element={<ReleasesPage />} />
         <Route path="audit" element={<AuditPage />} />
       </Route>

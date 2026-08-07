@@ -200,6 +200,10 @@ function validateMap(content: Record<string, unknown>, issues: ContentValidation
 }
 
 function validateSkin(content: Record<string, unknown>, issues: ContentValidationIssue[]) {
+  const allowedFields = new Set(['id', 'version', 'title', 'name', 'atlas', 'animations', 'anchor', 'shadowScale', 'production'])
+  for (const key of Object.keys(content)) {
+    if (!allowedFields.has(key)) issue(issues, key, 'unsupported_skin_field', `Skin field ${key} is not allowed.`)
+  }
   validateId(content, issues)
   requiredString(content, 'title', issues)
   requiredString(content, 'name', issues)
@@ -223,6 +227,26 @@ function validateSkin(content: Record<string, unknown>, issues: ContentValidatio
   }
   if (typeof content.shadowScale !== 'number' || !Number.isFinite(content.shadowScale) || content.shadowScale <= 0) {
     issue(issues, 'shadowScale', 'invalid_scale', 'shadowScale must be greater than zero.')
+  }
+  if (content.production !== undefined) {
+    if (!isRecord(content.production)) {
+      issue(issues, 'production', 'invalid_object', 'production must be an object.')
+    } else {
+      for (const key of ['source', 'thumbnail', 'shadow']) {
+        const value = content.production[key]
+        if (typeof value !== 'string' || value.trim().length === 0) {
+          issue(issues, `production.${key}`, 'required_string', `${key} must be a non-empty string.`)
+        }
+      }
+      for (const key of ['sourceWidth', 'sourceHeight', 'subjectWidth', 'subjectHeight']) {
+        const value = content.production[key]
+        if (!Number.isInteger(value) || Number(value) <= 0) issue(issues, `production.${key}`, 'invalid_dimension', `${key} must be a positive integer.`)
+      }
+      const ratio = content.production.transparentPixelRatio
+      if (typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio < 0 || ratio > 1) {
+        issue(issues, 'production.transparentPixelRatio', 'invalid_ratio', 'transparentPixelRatio must be between zero and one.')
+      }
+    }
   }
   return content as unknown as SkinContentDefinition
 }

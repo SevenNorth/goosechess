@@ -41,4 +41,28 @@ describe('runtime content bundle', () => {
       definition: { map: { name: '发布港口' } },
     })
   })
+
+  it('publishes only runtime skin fields and omits production metadata', () => {
+    const skin = {
+      ...DEFAULT_GAME_DEFINITION.skins[0],
+      id: 'published-skin',
+      atlas: '/content-assets/runtime.png',
+      production: {
+        source: '/content-assets/source.png',
+        thumbnail: '/content-assets/thumbnail.png',
+        shadow: '/content-assets/shadow.png',
+      },
+    }
+    const release: RuntimeContentRelease = {
+      version: 'skin-v1',
+      kind: 'skin',
+      contentKey: 'skin:published-skin',
+      contentHash: 'c'.repeat(64),
+      content: skin,
+    }
+    const bundle = composeRuntimeContentBundle('content-skin-v1', [release])
+    const published = bundle.definitions[0].definition.skins.find((entry) => entry.id === skin.id)
+    expect(published).toMatchObject({ id: skin.id, atlas: skin.atlas })
+    expect(published).not.toHaveProperty('production')
+  })
 })
