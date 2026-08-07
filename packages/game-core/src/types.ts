@@ -214,6 +214,7 @@ export interface GameState {
   readonly orderRollResults: readonly OrderRollResult[]
   readonly orderRollHistory: readonly OrderRollRound[]
   readonly startingItemOfferIds: readonly string[]
+  readonly startingItemOffersByPlayer: Readonly<Record<string, readonly string[]>>
   readonly rng: RngState
   readonly pendingEventIds: readonly string[]
   readonly pendingItemId: string | null
@@ -228,7 +229,7 @@ export interface GameState {
 export type CoreGameCommand =
   | { readonly type: 'select-skin'; readonly skinId: string }
   | { readonly type: 'choose-starting-item'; readonly itemId: string }
-  | { readonly type: 'request-order-roll' }
+  | { readonly type: 'request-order-roll'; readonly roundIndex?: number }
   | { readonly type: 'use-item'; readonly itemId: string; readonly targetPlayerId?: string }
   | { readonly type: 'request-roll' }
   | { readonly type: 'choose-event'; readonly eventId: string }

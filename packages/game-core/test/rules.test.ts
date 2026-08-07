@@ -103,7 +103,7 @@ describe('deterministic rule kernel', () => {
     ])
     expect(state.startingItemOfferIds).toHaveLength(3)
     expect(new Set(state.startingItemOfferIds).size).toBe(3)
-    expect(state.rng.cursor).toBe(9)
+    expect(state.rng.cursor).toBe(18)
 
     const offersByPlayer = new Map<string, readonly string[]>()
     while (state.phase === 'choosing-starting-item') {

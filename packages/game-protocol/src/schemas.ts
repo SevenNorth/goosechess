@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const PROTOCOL_SCHEMA_VERSION = 12 as const
+export const PROTOCOL_SCHEMA_VERSION = 13 as const
 
 const IdSchema = z.string().trim().min(1).max(128)
 const RevisionSchema = z.number().int().nonnegative()
@@ -16,7 +16,7 @@ const DiceAdjustmentSchema = z.object({
 export const GameCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('select-skin'), skinId: IdSchema }).strict(),
   z.object({ type: z.literal('choose-starting-item'), itemId: IdSchema }).strict(),
-  z.object({ type: z.literal('request-order-roll') }).strict(),
+  z.object({ type: z.literal('request-order-roll'), roundIndex: z.number().int().nonnegative().optional() }).strict(),
   z.object({ type: z.literal('use-item'), itemId: IdSchema, targetPlayerId: IdSchema.optional() }).strict(),
   z.object({ type: z.literal('request-roll') }).strict(),
   z.object({ type: z.literal('choose-event'), eventId: IdSchema }).strict(),
@@ -67,6 +67,7 @@ export const SerializableGameStateSchema = z.object({
     results: z.array(z.object({ playerId: IdSchema, face: z.number().int().min(1).max(6) }).strict()).min(2).max(4),
   }).strict()),
   startingItemOfferIds: z.array(IdSchema).max(3),
+  startingItemOffersByPlayer: z.record(IdSchema, z.array(IdSchema).length(3)),
   pendingEventIds: z.array(IdSchema).max(3),
   pendingItemId: IdSchema.nullable(),
   eventContinuation: z.enum(['end-turn', 'awaiting-action']).nullable(),

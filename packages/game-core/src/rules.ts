@@ -23,6 +23,7 @@ type WorkingState = MutableStateFields & {
   orderRollResults: Array<{ playerId: string; face: number }>
   orderRollHistory: Array<{ playerIds: string[]; results: Array<{ playerId: string; face: number }> }>
   startingItemOfferIds: string[]
+  startingItemOffersByPlayer: Record<string, string[]>
   pendingEventIds: string[]
   recentEventIds: string[]
 }
@@ -38,6 +39,7 @@ function cloneState(state: GameState): WorkingState {
       results: round.results.map((result) => ({ ...result })),
     })),
     startingItemOfferIds: [...state.startingItemOfferIds],
+    startingItemOffersByPlayer: Object.fromEntries(Object.entries(state.startingItemOffersByPlayer).map(([playerId, itemIds]) => [playerId, [...itemIds]])),
     pendingEventIds: [...state.pendingEventIds],
     recentEventIds: [...state.recentEventIds],
     globalDieRule: state.globalDieRule ? { ...state.globalDieRule } : null,
@@ -81,18 +83,22 @@ function beginStartingItemChoice(
   random: RandomSource,
   events: RuleEvent[],
 ) {
-  const playerId = state.turnOrderGroups.flat().find((candidate) => playerOf(state, candidate)?.itemId === null)
-  if (!playerId) {
+  const playerIds = state.turnOrderGroups.flat().filter((candidate) => playerOf(state, candidate)?.itemId === null)
+  if (!playerIds.length) {
     state.phase = 'awaiting-action'
     state.activePlayerId = state.turnOrderGroups.flat()[0]
     state.startingItemOfferIds = []
+    state.startingItemOffersByPlayer = {}
     return
   }
-  const itemIds = drawStartingItemOffers(definition, random)
   state.phase = 'choosing-starting-item'
-  state.activePlayerId = playerId
-  state.startingItemOfferIds = [...itemIds]
-  events.push({ type: 'starting-items-offered', playerId, itemIds })
+  state.activePlayerId = playerIds[0]
+  state.startingItemOffersByPlayer = Object.fromEntries(playerIds.map((playerId) => {
+    const itemIds = drawStartingItemOffers(definition, random)
+    events.push({ type: 'starting-items-offered', playerId, itemIds })
+    return [playerId, [...itemIds]]
+  }))
+  state.startingItemOfferIds = [...state.startingItemOffersByPlayer[state.activePlayerId]]
 }
 
 function submitOrderRoll(
@@ -105,13 +111,13 @@ function submitOrderRoll(
 ) {
   const groupIndex = unresolvedOrderGroupIndex(state)
   const group = state.turnOrderGroups[groupIndex]
-  if (groupIndex < 0 || !group?.includes(playerId)) return false
+  if (groupIndex < 0 || !group?.includes(playerId) || state.orderRollResults.some((result) => result.playerId === playerId)) return false
   state.orderRollResults.push({ playerId, face })
   events.push({ type: 'order-die-rolled', playerId, face })
 
-  const nextPlayerId = group.find((candidate) => !state.orderRollResults.some((result) => result.playerId === candidate))
-  if (nextPlayerId) {
-    state.activePlayerId = nextPlayerId
+  const pendingPlayerIds = group.filter((candidate) => !state.orderRollResults.some((result) => result.playerId === candidate))
+  if (pendingPlayerIds.length) {
+    state.activePlayerId = pendingPlayerIds[0]
     return true
   }
 
@@ -603,19 +609,26 @@ export function reduceGameCommand(
       break
     }
     case 'choose-starting-item': {
-      if (state.phase !== 'choosing-starting-item' || state.activePlayerId !== actorPlayerId || actor.itemId !== null) {
+      const offeredItemIds = state.startingItemOffersByPlayer[actorPlayerId]
+      if (state.phase !== 'choosing-starting-item' || !offeredItemIds || actor.itemId !== null) {
         return reject('illegal_command', 'A starting item cannot be selected now.')
       }
-      if (!state.startingItemOfferIds.includes(command.itemId)) return reject('illegal_command', 'The requested starting item was not offered.')
+      if (!offeredItemIds.includes(command.itemId)) return reject('illegal_command', 'The requested starting item was not offered.')
       actor.itemId = command.itemId
       events.push({ type: 'starting-item-chosen', playerId: actorPlayerId, itemId: command.itemId })
-      state.startingItemOfferIds = []
-      beginStartingItemChoice(state, definition, random, events)
+      delete state.startingItemOffersByPlayer[actorPlayerId]
+      const nextPlayerId = state.turnOrderGroups.flat().find((playerId) => state.startingItemOffersByPlayer[playerId])
+      if (nextPlayerId) {
+        state.activePlayerId = nextPlayerId
+        state.startingItemOfferIds = [...state.startingItemOffersByPlayer[nextPlayerId]]
+      } else {
+        beginStartingItemChoice(state, definition, random, events)
+      }
       break
     }
     case 'request-order-roll': {
-      if (state.phase !== 'determining-order' || state.activePlayerId !== actorPlayerId) {
-        return reject('illegal_command', 'Only the current participant can roll for turn order.')
+      if (state.phase !== 'determining-order' || (command.roundIndex !== undefined && command.roundIndex !== state.orderRollHistory.length)) {
+        return reject('illegal_command', 'The participant cannot roll in this order round.')
       }
       if (!submitOrderRoll(state, definition, random, actorPlayerId, random.nextInt(1, 6), events)) {
         return reject('illegal_command', 'The participant is not in the current order-roll group.')

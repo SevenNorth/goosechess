@@ -158,7 +158,7 @@ function normalizeOwnerUrl(ownerUrl: string) {
 }
 
 function projectSnapshot(snapshot: GameSnapshot, viewerPlayerId: string): GameSnapshot {
-  const isActiveViewer = snapshot.state.activePlayerId === viewerPlayerId
+  const viewerStartingItemOffers = snapshot.state.startingItemOffersByPlayer[viewerPlayerId] ?? []
   return {
     ...snapshot,
     rngSeed: 0,
@@ -169,10 +169,11 @@ function projectSnapshot(snapshot: GameSnapshot, viewerPlayerId: string): GameSn
         ...player,
         itemId: player.playerId === viewerPlayerId ? player.itemId : null,
       })),
-      startingItemOfferIds: snapshot.state.phase === 'choosing-starting-item' && isActiveViewer
-        ? snapshot.state.startingItemOfferIds
-        : [],
-      pendingItemId: snapshot.state.phase === 'awaiting-item-choice' && isActiveViewer
+      startingItemOfferIds: [...viewerStartingItemOffers],
+      startingItemOffersByPlayer: viewerStartingItemOffers.length
+        ? { [viewerPlayerId]: [...viewerStartingItemOffers] }
+        : {},
+      pendingItemId: snapshot.state.phase === 'awaiting-item-choice' && snapshot.state.activePlayerId === viewerPlayerId
         ? snapshot.state.pendingItemId
         : null,
     },
@@ -807,11 +808,18 @@ export class RoomStore {
     for (let step = 0; step < 64; step += 1) {
       const snapshot = room.authority.getSnapshot()
       if (snapshot.state.phase === 'game-over') return
-      const activeMember = room.members.find((member) => member.playerId === snapshot.state.activePlayerId)
-      if (activeMember?.controller !== 'ai') return
-      const view = room.authority.getDecisionView(activeMember.playerId)
+      const setupAiMember = snapshot.state.phase === 'determining-order' || snapshot.state.phase === 'choosing-starting-item'
+        ? room.members.find((member) => member.controller === 'ai'
+          && room.authority!.getDecisionView(member.playerId).legalCommands.some((command) => (
+            command.type === 'request-order-roll' || command.type === 'choose-starting-item'
+          )))
+        : undefined
+      const actingMember = setupAiMember
+        ?? room.members.find((member) => member.playerId === snapshot.state.activePlayerId)
+      if (actingMember?.controller !== 'ai') return
+      const view = room.authority.getDecisionView(actingMember.playerId)
       const decision = aiStrategy.decide(view, new DeterministicRandom({
-        seed: aiDecisionSeed(snapshot, activeMember.playerId),
+        seed: aiDecisionSeed(snapshot, actingMember.playerId),
         cursor: 0,
       }))
       if (!decision) return
@@ -819,8 +827,8 @@ export class RoomStore {
       const result = await room.authority.submit({
         schemaVersion: PROTOCOL_SCHEMA_VERSION,
         gameId: room.gameId,
-        commandId: `${activeMember.playerId}-server-${room.aiCommandSequence}`,
-        playerId: activeMember.playerId,
+        commandId: `${actingMember.playerId}-server-${room.aiCommandSequence}`,
+        playerId: actingMember.playerId,
         expectedRevision: snapshot.revision,
         command: GameCommandSchema.parse(decision.command),
       })

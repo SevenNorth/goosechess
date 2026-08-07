@@ -333,11 +333,11 @@ export function OnlineMatchStage({
   )
 
   useEffect(() => {
-    if (presentedSnapshot.state.phase !== 'choosing-starting-item' || presentedSnapshot.state.activePlayerId !== viewerPlayerId) return
+    if (presentedSnapshot.state.phase !== 'choosing-starting-item' || !presentedSnapshot.state.startingItemOfferIds.length) return
     setSelectedStartingItem((current) => presentedSnapshot.state.startingItemOfferIds.includes(current ?? '')
       ? current
       : presentedSnapshot.state.startingItemOfferIds[0] ?? null)
-  }, [presentedSnapshot.revision, presentedSnapshot.state.activePlayerId, presentedSnapshot.state.phase, presentedSnapshot.state.startingItemOfferIds, viewerPlayerId])
+  }, [presentedSnapshot.revision, presentedSnapshot.state.phase, presentedSnapshot.state.startingItemOfferIds])
 
   return (
     <main className="stage5-shell online-full-match">
@@ -423,7 +423,8 @@ export function OnlineMatchStage({
           <ol className="order-list" style={{ '--order-player-count': provisionalOrder.length } as CSSProperties}>
             {provisionalOrder.map((playerId, index) => {
               const player = presentedSnapshot.state.players.find((candidate) => candidate.playerId === playerId)!
-              return <li className={presentedSnapshot.state.activePlayerId === playerId ? 'is-rolling' : ''} key={playerId} style={{ '--seat-color': COLOR_HEX[player.colorId] } as CSSProperties}>
+              const isRolling = unresolvedOrderGroup.includes(playerId) && !latestOrderFaces.has(playerId)
+              return <li className={isRolling ? 'is-rolling' : ''} key={playerId} style={{ '--seat-color': COLOR_HEX[player.colorId] } as CSSProperties}>
                 <span className="order-rank">{index + 1}</span><span className="order-player"><strong>{player.displayName}</strong></span>
                 <img className="order-token" src={roomSkinOption(player.skinId, definition, content).imageSrc} alt={`${player.displayName}的棋子`} />
                 <span className="order-die" aria-label={latestOrderFaces.has(playerId) ? `${latestOrderFaces.get(playerId)} 点` : '尚未投掷'}>{latestOrderFaces.get(playerId) ?? '·'}</span>
@@ -432,19 +433,19 @@ export function OnlineMatchStage({
           </ol>
           {orderRollCommand
             ? <button className="primary-command order-command" type="button" disabled={locked || !board} onClick={() => onSubmit(orderRollCommand)}><Dices /> 投掷单骰</button>
-            : <div className="order-wait" aria-live="polite"><Dices /> {activePlayer.displayName} 正在投掷</div>}
+            : <div className="order-wait" aria-live="polite"><Dices /> 等待其他玩家完成投掷</div>}
         </section></div>
       )}
 
       {presentedSnapshot.state.phase === 'choosing-starting-item' && (
         <div className="overlay-stage setup-overlay"><section className="setup-panel" role="dialog" aria-modal="true" aria-labelledby="online-setup-title">
-          <div className="panel-kicker">起始道具 · 联机房间</div><h1 id="online-setup-title">{activePlayer.displayName} 选择起始道具</h1>
-          {activePlayer.playerId === viewerPlayerId ? <>
+          <div className="panel-kicker">起始道具 · 联机房间</div><h1 id="online-setup-title">同时选择起始道具</h1>
+          {startingItemCommands.length ? <>
             <div className="setup-item-grid" role="radiogroup" aria-label="抽取的起始道具">
               {startingItems.map((item) => { const Icon = ITEM_COPY[item.id]?.icon ?? PackageOpen; return <button type="button" role="radio" aria-checked={selectedStartingItem === item.id} className={selectedStartingItem === item.id ? 'setup-item is-selected' : 'setup-item'} onClick={() => setSelectedStartingItem(item.id)} key={item.id}><Icon /><span>{item.mode}</span><strong>{item.title}</strong><small>{ITEM_COPY[item.id]?.description}</small>{selectedStartingItem === item.id && <Check />}</button> })}
             </div>
             <button className="primary-command setup-start" type="button" disabled={locked || !selectedStartingItemCommand} onClick={() => selectedStartingItemCommand && onSubmit(selectedStartingItemCommand)}><Check /> 确认选择</button>
-          </> : <div className="order-wait"><PackageOpen /> {activePlayer.displayName} 正在选择</div>}
+          </> : <div className="order-wait"><PackageOpen /> 已确认，等待其他玩家</div>}
         </section></div>
       )}
 

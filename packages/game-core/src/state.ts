@@ -54,6 +54,7 @@ export function createInitialGameState(options: CreateGameStateOptions): GameSta
     orderRollResults: [],
     orderRollHistory: [],
     startingItemOfferIds: [],
+    startingItemOffersByPlayer: {},
     rng: { seed: options.seed >>> 0, cursor: 0 },
     pendingEventIds: [],
     pendingItemId: null,

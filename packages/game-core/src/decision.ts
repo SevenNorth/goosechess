@@ -81,19 +81,21 @@ export function getLegalCommands(
   if (!player || state.phase === 'game-over') return []
 
   if (state.phase === 'determining-order') {
-    const hasRolled = state.orderRollResults.some((result) => result.playerId === playerId)
+    const hasEverRolled = state.orderRollResults.some((result) => result.playerId === playerId)
       || state.orderRollHistory.some((round) => round.results.some((result) => result.playerId === playerId))
-    const commands: CoreGameCommand[] = hasRolled
+    const commands: CoreGameCommand[] = hasEverRolled
       ? []
       : definition.ruleset.skinIds.map((skinId) => ({ type: 'select-skin', skinId }))
-    if (state.activePlayerId === playerId) commands.unshift({ type: 'request-order-roll' })
+    const unresolvedGroup = state.turnOrderGroups.find((group) => group.length > 1)
+    const hasRolledThisRound = state.orderRollResults.some((result) => result.playerId === playerId)
+    if (unresolvedGroup?.includes(playerId) && !hasRolledThisRound) {
+      commands.unshift({ type: 'request-order-roll' })
+    }
     return commands
   }
 
   if (state.phase === 'choosing-starting-item') {
-    return state.activePlayerId === playerId
-      ? state.startingItemOfferIds.map((itemId) => ({ type: 'choose-starting-item' as const, itemId }))
-      : []
+    return (state.startingItemOffersByPlayer[playerId] ?? []).map((itemId) => ({ type: 'choose-starting-item' as const, itemId }))
   }
 
   if (state.activePlayerId !== playerId) return []
@@ -145,7 +147,7 @@ export function createGameDecisionView(
     if (player.itemId) relevantItemIds.add(player.itemId)
   })
   if (state.pendingItemId) relevantItemIds.add(state.pendingItemId)
-  state.startingItemOfferIds.forEach((itemId) => relevantItemIds.add(itemId))
+  Object.values(state.startingItemOffersByPlayer).flat().forEach((itemId) => relevantItemIds.add(itemId))
   legalCommands.forEach((command) => {
     if ('itemId' in command && command.itemId) relevantItemIds.add(command.itemId)
   })
@@ -184,7 +186,7 @@ export function createGameDecisionView(
       if (!event) throw new Error(`Unknown offered event: ${eventId}.`)
       return { ...event }
     }),
-    startingItemOffers: definition.items.filter((item) => state.startingItemOfferIds.includes(item.id)).map((item) => ({ ...item })),
+    startingItemOffers: definition.items.filter((item) => (state.startingItemOffersByPlayer[options.playerId] ?? []).includes(item.id)).map((item) => ({ ...item })),
     relevantItems: definition.items.filter((item) => relevantItemIds.has(item.id)).map((item) => ({ ...item })),
     pendingItemId: state.pendingItemId,
     legalCommands,

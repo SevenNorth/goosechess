@@ -45,7 +45,7 @@ function toCoreCommand(command: GameCommand): CoreGameCommand {
   switch (command.type) {
     case 'select-skin': return { type: command.type, skinId: command.skinId }
     case 'choose-starting-item': return { type: command.type, itemId: command.itemId }
-    case 'request-order-roll': return { type: command.type }
+    case 'request-order-roll': return { type: command.type, ...(command.roundIndex === undefined ? {} : { roundIndex: command.roundIndex }) }
     case 'use-item': return {
       type: command.type,
       itemId: command.itemId,
@@ -81,6 +81,7 @@ function toSnapshot(gameId: string, revision: number, definition: GameDefinition
         results: round.results.map((result) => ({ ...result })),
       })),
       startingItemOfferIds: [...state.startingItemOfferIds],
+      startingItemOffersByPlayer: Object.fromEntries(Object.entries(state.startingItemOffersByPlayer).map(([playerId, itemIds]) => [playerId, [...itemIds]])),
       pendingEventIds: [...state.pendingEventIds],
       pendingItemId: state.pendingItemId,
       eventContinuation: state.eventContinuation,
@@ -106,6 +107,7 @@ function fromSnapshot(snapshot: GameSnapshot): GameState {
       results: round.results.map((result) => ({ ...result })),
     })),
     startingItemOfferIds: [...snapshot.state.startingItemOfferIds],
+    startingItemOffersByPlayer: Object.fromEntries(Object.entries(snapshot.state.startingItemOffersByPlayer).map(([playerId, itemIds]) => [playerId, [...itemIds]])),
     rng: { seed: snapshot.rngSeed, cursor: snapshot.rngCursor },
     pendingEventIds: [...snapshot.state.pendingEventIds],
     pendingItemId: snapshot.state.pendingItemId,
@@ -136,7 +138,12 @@ function assertSnapshotMatchesDefinition(snapshot: GameSnapshot, definition: Gam
   if (snapshot.state.orderRollResults.some((result) => !playerIds.has(result.playerId))) issues.push('order roll results')
   if (snapshot.state.orderRollHistory.some((round) => round.playerIds.length !== round.results.length || round.results.some((result) => !round.playerIds.includes(result.playerId)))) issues.push('order roll history')
   if (snapshot.state.startingItemOfferIds.some((itemId) => !allowedStartingItemIds.has(itemId)) || new Set(snapshot.state.startingItemOfferIds).size !== snapshot.state.startingItemOfferIds.length) issues.push('starting item offers')
-  if ((snapshot.state.phase === 'choosing-starting-item') !== (snapshot.state.startingItemOfferIds.length === 3)) issues.push('starting item phase')
+  const startingOffers = Object.entries(snapshot.state.startingItemOffersByPlayer)
+  if (startingOffers.some(([playerId, offerIds]) => !playerIds.has(playerId)
+    || offerIds.length !== 3
+    || new Set(offerIds).size !== offerIds.length
+    || offerIds.some((itemId) => !allowedStartingItemIds.has(itemId)))) issues.push('starting item offers by player')
+  if ((snapshot.state.phase === 'choosing-starting-item') !== (startingOffers.length > 0)) issues.push('starting item phase')
   snapshot.state.players.forEach((player, index) => {
     if (player.seatIndex !== index || !spaceIds.has(player.spaceId) || !skinIds.has(player.skinId) || (player.itemId !== null && !itemIds.has(player.itemId))) {
       issues.push(`player ${player.playerId}`)
@@ -270,7 +277,14 @@ export class LocalAuthority implements GameAuthorityPort {
         skinIds: new Set(this.definition.skins.map((skin) => skin.id)),
       },
     })
-    if (contextError) return { ok: false, error: contextError }
+    const acceptsConcurrentSetupCommand = contextError?.code === 'stale_revision'
+      && acceptedEnvelope.expectedRevision < this.snapshot.revision
+      && (
+        (acceptedEnvelope.command.type === 'request-order-roll'
+          && (acceptedEnvelope.command.roundIndex === undefined || acceptedEnvelope.command.roundIndex === this.state.orderRollHistory.length))
+        || acceptedEnvelope.command.type === 'choose-starting-item'
+      )
+    if (contextError && !acceptsConcurrentSetupCommand) return { ok: false, error: contextError }
 
     const transition = reduceGameCommand(this.state, this.definition, acceptedEnvelope.playerId, toCoreCommand(acceptedEnvelope.command))
     if (!transition.ok) {

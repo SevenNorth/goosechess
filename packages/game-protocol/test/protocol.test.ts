@@ -44,6 +44,7 @@ const snapshot: GameSnapshot = {
     orderRollResults: [],
     orderRollHistory: [],
     startingItemOfferIds: [],
+    startingItemOffersByPlayer: {},
     pendingEventIds: ['fishing', 'crab', 'quiet'],
     pendingItemId: null,
     eventContinuation: 'end-turn',
