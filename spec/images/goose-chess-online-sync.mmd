@@ -1,0 +1,34 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Microsoft YaHei, Segoe UI, sans-serif","fontSize":"16px","primaryColor":"#e8f0fe","primaryTextColor":"#172033","primaryBorderColor":"#4776b9","lineColor":"#667085","secondaryColor":"#eaf7ef","tertiaryColor":"#fff4dd","actorBkg":"#e8f0fe","actorBorder":"#4776b9","actorTextColor":"#172033","signalColor":"#475467","signalTextColor":"#172033","noteBkgColor":"#fff4dd","noteBorderColor":"#b7791f","noteTextColor":"#172033"},"sequence":{"useMaxWidth":true,"wrap":true}}}%%
+sequenceDiagram
+    autonumber
+    participant C as 操作客户端
+    participant W as WebSocket Gateway
+    participant Q as 房间串行队列
+    participant A as Authority
+    participant D as SQLite / PostgreSQL
+    participant O as 其他客户端
+
+    C->>W: CommandEnvelope<br/>commandId + expectedRevision + command
+    W->>Q: 校验连接身份并入队
+    Q->>A: 顺序提交命令
+    A->>A: 校验幂等 / revision / 行动权
+    A->>A: 确定性 RNG + 纯规则归约
+    A-->>Q: Snapshot + Events + Cues
+    Q->>D: 保存权威检查点和幂等结果
+    D-->>Q: 持久化成功
+    Q-->>C: 本人视角 AuthorityUpdate + LegalCommands
+    Q-->>O: 对方视角 AuthorityUpdate + LegalCommands
+    C->>C: 立即推进权威快照
+    C->>C: 依次播放表现提示
+
+    alt expectedRevision 已过期
+        A-->>C: stale_revision
+        C->>W: sync-request
+        W-->>C: 最新完整投影快照 + LegalCommands
+    end
+
+    opt 刷新或短时断线
+        C->>W: recoveryToken 重新连接
+        W-->>C: 最新投影快照，不补播旧动画
+        C->>C: 清空表现队列，按快照重建棋盘
+    end

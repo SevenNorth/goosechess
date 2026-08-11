@@ -1,0 +1,64 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Microsoft YaHei, Segoe UI, sans-serif","fontSize":"18px","primaryColor":"#e8f0fe","primaryTextColor":"#172033","primaryBorderColor":"#4776b9","lineColor":"#667085","secondaryColor":"#eaf7ef","tertiaryColor":"#fff4dd","clusterBkg":"#f7f8fa","clusterBorder":"#98a2b3"},"flowchart":{"curve":"basis","htmlLabels":true,"nodeSpacing":45,"rankSpacing":55}}}%%
+flowchart TB
+    Player["玩家"]
+    Admin["内容管理员"]
+
+    subgraph Apps["应用层"]
+        direction LR
+        Web["玩家 Web<br/>React / Router / HUD<br/>PixiJS 棋盘 / Three.js 骰子<br/>XState 表现队列 / 离线 Authority"]
+        AdminWeb["管理后台<br/>React / RBAC<br/>地图 / 事件 / 皮肤工作台"]
+    end
+
+    subgraph Services["服务层"]
+        direction LR
+        GameServer["游戏服务器<br/>HTTP + WebSocket Gateway<br/>RoomStore 串行队列<br/>权威 Authority / 在线 AI<br/>按玩家投影快照"]
+        ContentServer["内容服务器<br/>认证 / 权限 / 审核<br/>不可变版本发布 / 回滚"]
+    end
+
+    subgraph Domain["共享领域层"]
+        direction LR
+        Core["game-core<br/>纯规则 / 地图 / 确定性 RNG"]
+        Protocol["game-protocol<br/>Zod / Revision / Idempotency"]
+        AI["game-ai<br/>共享决策策略"]
+        Content["game-content<br/>版本化游戏定义"]
+        Renderer["board-renderer<br/>共享棋盘预览"]
+    end
+
+    subgraph Storage["数据与部署层"]
+        direction LR
+        RoomDB[("SQLite / PostgreSQL<br/>检查点 / Lease / Fencing")]
+        ContentDB[("内容数据库<br/>运行时包 / 静态资源")]
+        Ops["Docker / Health / Metrics<br/>限流 / 结构化诊断"]
+    end
+
+    Player --> Web
+    Admin --> AdminWeb
+    Web <-->|"HTTPS / WSS"| GameServer
+    AdminWeb -->|"受保护 API"| ContentServer
+    ContentServer -->|"锁定的 Runtime Content"| GameServer
+    ContentServer -->|"内容与公开资源"| Web
+
+    Web --> Core
+    Web --> Protocol
+    Web --> Renderer
+    GameServer --> Core
+    GameServer --> Protocol
+    GameServer --> AI
+    GameServer --> Content
+    AdminWeb --> Renderer
+
+    GameServer --> RoomDB
+    ContentServer --> ContentDB
+    GameServer --> Ops
+    ContentServer --> Ops
+
+    classDef actor fill:#f2eafd,stroke:#7b61a8,color:#172033;
+    classDef client fill:#e8f0fe,stroke:#4776b9,color:#172033;
+    classDef server fill:#eaf7ef,stroke:#438a5e,color:#172033;
+    classDef shared fill:#fff4dd,stroke:#b7791f,color:#172033;
+    classDef storage fill:#f4f5f7,stroke:#667085,color:#172033;
+    class Player,Admin actor;
+    class Web,AdminWeb client;
+    class GameServer,ContentServer server;
+    class Core,Protocol,AI,Content,Renderer shared;
+    class RoomDB,ContentDB,Ops storage;

@@ -1,0 +1,37 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Microsoft YaHei, Segoe UI, sans-serif","fontSize":"17px","primaryColor":"#e8f0fe","primaryTextColor":"#172033","primaryBorderColor":"#4776b9","lineColor":"#667085","secondaryColor":"#eaf7ef","tertiaryColor":"#fff4dd"}}}%%
+stateDiagram-v2
+    direction LR
+    state "确定座次" as determining_order
+    state "选择起始道具" as choosing_item
+    state "等待行动" as awaiting_action
+    state "等待事件选择" as awaiting_event
+    state "等待道具取舍" as awaiting_item
+    state "对局结束" as game_over
+    [*] --> determining_order: 创建对局
+    determining_order --> determining_order: 同点小组重投
+    determining_order --> choosing_item: 座次确定
+
+    choosing_item --> choosing_item: 下一位选择起始道具
+    choosing_item --> awaiting_action: 全员选择完成
+
+    awaiting_action --> awaiting_action: 使用主动道具
+    awaiting_action --> awaiting_event: 投骰并落入事件格
+    awaiting_action --> awaiting_action: 移动完成，切换行动者
+    awaiting_action --> game_over: 抵达终点
+
+    awaiting_event --> awaiting_item: 获得道具且需要取舍
+    awaiting_event --> awaiting_action: 事件结算 / 切换回合
+    awaiting_event --> game_over: 事件效果抵达终点
+
+    awaiting_item --> awaiting_action: 保留或替换道具
+    game_over --> [*]
+
+    note right of awaiting_action
+      服务端只接受当前合法命令
+      随机结果由 Authority 产生
+    end note
+
+    note right of awaiting_event
+      领域状态与动画状态分离
+      动画不参与规则推进
+    end note
